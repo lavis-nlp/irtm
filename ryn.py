@@ -83,7 +83,7 @@ def main():
         term(message=f'internal error: {err}', status=2)
 
     except KeyboardInterrupt:
-        print(f'received keyboard interrupt')
+        print('received keyboard interrupt')
         term(message='terminating upon keyboard interrupt', status=0)
 
 

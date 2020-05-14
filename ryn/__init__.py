@@ -1,7 +1,5 @@
 # -*- coding: utf-8 -*-
 
-import os
-import sys
 import pathlib
 
 from ryn.common import logging
@@ -9,10 +7,7 @@ from ryn.common import logging
 
 log = logging.get('ryn')
 
-_root_dir = os.path.abspath(os.path.dirname(sys.argv[0]))
-_root_path = pathlib.Path(_root_dir)
-
-
+_root_path = pathlib.Path(__file__).parent.parent
 _DATA_DIR = 'data'
 
 

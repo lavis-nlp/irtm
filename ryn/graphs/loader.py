@@ -101,6 +101,7 @@ def load_vll(f_triples: str) -> graph.GraphImport:
 
         return dic[key]
 
+    print(f'opening {f_triples=}')
     with open(f_triples, mode='r') as fd:
         for line in fd:
 
@@ -219,8 +220,8 @@ def load_graphs_from_conf(
             path=conf['path'],
             reader=conf['reader'],
             triples=conf['triples'],
-            entity_labels=conf['entity labels'],
-            relation_labels=conf['relation labels'],
+            entity_labels=conf.get('entity labels', None),
+            relation_labels=conf.get('relation labels', None),
             cache=ryn.ENV.CACHE_DIR / 'graphs.loader',
         )
 
