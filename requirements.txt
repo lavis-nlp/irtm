@@ -1,0 +1,19 @@
+# core
+tqdm
+numpy
+networkx
+configobj
+
+# tests
+inotify
+
+# notes
+jupyter
+tabulate
+matplotlib
+
+# dev
+ipdb
+flake8
+autopep8
+ipython
