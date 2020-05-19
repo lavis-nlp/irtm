@@ -101,7 +101,6 @@ def load_vll(f_triples: str) -> graph.GraphImport:
 
         return dic[key]
 
-    print(f'opening {f_triples=}')
     with open(f_triples, mode='r') as fd:
         for line in fd:
 
