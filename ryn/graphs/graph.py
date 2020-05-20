@@ -651,8 +651,6 @@ class Graph:
         A dictionary containing the new graphs named by the keyword arguments
 
         """
-        log.info('partition graph, checking constraints')
-
         if len(ents) < 2:
             raise PartitionConstraintError(
                 'provide at least two named entity sets')
