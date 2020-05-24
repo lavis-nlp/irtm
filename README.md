@@ -25,6 +25,7 @@ git clone -b OpenKE-PyTorch https://github.com/thunlp/OpenKE
 pushd OpenKE/openke/
 bash make.sh
 popd
+pip install -r requirements.txt
 pip install -e .
 popd
 ```

@@ -2,12 +2,18 @@
 
 from ryn.common import logging
 
+import matplotlib as mpl
 import matplotlib.pyplot as plt
 
 import dataclasses
 
 
 log = logging.get('common.plotter')
+
+# used for display in emacs notebooks with dark background
+mpl.rcParams["figure.facecolor"] = "white"
+mpl.rcParams["axes.facecolor"] = "white"
+mpl.rcParams["savefig.facecolor"] = "white"
 
 
 CLR = ['#333333', '#FF3E72', '#2BB1FF', '#15587F', '#FFDDAB', '#B59D79']
