@@ -30,16 +30,24 @@ class DataLoaderConfig:
 
     in_path: str
     nbatches: int
+
     threads: int
     sampling_mode: str
+
     bern_flag: int
-    filter_flat: int
+    filter_flag: int
+
     neg_ent: int
     neg_rel: int
 
     @classmethod
+    def fields(K):
+        return tuple(K.__dataclass_fields__.keys())
+
+    @classmethod
     def from_conf(K, conf: config.Config):
-        __import__("IPython").embed(); __import__("sys").exit()
+        params = {k: conf.obj['OpenKE'][k.replace('_', ' ')] for k in K.fields()}
+        return K(**params)
 
 
 def train(conf: config.Config):
@@ -47,6 +55,7 @@ def train(conf: config.Config):
     dataloader_conf = DataLoaderConfig.from_conf(conf)
     train_dataloader = oke_data.TrainDataLoader(**dataloader_conf.__dict__)
 
+    __import__("IPython").embed(); __import__("sys").exit()
 
 # distmult = DistMult(
 # 	ent_tot = train_dataloader.get_ent_tot(),
