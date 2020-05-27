@@ -2,6 +2,7 @@
 tqdm
 numpy
 networkx
+tabulate
 configobj
 
 # tests
@@ -9,7 +10,6 @@ inotify
 
 # notes
 jupyter
-tabulate
 matplotlib
 
 # dev
