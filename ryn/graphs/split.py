@@ -23,6 +23,7 @@ from tabulate import tabulate
 from typing import Any
 from typing import Set
 from typing import List
+from typing import Tuple
 
 
 log = logging.get('graph.split')
@@ -209,7 +210,16 @@ def _track(s, x, name=''):
 # ---
 
 
-def _split_concepts(i: int, cfg: Config, row: Row, concepts, entities):
+def _partition(data: Set[Any], line: int) -> Tuple[Set[Any], Set[Any]]:
+    lis = list(data)
+    random.shuffle(lis)
+    return set(lis[:line]), set(lis[line:])
+
+
+def _split_concepts(
+        i: int, cfg: Config, row: Row,
+        concepts: Set[int], entities: Split):
+
     # using the probability function defined beforehand
     # to decide how many of the concept candidates remain
     # in the test set (50% to 100%)
@@ -217,13 +227,9 @@ def _split_concepts(i: int, cfg: Config, row: Row, concepts, entities):
     row.p = p
 
     # set threshold based on ratio
-    split_threshold = int(p * len(concepts)) + 1
-    lis = list(concepts)
-    random.shuffle(lis)
-
-    split = Split(
-        train=set(lis[:split_threshold]),
-        valid=set(lis[split_threshold:]), )
+    line = int(p * len(concepts)) + 1
+    train, valid = _partition(concepts, line)
+    split = Split(train=train, valid=valid)
 
     # track(c_split, _N, 'c_split (pre-reorder)')
     split, reordered = split.reorder(entities)
@@ -234,7 +240,9 @@ def _split_concepts(i: int, cfg: Config, row: Row, concepts, entities):
     return split
 
 
-def _split_objects(cfg: Config, row: Row, c_split, objects, entities):
+def _split_objects(
+        cfg: Config, row: Row,
+        c_split: Split, objects: Set[int], entities: Split):
 
     # if x is in both concepts and objects
     # and ends up in either c_split.train or c_split
@@ -245,20 +253,11 @@ def _split_objects(cfg: Config, row: Row, c_split, objects, entities):
         train=objects & c_split.train,
         valid=objects & c_split.valid, )
 
-    objects -= intersection.unionized
+    remains = objects - intersection.unionized
+    line = int(cfg.split * len(remains)) + 1 - len(intersection.train)
+    train, valid = _partition(remains, line)
 
-    split_n = int(cfg.split * len(objects))
-    split_threshold = split_n + 1 - len(intersection.train)
-
-    lis = list(objects)
-    random.shuffle(lis)
-
-    split = Split(
-        train=set(lis[:split_threshold]),
-        valid=set(lis[split_threshold:]),
-    ).union(intersection)
-
-    # track(o_split, _N, 'o_split (pre-reorder)')
+    split = Split(train=train, valid=valid).union(intersection)
     split, reordered = split.reorder(entities)
 
     row.reordered_objects = reordered / row.objects
@@ -267,16 +266,15 @@ def _split_objects(cfg: Config, row: Row, c_split, objects, entities):
     return split
 
 
-def _select_triples(g: graph.Graph, row: Row, heads, tails, rel):
-    triples_train = g.select(
-        edges={rel.r},
-        heads=heads.train,
-        tails=tails.train, )
+def _select_triples(
+        g: graph.Graph, row: Row,
+        heads: Set[int], tails: Set[int],
+        rel: Relation):
 
-    triples_valid = g.select(
-        edges={rel.r},
-        heads=heads.valid,
-        tails=tails.valid, )
+    select = partial(g.select, edges={rel.r})
+
+    triples_train = select(heads=heads.train, tails=tails.train)
+    triples_valid = select(heads=heads.valid, tails=tails.valid)
 
     t_selection = Split(train=triples_train, valid=triples_valid)
 
@@ -294,7 +292,7 @@ def _create(g: graph.Graph, cfg: Config, rels: List[Relation], name: str):
 
     # work by greedily start with the most obvious
     # concept candidates (i.e. high in- or out-degree)
-    for i, rel in enumerate(sorted(rels[:], key=lambda rel: rel.ratio)):
+    for i, rel in enumerate(sorted(rels, key=lambda rel: rel.ratio)):
         row = Row(rid=rel.r, ratio=rel.ratio, name=rel.name)
 
         # determine whether the range or domain of
