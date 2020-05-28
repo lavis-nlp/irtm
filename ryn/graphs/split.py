@@ -12,12 +12,17 @@ from ryn.common import logging
 
 import math
 import random
+import pathlib
 import operator
 
 from functools import partial
+from itertools import product
+from itertools import combinations
+
 from dataclasses import field
 from dataclasses import dataclass
 
+import numpy as np
 from tabulate import tabulate
 
 from typing import Any
@@ -29,7 +34,7 @@ from typing import Tuple
 log = logging.get('graph.split')
 
 
-def prob(x, a: float = 1, o: float = 1, s: float = 1):
+def _prob(x, a: float = 1, o: float = 1, s: float = 1):
     """
 
     Generalised logistic function
@@ -45,6 +50,12 @@ def prob(x, a: float = 1, o: float = 1, s: float = 1):
 
     # generalised logistic function
     return 1 / (1 + math.exp(s * (-x + o))) ** a
+
+
+def _partition(data: Set[Any], line: int) -> Tuple[Set[Any], Set[Any]]:
+    lis = list(data)
+    random.shuffle(lis)
+    return set(lis[:line]), set(lis[line:])
 
 
 @dataclass
@@ -132,7 +143,7 @@ class Split:
     def clone(self):
         return self._apply(operator.and_, self)
 
-    def reorder(self, other):
+    def reorder(self, other: 'Split'):
         train = self.train
         valid = self.valid
 
@@ -148,6 +159,12 @@ class Split:
         split.check()
 
         return split, len(trainvalid | validtrain)
+
+    def partition(self, ratio: float) -> Tuple['Split', 'Split']:
+        t1, t2 = _partition(self.train, int(len(self.train) * ratio))
+        v1, v2 = _partition(self.valid, int(len(self.valid) * ratio))
+
+        return Split(train=t1, valid=t2), Split(train=v1, valid=v2)
 
 
 @dataclass
@@ -210,12 +227,6 @@ def _track(s, x, name=''):
 # ---
 
 
-def _partition(data: Set[Any], line: int) -> Tuple[Set[Any], Set[Any]]:
-    lis = list(data)
-    random.shuffle(lis)
-    return set(lis[:line]), set(lis[line:])
-
-
 def _split_concepts(
         i: int, cfg: Config, row: Row,
         concepts: Set[int], entities: Split):
@@ -223,7 +234,7 @@ def _split_concepts(
     # using the probability function defined beforehand
     # to decide how many of the concept candidates remain
     # in the test set (50% to 100%)
-    p = 1 - prob(i) * 0.5
+    p = 1 - _prob(i, a=cfg.prob_a, o=cfg.prob_o, s=cfg.prob_s) * 0.5
     row.p = p
 
     # set threshold based on ratio
@@ -284,6 +295,62 @@ def _select_triples(
     return t_selection
 
 
+# datasets are saved in OpenKE format
+def _write_dataset(path: pathlib.Path, cw: Split, ow: Split):
+
+    def _write(name, triples):
+        with (path / name).open(mode='w') as fd:
+            fd.write(f'{len(triples)}\n')
+            lines = (' '.join(map(str, triple)) for triple in triples)
+            fd.write('\n'.join(lines))
+            log.info(f'wrote {fd.name}')
+
+    _write('cw.train2id.txt', cw.train)
+    _write('cw.valid2id.txt', cw.valid)
+    _write('ow.valid2id.txt', ow.train)
+    _write('ow.test2id.txt', ow.valid)
+
+
+def _write_tsv(table, path, name):
+    with (path / name).open(mode='w') as fd:
+        fd.write(table(tablefmt='tsv'))
+        log.info(f'wrote {fd.name}')
+
+
+def _stats_rows(path, rows):
+    table = partial(tabulate, [r.tup for r in rows], headers=Row.HEADERS)
+    _write_tsv(table, path, 'stats.rels.tsv')
+
+
+def _stats_entity_intersections(path, cw, ow):
+    ents = (
+        _ents_from_triples(cw.train),
+        _ents_from_triples(cw.valid),
+        _ents_from_triples(ow.train),
+        _ents_from_triples(ow.valid), )
+
+    names = 'cw.train', 'cw.valid', 'ow.train', 'ow.valid'
+
+    intersections = [len(a & b) for a, b in product(ents, ents)]
+    intersections = np.array(intersections).reshape((4, 4))
+
+    rows = [
+        (names[i], ) + tuple(intersections[i])
+        for i in range(len(intersections))]
+
+    table = partial(tabulate, rows, headers=names)
+    _write_tsv(table, path, 'stats.ents.tsv')
+
+
+def _gather_stats(path: pathlib.Path, rows: List[Row], cw, ow):
+
+    log.info(f'! closed world: {len(cw.train):10d} {len(cw.valid):10d} ')
+    log.info(f'!   open world: {len(ow.train):10d} {len(ow.valid):10d}')
+
+    _stats_rows(path, rows)
+    _stats_entity_intersections(path, cw, ow)
+
+
 def _create(g: graph.Graph, cfg: Config, rels: List[Relation], name: str):
     rows = []
 
@@ -338,41 +405,19 @@ def _create(g: graph.Graph, cfg: Config, rels: List[Relation], name: str):
     triples.check()
     entities.check()
 
-    # --------------------
+    # create closed/open world triple sets
+    cw, ow = triples.partition(cfg.split)
 
-    table = partial(tabulate, [r.tup for r in rows], headers=Row.HEADERS)
-    # print(table())
+    # final sanity check
+    for s1, s2 in combinations((cw.train, cw.valid, ow.train, ow.valid), 2):
+        assert not s1 & s2, f'{len(s1)=} {len(s2)=} {len(s1 & s2)=}'
 
+    # persist
     path = ryn.ENV.CACHE_DIR / 'notes.graph.split' / name
     path.mkdir(exist_ok=True, parents=True)
 
-    with (path / 'stats.tsv').open(mode='w') as fd:
-        fd.write(table(tablefmt='tsv'))
-
-    # log.info(f'created {len(train)=} {len(valid)=}')
-
-    # save oke-like
-    # with (path / 'train2id.txt').open(mode='w') as fd:
-    #     fd.write(f'{len(train)}\n')
-    #     fd.write('\n'.join(' '.join(map(str, triple)) for triple in train))
-    #     print(f'wrote {fd.name}')
-
-    # with (path / 'valid2id.txt').open(mode='w') as fd:
-    #     fd.write(f'{len(valid)}\n')
-    #     fd.write('\n'.join(' '.join(map(str, triple)) for triple in valid))
-    #     print(f'wrote {fd.name}')
-
-    # with (path / 'entity2id.txt').open(mode='w') as fd:
-    #     fd.write(f'{len(g.source.ents)}\n')
-    #     fd.write('\n'.join(
-    #         f'{name} {eid}' for eid, name in g.source.ents.items()))
-    #     print(f'wrote {fd.name}')
-
-    # with (path / 'relation2id.txt').open(mode='w') as fd:
-    #     fd.write(f'{len(g.source.rels)}\n')
-    #     fd.write('\n'.join(
-    #         f'{name} {rid}' for rid, name in g.source.rels.items()))
-    #     print(f'wrote {fd.name}')
+    _write_dataset(path, cw, ow)
+    _gather_stats(path, rows, cw, ow)
 
 
 def create(
@@ -383,7 +428,7 @@ def create(
 
     for seed in seeds:
         name = f'{g.name.split("-")[0]}_{cfg.split:.2f}_{seed}'
+        log.info(f'! creating dataset {name=}; set seed to {seed}')
 
-        log.info(f'! creating dataset {name=}')
         random.seed(seed)
         _create(g, cfg, rels, name)
