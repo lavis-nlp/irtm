@@ -80,16 +80,18 @@ def main():
         args = parser.parse_args()
         mod.main(args)
 
-    except RynError as err:
-        print('An error occured:')
-        print(str(err))
-        term(message=f'internal error: {err}', status=2)
-
     except KeyboardInterrupt:
         print('received keyboard interrupt')
         term(message='terminating upon keyboard interrupt', status=0)
 
+    except Exception as exc:
+        print('Catched exception!')
+        log.error(f'catched exception: {exc}')
+        raise exc  # offer stracktrace
+
+    return 0
+
 
 if __name__ == '__main__':
-    main()
-    term(message='terminating gracefully', status=0)
+    rc = main()
+    term(message='terminating gracefully', status=rc)

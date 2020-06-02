@@ -1,6 +1,7 @@
 # core
 tqdm
 numpy
+inotify
 networkx
 tabulate
 configobj

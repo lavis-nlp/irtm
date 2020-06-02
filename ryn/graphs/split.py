@@ -63,7 +63,14 @@ class Config:
 
     # split ratio (for example: retaining 70% of all
     # samples for training requires a value of .7)
-    split: float
+    owcw_split: float
+    trainvalid_split: float
+
+    pathname: str
+
+
+@dataclass
+class GreedyConfig(Config):
 
     # see split.prob
     prob_a: float
@@ -72,10 +79,18 @@ class Config:
 
 
 @dataclass
+class HardConfig(Config):
+
+    # no of relation (sorted by ratio)
+    threshold: int
+
+
+@dataclass
 class Relation:
 
     r: int
     name: str
+    triples: Set[Tuple[int]]
 
     hs: Set[int]
     ts: Set[int]
@@ -86,12 +101,14 @@ class Relation:
     def from_graph(K, g: graph.Graph) -> List['Relation']:
         rels = []
         for r, relname in g.source.rels.items():
-            hs, ts = map(set, zip(*((h, t) for h, t, _ in g.find(edges={r}))))
+            triples = g.find(edges={r})
+            hs, ts = map(set, zip(*((h, t) for h, t, _ in triples)))
+
             lens = len(hs), len(ts)
             ratio = min(lens) / max(lens)
 
             rels.append(K(
-                r=r, name=relname,
+                r=r, name=relname, triples=triples,
                 hs=hs, ts=ts,
                 ratio=ratio, ))
 
@@ -187,6 +204,9 @@ class Row:
     retained_objects: int = -1
     reordered_objects: int = -1
 
+    ow_triples: int = -1
+    cw_triples: int = -1
+
     triples: int = -1
     retained_triples: int = -1
 
@@ -194,6 +214,7 @@ class Row:
         'id', 'ratio', 'p',
         'concepts', 'retained', 'reordered',
         'objects', 'retained', 'reordered',
+        'ow triples', 'cw triples',
         'triples', 'retained',
         'name'
     )
@@ -204,6 +225,7 @@ class Row:
             self.rid, self.ratio, self.p,
             self.concepts, self.retained_concepts, self.reordered_concepts,
             self.objects, self.retained_objects, self.reordered_objects,
+            self.ow_triples, self.cw_triples,
             self.triples, self.retained_triples,
             self.name, )
 
@@ -265,7 +287,8 @@ def _split_objects(
         valid=objects & c_split.valid, )
 
     remains = objects - intersection.unionized
-    line = int(cfg.split * len(remains)) + 1 - len(intersection.train)
+    N = int(cfg.trainvalid_split * len(remains))
+    line = N + 1 - len(intersection.train)
     train, valid = _partition(remains, line)
 
     split = Split(train=train, valid=valid).union(intersection)
@@ -296,12 +319,12 @@ def _select_triples(
 
 
 # datasets are saved in OpenKE format
-def _write_dataset(path: pathlib.Path, cw: Split, ow: Split):
+def _write_dataset(path: pathlib.Path, g: graph.Graph, cw: Split, ow: Split):
 
-    def _write(name, triples):
+    def _write(name, tups):
         with (path / name).open(mode='w') as fd:
-            fd.write(f'{len(triples)}\n')
-            lines = (' '.join(map(str, triple)) for triple in triples)
+            fd.write(f'{len(tups)}\n')
+            lines = (' '.join(map(str, t)) for t in tups)
             fd.write('\n'.join(lines))
             log.info(f'wrote {fd.name}')
 
@@ -309,6 +332,9 @@ def _write_dataset(path: pathlib.Path, cw: Split, ow: Split):
     _write('cw.valid2id.txt', cw.valid)
     _write('ow.valid2id.txt', ow.train)
     _write('ow.test2id.txt', ow.valid)
+
+    _write('relation2id.txt', [(v, k) for k, v in g.source.rels.items()])
+    _write('entity2id.txt', [(v, k) for k, v in g.source.ents.items()])
 
 
 def _write_tsv(table, path, name):
@@ -351,11 +377,17 @@ def _gather_stats(path: pathlib.Path, rows: List[Row], cw, ow):
     _stats_entity_intersections(path, cw, ow)
 
 
-def _create(g: graph.Graph, cfg: Config, rels: List[Relation], name: str):
+def _create_greedy(
+        g: graph.Graph,
+        cfg: Config,
+        rels: List[Relation],
+        name: str):
+
     rows = []
 
     entities = Split()
     triples = Split()
+    removed_triples = set()
 
     # work by greedily start with the most obvious
     # concept candidates (i.e. high in- or out-degree)
@@ -377,10 +409,14 @@ def _create(g: graph.Graph, cfg: Config, rels: List[Relation], name: str):
         heads, tails = (c_split, o_split) if reverse else (o_split, c_split)
         t_triples = _select_triples(g, row, heads, tails, rel)
 
+        row.ow_triples = len(t_triples.train) / len(rel.triples)
+        row.cw_triples = len(t_triples.valid) / len(rel.triples)
+
         # --------------------
 
-        triples = triples.union(t_triples)
         entities = entities.union(e_union)
+        triples = triples.union(t_triples)
+        removed_triples |= rel.triples - t_triples.unionized
 
         # --------------------
 
@@ -405,30 +441,73 @@ def _create(g: graph.Graph, cfg: Config, rels: List[Relation], name: str):
     triples.check()
     entities.check()
 
-    # create closed/open world triple sets
-    cw, ow = triples.partition(cfg.split)
+    # partition closed/open world triple sets
+    # into train/valid (ow) and train/test (cw)
+    cw, ow = triples.partition(cfg.owcw_split)
 
     # final sanity check
     for s1, s2 in combinations((cw.train, cw.valid, ow.train, ow.valid), 2):
         assert not s1 & s2, f'{len(s1)=} {len(s2)=} {len(s1 & s2)=}'
 
+    assert not removed_triples & triples.unionized
+
+    _a = len(removed_triples | triples.unionized)
+    _b = sum(len(rel.triples) for t in rels)
+    assert _a == _b, (
+        f'removed + unionized: {_a} /'
+        f'original: {_b}')
+
     # persist
-    path = ryn.ENV.CACHE_DIR / 'notes.graph.split' / name
+    path = ryn.ENV.SPLIT_DIR / cfg.pathname / name
     path.mkdir(exist_ok=True, parents=True)
 
-    _write_dataset(path, cw, ow)
+    _write_dataset(path, g, cw, ow)
     _gather_stats(path, rows, cw, ow)
 
 
-def create(
+def _build_name(g, cfg, seed):
+    name = f'{g.name.split("-")[0]}'
+    name += f'_{cfg.owcw_split:.2f}-{cfg.trainvalid_split:.2f}'
+    name += f'_{seed}'
+
+    return name
+
+
+def create_greedy(
+        g: graph.Graph,
+        cfg: GreedyConfig,
+        rels: List[Relation],
+        seeds: List[int]):
+
+    for seed in seeds:
+        name = _build_name(g, cfg, seed)
+        log.info(f'! creating dataset {name=}; set seed to {seed}')
+
+        random.seed(seed)
+        _create_greedy(g, cfg, rels, name)
+
+
+# ------------------------------------------------------------
+
+
+def _create_hard(
+        g: graph.Graph,
+        cfg: HardConfig,
+        rels: List[Relation],
+        seeds: List[int]):
+
+    pass
+
+
+def create_hard(
         g: graph.Graph,
         cfg: Config,
         rels: List[Relation],
         seeds: List[int]):
 
     for seed in seeds:
-        name = f'{g.name.split("-")[0]}_{cfg.split:.2f}_{seed}'
+        name = _build_name(g, cfg, seed)
         log.info(f'! creating dataset {name=}; set seed to {seed}')
 
         random.seed(seed)
-        _create(g, cfg, rels, name)
+        _create_hard(g, cfg, rels, name)
