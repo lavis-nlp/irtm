@@ -1122,7 +1122,7 @@ def _cli(args):
     banner = '\n'.join((
         '',
         '-' * 20,
-        ' ARAS GRAPH CLIENT',
+        ' RYN GRAPH CLIENT',
         '-' * 20,
         '',
         'variables in scope:',

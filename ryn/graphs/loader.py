@@ -185,9 +185,6 @@ def load_graphs_from_conf(
     if spec is None:
         raise RynError('provide a configuration specification')
 
-    if graphs is None:
-        raise RynError('provide a graph selection')
-
     # ---
 
     log.info(f'selecting config: {conf}')
@@ -195,7 +192,8 @@ def load_graphs_from_conf(
 
     gen = config.Config.create(conf, spec)
     confs = {c.name: c for c in gen}
-    selection = set(graphs) & set(confs.keys())
+    graphs = set(graphs) if graphs else set(confs.keys())
+    selection = graphs & set(confs.keys())
 
     if not len(selection):
         msg = 'no graphs were selected:'

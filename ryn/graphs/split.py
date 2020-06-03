@@ -352,7 +352,7 @@ def write(
 
     _write('cw.train2id.txt', cw.train)
     _write('cw.valid2id.txt', cw.valid)
-    _write('ow.valid2id.txt', ow.train)
+    _write('ow.train2id.txt', ow.train)
     _write('ow.test2id.txt', ow.valid)
     _write('removed2id.txt', removed_triples)
 
