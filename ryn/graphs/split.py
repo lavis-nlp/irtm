@@ -70,7 +70,7 @@ class Config:
 
 
 @dataclass
-class GreedyConfig(Config):
+class SoftConfig(Config):
 
     # see split.prob
     prob_a: float
@@ -318,8 +318,30 @@ def _select_triples(
     return t_selection
 
 
+# ---
+
+
+def check(rels, cw, ow, triples, removed_triples):
+    # triples is the union of cw and ow
+
+    for s1, s2 in combinations((cw.train, cw.valid, ow.train, ow.valid), 2):
+        assert not s1 & s2, f'{len(s1)=} {len(s2)=} {len(s1 & s2)=}'
+
+    assert not removed_triples & triples.unionized
+
+    _a = len(removed_triples | triples.unionized)
+    _b = sum(len(rel.triples) for rel in rels)
+    assert _a == _b, (
+        f'removed + unionized: {_a} '
+        f'original: {_b}')
+
+
 # datasets are saved in OpenKE format
-def _write_dataset(path: pathlib.Path, g: graph.Graph, cw: Split, ow: Split):
+def write(
+        path: pathlib.Path,
+        g: graph.Graph,
+        cw: Split, ow: Split,
+        removed_triples: Set[Tuple[int]]):
 
     def _write(name, tups):
         with (path / name).open(mode='w') as fd:
@@ -332,9 +354,13 @@ def _write_dataset(path: pathlib.Path, g: graph.Graph, cw: Split, ow: Split):
     _write('cw.valid2id.txt', cw.valid)
     _write('ow.valid2id.txt', ow.train)
     _write('ow.test2id.txt', ow.valid)
+    _write('removed2id.txt', removed_triples)
 
     _write('relation2id.txt', [(v, k) for k, v in g.source.rels.items()])
     _write('entity2id.txt', [(v, k) for k, v in g.source.ents.items()])
+
+
+# ---
 
 
 def _write_tsv(table, path, name):
@@ -368,7 +394,7 @@ def _stats_entity_intersections(path, cw, ow):
     _write_tsv(table, path, 'stats.ents.tsv')
 
 
-def _gather_stats(path: pathlib.Path, rows: List[Row], cw, ow):
+def stats(path: pathlib.Path, rows: List[Row], cw, ow):
 
     log.info(f'! closed world: {len(cw.train):10d} {len(cw.valid):10d} ')
     log.info(f'!   open world: {len(ow.train):10d} {len(ow.valid):10d}')
@@ -377,7 +403,10 @@ def _gather_stats(path: pathlib.Path, rows: List[Row], cw, ow):
     _stats_entity_intersections(path, cw, ow)
 
 
-def _create_greedy(
+# ------------------------------------------------------------
+
+
+def _create_soft(
         g: graph.Graph,
         cfg: Config,
         rels: List[Relation],
@@ -445,24 +474,12 @@ def _create_greedy(
     # into train/valid (ow) and train/test (cw)
     cw, ow = triples.partition(cfg.owcw_split)
 
-    # final sanity check
-    for s1, s2 in combinations((cw.train, cw.valid, ow.train, ow.valid), 2):
-        assert not s1 & s2, f'{len(s1)=} {len(s2)=} {len(s1 & s2)=}'
-
-    assert not removed_triples & triples.unionized
-
-    _a = len(removed_triples | triples.unionized)
-    _b = sum(len(rel.triples) for t in rels)
-    assert _a == _b, (
-        f'removed + unionized: {_a} /'
-        f'original: {_b}')
-
-    # persist
     path = ryn.ENV.SPLIT_DIR / cfg.pathname / name
     path.mkdir(exist_ok=True, parents=True)
 
-    _write_dataset(path, g, cw, ow)
-    _gather_stats(path, rows, cw, ow)
+    check(rels, cw, ow, triples, removed_triples)
+    write(path, g, cw, ow, removed_triples)
+    stats(path, rows, cw, ow)
 
 
 def _build_name(g, cfg, seed):
@@ -473,9 +490,9 @@ def _build_name(g, cfg, seed):
     return name
 
 
-def create_greedy(
+def create_soft(
         g: graph.Graph,
-        cfg: GreedyConfig,
+        cfg: SoftConfig,
         rels: List[Relation],
         seeds: List[int]):
 
@@ -484,7 +501,7 @@ def create_greedy(
         log.info(f'! creating dataset {name=}; set seed to {seed}')
 
         random.seed(seed)
-        _create_greedy(g, cfg, rels, name)
+        _create_soft(g, cfg, rels, name)
 
 
 # ------------------------------------------------------------
