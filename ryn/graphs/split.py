@@ -10,7 +10,6 @@ import ryn
 from ryn.graphs import graph
 from ryn.common import logging
 
-import math
 import random
 import pathlib
 import operator
@@ -34,24 +33,6 @@ from typing import Tuple
 log = logging.get('graph.split')
 
 
-def _prob(x, a: float = 1, o: float = 1, s: float = 1):
-    """
-
-    Generalised logistic function
-
-    Models the ratio distribution and allows for a better control
-    of the "concept" retention policy while sampling.
-
-    a controls the asymmetry
-    o controls the offset
-    s controls the stretch
-
-    """
-
-    # generalised logistic function
-    return 1 / (1 + math.exp(s * (-x + o))) ** a
-
-
 def _partition(data: Set[Any], line: int) -> Tuple[Set[Any], Set[Any]]:
     lis = list(data)
     random.shuffle(lis)
@@ -65,21 +46,6 @@ class Config:
     # samples for training requires a value of .7)
     owcw_split: float
     trainvalid_split: float
-
-    pathname: str
-
-
-@dataclass
-class SoftConfig(Config):
-
-    # see split.prob
-    prob_a: float
-    prob_o: float
-    prob_s: float
-
-
-@dataclass
-class HardConfig(Config):
 
     # no of relation (sorted by ratio)
     threshold: int
@@ -123,29 +89,29 @@ class Split:
 
     """
 
-    train: Set[Any] = field(default_factory=set)
-    valid: Set[Any] = field(default_factory=set)
+    a: Set[Any] = field(default_factory=set)
+    b: Set[Any] = field(default_factory=set)
 
     def _apply(self, op, other):
         try:
             return Split(
-                train=op(self.train, other.train),
-                valid=op(self.valid, other.valid), )
+                train=op(self.a, other.a),
+                valid=op(self.b, other.b), )
         except AttributeError:
             return Split(
-                train=op(self.train, other),
-                valid=op(self.valid, other), )
+                train=op(self.a, other),
+                valid=op(self.b, other), )
 
     @property
     def lens(self):
-        return len(self.train), len(self.valid)
+        return len(self.a), len(self.b)
 
     @property
     def unionized(self):
-        return self.train | self.valid
+        return self.a | self.b
 
     def check(self):
-        union = self.train & self.valid
+        union = self.a & self.b
         assert len(union) == 0, str(union)
 
     def intersection(self, other):
@@ -161,14 +127,14 @@ class Split:
         return self._apply(operator.and_, self)
 
     def reorder(self, other: 'Split'):
-        train = self.train
-        valid = self.valid
+        train = self.a
+        valid = self.b
 
-        trainvalid = self.train & other.valid
+        trainvalid = self.a & other.b
         train -= trainvalid
         valid |= trainvalid
 
-        validtrain = self.valid & other.train
+        validtrain = self.b & other.a
         valid -= validtrain
         train |= validtrain
 
@@ -178,56 +144,71 @@ class Split:
         return split, len(trainvalid | validtrain)
 
     def partition(self, ratio: float) -> Tuple['Split', 'Split']:
-        t1, t2 = _partition(self.train, int(len(self.train) * ratio))
-        v1, v2 = _partition(self.valid, int(len(self.valid) * ratio))
+        t1, t2 = _partition(self.a, int(len(self.a) * ratio))
+        v1, v2 = _partition(self.b, int(len(self.b) * ratio))
 
-        return Split(train=t1, valid=t2), Split(train=v1, valid=v2)
+        return Split(a=t1, b=t2), Split(a=v1, b=v2)
 
 
 @dataclass
-class Row:
+class Stats:
     """
-    Represents a row of the statistics gathered per relation type
+    Represents a row of the statistics gathered per dataset
     """
 
-    rid: int
-    ratio: int
     name: str
+    seed: int = -1
+    threshold: int = -1
 
-    p: int = -1
+    # total amount of candidate triples
+    total: int = -1
 
-    concepts: int = -1
-    retained_concepts: int = -1
-    reordered_concepts: int = -1
+    # amount of entities retained as
+    # concepts based on the config threshold
+    retained: int = -1
 
-    objects: int = -1
-    retained_objects: int = -1
-    reordered_objects: int = -1
+    # amount of triples selected based on
+    # the retained concept entities
+    selected: int = -1
 
-    ow_triples: int = -1
-    cw_triples: int = -1
+    # remaining triples after first selection
+    remaining: int = -1
 
-    triples: int = -1
-    retained_triples: int = -1
+    # triples that have at least one concept entity
+    candidates: int = -1
 
-    HEADERS = (
-        'id', 'ratio', 'p',
-        'concepts', 'retained', 'reordered',
-        'objects', 'retained', 'reordered',
-        'ow triples', 'cw triples',
-        'triples', 'retained',
-        'name'
-    )
+    # ow/cw split candidates
+    cw_candidates: int = -1
+    ow_candidates: int = -1
+    cwow_remaining: int = -1
+    cwow_percent: int = -1
+
+    # final dataset
+    cwow_final_percent: int = -1
+
+    cw_final_train: int = -1
+    cw_final_valid: int = -1
+    ow_final_train: int = -1
+    ow_final_test:  int = -1
+
+    forgotten: int = -1
+
+    HEADERS = ('name', 'seed', 'threshold', 'total', 'retained', 'selected',
+               'remaining', 'candidates', 'cw_candidates', 'ow_candidates',
+               'cwow_remaining', 'cwow_percent', 'cwow_final_percent',
+               'cw_final_train', 'cw_final_valid', 'ow_final_train',
+               'ow_final_test:', 'forgotten', )
 
     @property
     def tup(self):
-        return (
-            self.rid, self.ratio, self.p,
-            self.concepts, self.retained_concepts, self.reordered_concepts,
-            self.objects, self.retained_objects, self.reordered_objects,
-            self.ow_triples, self.cw_triples,
-            self.triples, self.retained_triples,
-            self.name, )
+        return (self.name, self.seed, self.threshold, self.total,
+                self.retained, self.selected, self.remaining,
+                self.candidates, self.cw_candidates,
+                self.ow_candidates, self.cwow_remaining,
+                self.cwow_percent, self.cwow_final_percent,
+                self.cw_final_train, self.cw_final_valid,
+                self.ow_final_train, self.ow_final_test,
+                self.forgotten, )
 
 
 def _ents_from_triples(ents):
@@ -236,10 +217,10 @@ def _ents_from_triples(ents):
 
 
 def _track(s, x, name=''):
-    if x in s.train:
+    if x in s.a:
         print(f'{x} found in {name} train')
 
-    elif x in s.valid:
+    elif x in s.b:
         print(f'{x} found in {name} valid')
 
     else:
@@ -249,91 +230,13 @@ def _track(s, x, name=''):
 # ---
 
 
-def _split_concepts(
-        i: int, cfg: Config, row: Row,
-        concepts: Set[int], entities: Split):
+def check(rels, cw, ow, triples, forgotten):
 
-    # using the probability function defined beforehand
-    # to decide how many of the concept candidates remain
-    # in the test set (50% to 100%)
-    p = 1 - _prob(i, a=cfg.prob_a, o=cfg.prob_o, s=cfg.prob_s) * 0.5
-    row.p = p
-
-    # set threshold based on ratio
-    line = int(p * len(concepts)) + 1
-    train, valid = _partition(concepts, line)
-    split = Split(train=train, valid=valid)
-
-    # track(c_split, _N, 'c_split (pre-reorder)')
-    split, reordered = split.reorder(entities)
-
-    row.reordered_concepts = reordered / row.concepts
-    row.retained_concepts = len(split.train) / row.concepts
-
-    return split
-
-
-def _split_objects(
-        cfg: Config, row: Row,
-        c_split: Split, objects: Set[int], entities: Split):
-
-    # if x is in both concepts and objects
-    # and ends up in either c_split.train or c_split
-    # then it has to be put in the respective
-    # o_split partition
-
-    intersection = Split(
-        train=objects & c_split.train,
-        valid=objects & c_split.valid, )
-
-    remains = objects - intersection.unionized
-    N = int(cfg.trainvalid_split * len(remains))
-    line = N + 1 - len(intersection.train)
-    train, valid = _partition(remains, line)
-
-    split = Split(train=train, valid=valid).union(intersection)
-    split, reordered = split.reorder(entities)
-
-    row.reordered_objects = reordered / row.objects
-    row.retained_objects = len(split.train) / row.objects
-
-    return split
-
-
-def _select_triples(
-        g: graph.Graph, row: Row,
-        heads: Set[int], tails: Set[int],
-        rel: Relation):
-
-    select = partial(g.select, edges={rel.r})
-
-    triples_train = select(heads=heads.train, tails=tails.train)
-    triples_valid = select(heads=heads.valid, tails=tails.valid)
-
-    t_selection = Split(train=triples_train, valid=triples_valid)
-
-    row.triples = len(g.find(edges={rel.r}))
-    row.retained_triples = len(t_selection.unionized) / row.triples
-
-    return t_selection
-
-
-# ---
-
-
-def check(rels, cw, ow, triples, removed_triples):
-    # triples is the union of cw and ow
-
-    for s1, s2 in combinations((cw.train, cw.valid, ow.train, ow.valid), 2):
+    for s1, s2 in combinations((cw.a, cw.b, ow.a, ow.b), 2):
         assert not s1 & s2, f'{len(s1)=} {len(s2)=} {len(s1 & s2)=}'
 
-    assert not removed_triples & triples.unionized
-
-    _a = len(removed_triples | triples.unionized)
-    _b = sum(len(rel.triples) for rel in rels)
-    assert _a == _b, (
-        f'removed + unionized: {_a} '
-        f'original: {_b}')
+    # a, b = len(triples.unionized), len(forgotten)
+    # assert a == b, f'unionized: {a} / original: {b}'
 
 
 # datasets are saved in OpenKE format
@@ -341,7 +244,7 @@ def write(
         path: pathlib.Path,
         g: graph.Graph,
         cw: Split, ow: Split,
-        removed_triples: Set[Tuple[int]]):
+        forgotten: Set[Tuple[int]]):
 
     def _write(name, tups):
         with (path / name).open(mode='w') as fd:
@@ -350,11 +253,11 @@ def write(
             fd.write('\n'.join(lines))
             log.info(f'wrote {fd.name}')
 
-    _write('cw.train2id.txt', cw.train)
-    _write('cw.valid2id.txt', cw.valid)
-    _write('ow.train2id.txt', ow.train)
-    _write('ow.test2id.txt', ow.valid)
-    _write('removed2id.txt', removed_triples)
+    _write('cw.train2id.txt', cw.a)
+    _write('cw.valid2id.txt', cw.b)
+    _write('ow.train2id.txt', ow.a)
+    _write('ow.test2id.txt', ow.b)
+    _write('forgotten.txt', forgotten)
 
     _write('relation2id.txt', [(v, k) for k, v in g.source.rels.items()])
     _write('entity2id.txt', [(v, k) for k, v in g.source.ents.items()])
@@ -369,19 +272,19 @@ def _write_tsv(table, path, name):
         log.info(f'wrote {fd.name}')
 
 
-def _stats_rows(path, rows):
-    table = partial(tabulate, [r.tup for r in rows], headers=Row.HEADERS)
-    _write_tsv(table, path, 'stats.rels.tsv')
+def stats_rows(path, rows):
+    table = partial(tabulate, [r.tup for r in rows], headers=Stats.HEADERS)
+    _write_tsv(table, path, 'stats.tsv')
 
 
-def _stats_entity_intersections(path, cw, ow):
+def stats_entity_intersections(path, cw, ow):
     ents = (
-        _ents_from_triples(cw.train),
-        _ents_from_triples(cw.valid),
-        _ents_from_triples(ow.train),
-        _ents_from_triples(ow.valid), )
+        _ents_from_triples(cw.a),
+        _ents_from_triples(cw.b),
+        _ents_from_triples(ow.a),
+        _ents_from_triples(ow.b), )
 
-    names = 'cw.train', 'cw.valid', 'ow.train', 'ow.valid'
+    names = 'cw.train', 'cw.valid', 'ow.train', 'ow.test'
 
     intersections = [len(a & b) for a, b in product(ents, ents)]
     intersections = np.array(intersections).reshape((4, 4))
@@ -394,134 +297,30 @@ def _stats_entity_intersections(path, cw, ow):
     _write_tsv(table, path, 'stats.ents.tsv')
 
 
-def stats(path: pathlib.Path, rows: List[Row], cw, ow):
-
-    log.info(f'! closed world: {len(cw.train):10d} {len(cw.valid):10d} ')
-    log.info(f'!   open world: {len(ow.train):10d} {len(ow.valid):10d}')
-
-    _stats_rows(path, rows)
-    _stats_entity_intersections(path, cw, ow)
-
-
 # ------------------------------------------------------------
 
-
-def _create_soft(
-        g: graph.Graph,
-        cfg: Config,
-        rels: List[Relation],
-        name: str):
-
-    rows = []
-
-    entities = Split()
-    triples = Split()
-    removed_triples = set()
-
-    # work by greedily start with the most obvious
-    # concept candidates (i.e. high in- or out-degree)
-    for i, rel in enumerate(sorted(rels, key=lambda rel: rel.ratio)):
-        row = Row(rid=rel.r, ratio=rel.ratio, name=rel.name)
-
-        # determine whether the range or domain of
-        # the relations are assumed to be concepts
-        reverse = len(rel.hs) <= len(rel.ts)
-        concepts, objects = (rel.hs, rel.ts) if reverse else (rel.ts, rel.hs)
-
-        row.concepts = len(concepts)
-        row.objects = len(objects)
-
-        c_split = _split_concepts(i, cfg, row, concepts, entities)
-        o_split = _split_objects(cfg, row, c_split, objects, entities)
-        e_union = c_split.union(o_split)
-
-        heads, tails = (c_split, o_split) if reverse else (o_split, c_split)
-        t_triples = _select_triples(g, row, heads, tails, rel)
-
-        row.ow_triples = len(t_triples.train) / len(rel.triples)
-        row.cw_triples = len(t_triples.valid) / len(rel.triples)
-
-        # --------------------
-
-        entities = entities.union(e_union)
-        triples = triples.union(t_triples)
-        removed_triples |= rel.triples - t_triples.unionized
-
-        # --------------------
-
-        try:
-            e_union.check()
-            triples.check()
-            entities.check()
-        except AssertionError as exc:
-            # print(rel.r)
-            # print(f'{_N in concepts=}')
-            # print(f'{_N in objects=}')
-            # _track(c_split, _N, 'c_split')
-            # _track(c_split, _N, 'c_reordered')
-            # _track(o_split, _N, 'o_split')
-            # _track(o_split, _N, 'o_reordered')
-            # _track(e_union, _N, 'e_union')
-            raise exc
-
-        rows.append(row)
-
-    log.info('checking constraints')
-    triples.check()
-    entities.check()
-
-    # partition closed/open world triple sets
-    # into train/valid (ow) and train/test (cw)
-    cw, ow = triples.partition(cfg.owcw_split)
-
-    path = ryn.ENV.SPLIT_DIR / cfg.pathname / name
-    path.mkdir(exist_ok=True, parents=True)
-
-    check(rels, cw, ow, triples, removed_triples)
-    write(path, g, cw, ow, removed_triples)
-    stats(path, rows, cw, ow)
-
-
-def create_soft(
-        g: graph.Graph,
-        cfg: SoftConfig,
-        rels: List[Relation],
-        seeds: List[int]):
-
-    for seed in seeds:
-        name = f'{g.name.split("-")[0]}'
-        name += f'_{cfg.owcw_split:.2f}-{cfg.trainvalid_split:.2f}'
-        name += f'_{seed}'
-
-        log.info(f'! creating dataset {name=}; set seed to {seed}')
-
-        random.seed(seed)
-        _create_soft(g, cfg, rels, name)
-
-
-# ------------------------------------------------------------
 
 # method is used if the triple has to be put in either cw or ow
 # because the entity is encountered in one of the splits
 def _constrained_add(cwow: Split, entities: Split, triple):
     h, t, r = triple
 
-    if h in entities.train and t in entities.train:
-        cwow.train.add(triple)
+    if h in entities.a and t in entities.a:
+        cwow.a.add(triple)
         return None
 
     # select unencountered entity
-    x = h if t in entities.train else t
+    x = h if t in entities.a else t
 
     # if already in valid, add triple to ow
-    if x in entities.valid:
-        cwow.valid.add(triple)
+    if x in entities.b:
+        cwow.b.add(triple)
         return None
 
     return x
 
 
-def _incremental_add(cfg: HardConfig, cwow: Split, entities: Split, lis):
+def _incremental_add(cfg: Config, cwow: Split, entities: Split, lis):
     while len(lis):
         triple = lis.pop()
         x = _constrained_add(cwow, entities, triple)
@@ -529,80 +328,115 @@ def _incremental_add(cfg: HardConfig, cwow: Split, entities: Split, lis):
             continue
 
         # track whether the balance of ow/cw fits the configuration
-        ratio = len(cwow.train) / (len(cwow.train) + len(cwow.valid))
+        ratio = len(cwow.a) / (len(cwow.a) + len(cwow.b))
         if ratio < cfg.owcw_split:
-            assert x not in entities.valid, x
-            entities.train.add(x)
-            cwow.train.add(triple)
+            assert x not in entities.b, x
+            entities.a.add(x)
+            cwow.a.add(triple)
 
         else:
-            assert x not in entities.train, x
-            entities.valid.add(x)
-            cwow.valid.add(triple)
+            assert x not in entities.a, x
+            entities.b.add(x)
+            cwow.b.add(triple)
 
 
-def _create_hard(
+def _create(
         g: graph.Graph,
-        cfg: HardConfig,
+        cfg: Config,
         rels: List[Relation],
         name: str):
 
+    stats = Stats(name=name)
+    stats.threshold = cfg.threshold
+
     selection = rels[:cfg.threshold]
-    retained = set()  # of entities
+    remaining = set(g.source.triples.copy())  # triples
+    retained = set()  # entities
 
     for rel in selection:
         # determine whether the range or domain of
         # the relations are assumed to be concepts
         reverse = len(rel.hs) <= len(rel.ts)
         concepts, objects = (rel.hs, rel.ts) if reverse else (rel.ts, rel.hs)
-
         retained |= concepts
 
-    remaining = set(g.source.triples.copy())
-    log.info(f'found {len(retained)} concepts ({len(remaining)} remain)')
-
-    cwow = Split()
+    stats.total = len(remaining)
+    stats.retained = len(retained)
+    log.info(f'found {len(retained)} concepts ({len(remaining)} total)')
 
     # triples where both head and tail are
     # retained must stay in the cw set
+    cwow = Split()
+    cwow.a = g.select(heads=retained, tails=retained)
+    remaining -= cwow.a
 
-    cwow.train = g.select(heads=retained, tails=retained)
-    remaining -= cwow.train
-    log.info(f'moving {len(cwow.train)} triples to cw'
+    stats.selected = len(cwow.a)
+    stats.remaining = len(remaining)
+    log.info(f'moving {len(cwow.a)} triples to cw'
              f' ({len(remaining)} remain)')
 
     # find triples that are linked to the concepts
     candidates = list(g.find(heads=retained, tails=retained) & remaining)
+    random.shuffle(candidates)
+
+    stats.candidates = len(candidates)
     log.info(f'found {len(candidates)} triples linking concepts')
 
     # keep track of the entities such that no entities ends up in both cw/ow
-    entities = Split(train=retained)
-
-    random.shuffle(candidates)
+    entities = Split(a=retained)
     _incremental_add(cfg, cwow, entities, candidates)
+    remaining -= cwow.unionized
 
+    # check constraints
     assert not len(candidates)
     entities.check()
 
-    remaining -= cwow.unionized
-    _p = int(len(cwow.train) / (len(cwow.train) + len(cwow.valid)) * 100)
-    log.info(f'gathered {len(cwow.train)} cw and '
-             f'{len(cwow.valid)} ow triples: '
-             f'{_p}% cw ({len(remaining)} remaining)')
+    _p = len(cwow.a) / (len(cwow.a) + len(cwow.b))
+    stats.cw_candidates = len(cwow.a)
+    stats.ow_candidates = len(cwow.b)
+    stats.cwow_remaining = len(remaining)
+    stats.cwow_percent = _p
+    log.info(f'gathered {len(cwow.a)} cw and '
+             f'{len(cwow.b)} ow triples: '
+             f'{int(_p) * 100}% cw ({len(remaining)} remaining)')
 
+    # distribute left-over triples
     _incremental_add(cfg, cwow, entities, remaining)
 
     assert not len(remaining)
     entities.check()
+    cwow.check()
 
-    log.info(f'final distribution: {len(cwow.train)} cw and '
-             f'{len(cwow.valid)} ow triples: '
-             f'{_p}% cw ({len(remaining)} remaining)')
+    # partition closed/open world triple sets
+    # into train/valid (ow) and train/test (cw)
+    cw, ow = cwow.partition(cfg.trainvalid_split)
+
+    _p = len(cwow.a) / (len(cwow.a) + len(cwow.b))
+    stats.cwow_final_percent = _p
+    stats.cw_final_train = len(cw.a)
+    stats.cw_final_valid = len(cw.b)
+    stats.ow_final_train = len(ow.a)
+    stats.ow_final_test = len(ow.b)
+    log.info(f'final distribution: {len(cwow.a)} cw and '
+             f'{len(cwow.b)} ow triples: {int(_p) * 100}% cw')
+
+    path = ryn.ENV.SPLIT_DIR / name
+    path.mkdir(exist_ok=True, parents=True)
+
+    total = set.union(*[rel.triples for rel in rels])
+    forgotten = total - cwow.unionized
+
+    stats.forgotten = len(forgotten)
+
+    check(rels, cw, ow, cwow, forgotten)
+    write(path, g, cw, ow, forgotten)
+    stats_entity_intersections(path, cw, ow)
 
     print('done')
+    return stats
 
 
-def create_hard(
+def create(
         g: graph.Graph,
         cfg: Config,
         rels: List[Relation],
@@ -616,4 +450,7 @@ def create_hard(
         log.info(f'! creating dataset {name=}; set seed to {seed}')
 
         random.seed(seed)
-        _create_hard(g, cfg, rels, name)
+        stats = _create(g, cfg, rels, name)
+        stats.seed = seed
+
+        yield stats

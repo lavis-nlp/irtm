@@ -1110,6 +1110,16 @@ class Graph:
 # ---
 
 
+def print_triples(g, triples):
+    from tabulate import tabulate
+
+    rows = [
+        (g.source.ents[h], g.source.ents[t], g.source.rels[r])
+        for h, t, r in triples]
+
+    print(tabulate(rows, headers=('head', 'tail', 'relation')))
+
+
 def _cli(args):
     from ryn.graphs import loader
     import IPython
