@@ -482,14 +482,6 @@ def _create_soft(
     stats(path, rows, cw, ow)
 
 
-def _build_name(g, cfg, seed):
-    name = f'{g.name.split("-")[0]}'
-    name += f'_{cfg.owcw_split:.2f}-{cfg.trainvalid_split:.2f}'
-    name += f'_{seed}'
-
-    return name
-
-
 def create_soft(
         g: graph.Graph,
         cfg: SoftConfig,
@@ -497,7 +489,10 @@ def create_soft(
         seeds: List[int]):
 
     for seed in seeds:
-        name = _build_name(g, cfg, seed)
+        name = f'{g.name.split("-")[0]}'
+        name += f'_{cfg.owcw_split:.2f}-{cfg.trainvalid_split:.2f}'
+        name += f'_{seed}'
+
         log.info(f'! creating dataset {name=}; set seed to {seed}')
 
         random.seed(seed)
@@ -506,14 +501,105 @@ def create_soft(
 
 # ------------------------------------------------------------
 
+# method is used if the triple has to be put in either cw or ow
+# because the entity is encountered in one of the splits
+def _constrained_add(cwow: Split, entities: Split, triple):
+    h, t, r = triple
+
+    if h in entities.train and t in entities.train:
+        cwow.train.add(triple)
+        return None
+
+    # select unencountered entity
+    x = h if t in entities.train else t
+
+    # if already in valid, add triple to ow
+    if x in entities.valid:
+        cwow.valid.add(triple)
+        return None
+
+    return x
+
+
+def _incremental_add(cfg: HardConfig, cwow: Split, entities: Split, lis):
+    while len(lis):
+        triple = lis.pop()
+        x = _constrained_add(cwow, entities, triple)
+        if not x:
+            continue
+
+        # track whether the balance of ow/cw fits the configuration
+        ratio = len(cwow.train) / (len(cwow.train) + len(cwow.valid))
+        if ratio < cfg.owcw_split:
+            assert x not in entities.valid, x
+            entities.train.add(x)
+            cwow.train.add(triple)
+
+        else:
+            assert x not in entities.train, x
+            entities.valid.add(x)
+            cwow.valid.add(triple)
+
 
 def _create_hard(
         g: graph.Graph,
         cfg: HardConfig,
         rels: List[Relation],
-        seeds: List[int]):
+        name: str):
 
-    pass
+    selection = rels[:cfg.threshold]
+    retained = set()  # of entities
+
+    for rel in selection:
+        # determine whether the range or domain of
+        # the relations are assumed to be concepts
+        reverse = len(rel.hs) <= len(rel.ts)
+        concepts, objects = (rel.hs, rel.ts) if reverse else (rel.ts, rel.hs)
+
+        retained |= concepts
+
+    remaining = set(g.source.triples.copy())
+    log.info(f'found {len(retained)} concepts ({len(remaining)} remain)')
+
+    cwow = Split()
+
+    # triples where both head and tail are
+    # retained must stay in the cw set
+
+    cwow.train = g.select(heads=retained, tails=retained)
+    remaining -= cwow.train
+    log.info(f'moving {len(cwow.train)} triples to cw'
+             f' ({len(remaining)} remain)')
+
+    # find triples that are linked to the concepts
+    candidates = list(g.find(heads=retained, tails=retained) & remaining)
+    log.info(f'found {len(candidates)} triples linking concepts')
+
+    # keep track of the entities such that no entities ends up in both cw/ow
+    entities = Split(train=retained)
+
+    random.shuffle(candidates)
+    _incremental_add(cfg, cwow, entities, candidates)
+
+    assert not len(candidates)
+    entities.check()
+
+    remaining -= cwow.unionized
+    _p = int(len(cwow.train) / (len(cwow.train) + len(cwow.valid)) * 100)
+    log.info(f'gathered {len(cwow.train)} cw and '
+             f'{len(cwow.valid)} ow triples: '
+             f'{_p}% cw ({len(remaining)} remaining)')
+
+    _incremental_add(cfg, cwow, entities, remaining)
+
+    assert not len(remaining)
+    entities.check()
+
+    log.info(f'final distribution: {len(cwow.train)} cw and '
+             f'{len(cwow.valid)} ow triples: '
+             f'{_p}% cw ({len(remaining)} remaining)')
+
+    print('done')
 
 
 def create_hard(
@@ -523,7 +609,10 @@ def create_hard(
         seeds: List[int]):
 
     for seed in seeds:
-        name = _build_name(g, cfg, seed)
+        name = f'{g.name.split("-")[0]}'
+        name += f'_{cfg.owcw_split:.2f}-{cfg.trainvalid_split:.2f}'
+        name += f'_{cfg.threshold}_{seed}'
+
         log.info(f'! creating dataset {name=}; set seed to {seed}')
 
         random.seed(seed)
