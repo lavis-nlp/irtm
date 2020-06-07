@@ -5,6 +5,7 @@ inotify
 networkx
 tabulate
 configobj
+gitpython
 
 # tests
 inotify

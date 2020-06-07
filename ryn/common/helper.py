@@ -4,6 +4,8 @@ import ryn
 from ryn import RynError
 from ryn.common import logging
 
+import git
+
 import pickle
 import pathlib
 import inspect
@@ -55,6 +57,13 @@ def timed(f, name='unknown'):
 
 def relpath(path: pathlib.Path):
     return path.relative_to(ryn.ENV.ROOT_DIR)
+
+
+def git_hash():
+    repo = git.Repo(search_parent_directories=True)
+    sha = repo.head.object.hexsha
+
+    return sha
 
 
 # --- FILE CACHE
@@ -120,7 +129,7 @@ class _Cache:
                 cache = pickle.load(fd)
 
         else:
-            log.info(f'create new cache')
+            log.info('create new cache')
             cache = OrderedDict()
 
         assert cache is not None
