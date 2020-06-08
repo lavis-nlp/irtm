@@ -281,14 +281,19 @@ class Genesis:
 
         if h in entities.a and t in entities.a:
             cwow.a.add(triple)
+            self.report.write(
+                f'  [both in cw] {graph.str_triple(self.g, triple)}\n')
             return None
 
         # select unencountered entity
         x = h if t in entities.a else t
 
-        # if already in valid, add triple to ow
+        # if entity in ow, add triple to ow
         if x in entities.b:
             cwow.b.add(triple)
+            self.report.write(
+                f'  [ent in ow]  "{self.g.source.ents[x]}": '
+                f'{graph.str_triple(self.g, triple)}\n')
             return None
 
         return x
@@ -312,11 +317,17 @@ class Genesis:
                 assert x not in entities.b, x
                 entities.a.add(x)
                 cwow.a.add(triple)
+                self.report.write(
+                    f'  [rnd to cw] {ratio:.2f} "{self.g.source.ents[x]}": '
+                    f' {graph.str_triple(self.g, triple)}\n')
 
             else:
                 assert x not in entities.a, x
                 entities.b.add(x)
                 cwow.b.add(triple)
+                self.report.write(
+                    f'  [rnd to ow] {ratio:.2f} "{self.g.source.ents[x]}": '
+                    f' {graph.str_triple(self.g, triple)}\n')
 
     # ---
 
@@ -388,20 +399,28 @@ class Genesis:
         entities.check()
 
         _p = len(cwow.a) / (len(cwow.a) + len(cwow.b))
+        _msg = (
+            f'gathered {len(cwow.a)} cw and '
+            f'{len(cwow.b)} ow triples: '
+            f'{int(_p) * 100}% cw ({len(remaining)} remaining)')
+
         self.stats.cw_candidates = len(cwow.a)
         self.stats.ow_candidates = len(cwow.b)
         self.stats.cwow_remaining = len(remaining)
         self.stats.cwow_percent = _p
-        log.info(f'gathered {len(cwow.a)} cw and '
-                 f'{len(cwow.b)} ow triples: '
-                 f'{int(_p) * 100}% cw ({len(remaining)} remaining)')
+        log.info(_msg)
+        self.report.write(_msg + '\n')
 
         return entities
 
     # ---
 
     def _create_leftovers(self, cwow, entities, remaining):
+        self.report.write('>> distributing leftover triples:\n')
+
         # distribute left-over triples
+        remaining = list(remaining)
+        random.shuffle(remaining)
         self._incremental_add(cwow, entities, remaining)
 
         assert not len(remaining)
@@ -433,6 +452,7 @@ class Genesis:
         # STEP I
         # set "concept" entities aside (threshold applies to
         # the relations sorted by their domain/range ratio)
+        self.report.write('> STEP 1\n')
         res = self._create_retained()
         remaining: Set[Tuple[int]] = res[0]
         retained:         Set[int] = res[1]
@@ -442,21 +462,25 @@ class Genesis:
         # STEP II
         # select all triples where both head and tail are retained
         # as concepts (and thus cannot be used in ow)
+        self.report.write('> STEP 2\n')
         self._create_constrained(cwow, retained, remaining)
 
         # STEP III
         # find triples that are linked to the concepts
         # and distribute them between ow and cw
+        self.report.write('> STEP 3\n')
         entities: Split = self._create_distribute(cwow, retained, remaining)
 
         # STEP IV
         # distribute remaining triples with entities that have
         # not yet been seen
+        self.report.write('> STEP 4\n')
         self._create_leftovers(cwow, entities, remaining)
 
         # STEP V
         # partition ow/cw triple sets into their
         # respective train/valid splits
+        self.report.write('> STEP 5\n')
         splits = self._create_trainvalid(cwow)
 
         cw: Split = splits[0]
@@ -466,10 +490,13 @@ class Genesis:
         forgotten = total - cwow.unionized
 
         self.stats.forgotten = len(forgotten)
+        self.report.write('>> the following triples were forgotten:\n')
+        self.report.write(graph.tabulate_triples(self.g, forgotten) + '\n')
 
         self._check(cw, ow)
         self._write(cw, ow, forgotten)
         self._stats_entity_intersections(cw, ow)
+        self.report.write(f'date: {datetime.now()}\n')
 
         # ---
 
