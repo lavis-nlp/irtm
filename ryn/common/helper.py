@@ -23,29 +23,29 @@ log = logging.get('common.helper')
 # --- DECORATOR
 
 
-def notnone(f):
-    spec = inspect.getfullargspec(f)
+def notnone(fn):
+    spec = inspect.getfullargspec(fn)
     kwarg_names = spec.args[-len(spec.defaults):]
 
     def _proxy(*args, **kwargs):
         for argname in kwarg_names:
             if kwargs.get(argname) is None:
-                msg = f'argument {argname} for {f} must not be None'
+                msg = f'argument {argname} for {fn} must not be None'
                 raise RynError(msg)
 
-        return f(*args, **kwargs)
+        return fn(*args, **kwargs)
 
     return _proxy
 
 
-def timed(f, name='unknown'):
+def timed(fn, name='unknown'):
     def _proxy(*args, **kwargs):
 
         ts = datetime.now()
-        ret = f(*args, **kwargs)
+        ret = fn(*args, **kwargs)
         delta = datetime.now() - ts
 
-        log.info(f'execution of {f.__qualname__} took {delta}')
+        log.info(f'execution of {fn.__qualname__} took {delta}')
 
         return ret
 
