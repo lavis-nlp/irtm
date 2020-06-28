@@ -1110,6 +1110,9 @@ class Graph:
 # ---
 
 
+# TODO move to Graph
+
+
 def tabulate_triples(g, triples):
     from tabulate import tabulate
 
@@ -1118,6 +1121,14 @@ def tabulate_triples(g, triples):
         for h, t, r in triples]
 
     return tabulate(rows, headers=('head', 'tail', 'relation'))
+
+
+def str_triple(g, triple):
+    h, t, r = triple
+    return (
+        f'{g.source.ents[h]} | '
+        f'{g.source.ents[t]} | '
+        f'{g.source.rels[r]}')
 
 
 def _cli(args):
