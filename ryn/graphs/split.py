@@ -149,7 +149,8 @@ class Dataset:
             'RYN.SPLIT DATASET\n'
             f'-----------------\n'
             f'\n{len(self.concepts)} retained concepts\n\n'
-            f'{self.cfg}'
+            f'{self.cfg}\n'
+            f'{self.g.str_stats}'
         )
 
         # functools.partial not applicable :(
