@@ -1077,8 +1077,9 @@ class Graph:
         """
         path = pathlib.Path(f_name)
 
-        _relative = path.relative_to(ryn.ENV.ROOT_DIR)
-        log.info(f'saving graph {self.name} to {_relative}')
+        # TODO: catch error case
+        # _relative = path.relative_to(ryn.ENV.ROOT_DIR)
+        # log.info(f'saving graph {self.name} to {_relative}')
 
         with path.open(mode='wb') as fd:
             pickle.dump(self, fd)
@@ -1099,9 +1100,7 @@ class Graph:
 
         """
         path = pathlib.Path(f_name)
-
-        _relative = path.relative_to(ryn.ENV.ROOT_DIR)
-        log.info(f'loading graph from {_relative}')
+        log.info(f'loading graph from {path}')
 
         with path.open(mode='rb') as fd:
             return pickle.load(fd)
