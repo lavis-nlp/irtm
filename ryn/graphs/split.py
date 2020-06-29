@@ -57,8 +57,8 @@ class Config:
 
     def __post_init__(self):
         repo = git.Repo(search_parent_directories=True)
-        dirty = '-dirty' if repo.is_dirty else ''
-        self.git = f'{repo.head.object.hexsha}{dirty}'
+        # dirty = '-dirty' if repo.is_dirty else ''
+        self.git = f'{repo.head.object.hexsha}'
 
     def __str__(self) -> str:
         return 'Config:\n' + textwrap.indent((
