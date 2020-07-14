@@ -17,11 +17,11 @@ import textwrap
 import operator
 import functools
 
+from datetime import datetime
 from dataclasses import dataclass
 
 import git
 
-from typing import Any
 from typing import Set
 from typing import List
 from typing import Dict
@@ -43,6 +43,8 @@ def _ents_from_triples(triples):
 @dataclass
 class Config:
 
+    seed: int
+
     # split ratio (for example: retaining 70% of all
     # samples for training requires a value of .7)
     ow_split: float
@@ -54,18 +56,23 @@ class Config:
     # post-init
 
     git: str = None  # revision hash
+    date: datetime = None
 
     def __post_init__(self):
         repo = git.Repo(search_parent_directories=True)
         # dirty = '-dirty' if repo.is_dirty else ''
         self.git = f'{repo.head.object.hexsha}'
 
+        self.date = datetime.now()
+
     def __str__(self) -> str:
         return 'Config:\n' + textwrap.indent((
+            f'seed: {self.seed}\n'
             f'ow split: {self.ow_split}\n'
             f'train split: {self.train_split}\n'
             f'relation threshold: {self.threshold}\n'
             f'git: {self.git}\n'
+            f'date: {self.date}\n'
         ), '  ')
 
     # ---
@@ -128,11 +135,13 @@ class Dataset:
 
     """
 
+    path: pathlib.Path
+
     cfg: Config
     g: graph.Graph
 
-    ent2id: Dict[int, str]
-    rel2id: Dict[int, str]
+    id2ent: Dict[int, str]
+    id2rel: Dict[int, str]
 
     concepts: Set[int]
 
@@ -150,13 +159,14 @@ class Dataset:
             f'-----------------\n'
             f'\n{len(self.concepts)} retained concepts\n\n'
             f'{self.cfg}\n'
-            f'{self.g.str_stats}'
+            f'{self.g.str_stats}\n'
+            f'{self.path}\n'
         )
 
         # functools.partial not applicable :(
         def _indent(s):
             return textwrap.indent(s, '  ')
-
+ 
         s += f'\nClosed World - TRAIN:\n{_indent(str(self.cw_train))}'
         s += f'\nClosed World - VALID:\n{_indent(str(self.cw_valid))}'
         s += f'\nOpen World - VALID:\n{_indent(str(self.ow_valid))}'
@@ -198,8 +208,8 @@ class Dataset:
                 assert num == len(d)
                 return d
 
-        ent2id = _load_dict(path / 'entity2id.txt')
-        rel2id = _load_dict(path / 'relation2id.txt')
+        id2ent = _load_dict(path / 'entity2id.txt')
+        id2rel = _load_dict(path / 'relation2id.txt')
 
         owe = set()
 
@@ -222,10 +232,11 @@ class Dataset:
             return part
 
         dataset = K(
+            path=path,
             g=g, cfg=cfg,
             concepts=concepts,
-            ent2id=ent2id,
-            rel2id=rel2id,
+            id2ent=id2ent,
+            id2rel=id2rel,
             cw_train=_load_triples(path / 'cw.train2id.txt'),
             cw_valid=_load_triples(path / 'cw.valid2id.txt'),
             ow_valid=_load_triples(path / 'ow.valid2id.txt'),
@@ -496,18 +507,15 @@ class Splitter:
         self.cfg.save(self.path / 'cfg.pkl')
 
 
-def create(g: graph.Graph, cfg: Config, seeds: List[int]):
-    for seed in seeds:
-        name = f'{g.name.split("-")[0]}'
-        name += f'_{cfg.ow_split:.2f}-{cfg.train_split:.2f}'
-        name += f'_{cfg.threshold}_{seed}'
+def create(g: graph.Graph, cfg: Config):
+    name = f'{g.name.split("-")[0]}'
+    name += f'_{cfg.ow_split:.2f}-{cfg.train_split:.2f}'
+    name += f'_{cfg.threshold}_{cfg.seed}'
 
-        log.info(f'! creating dataset {name=}; set seed to {seed}')
+    log.info(f'! creating dataset {name=}; set seed to {cfg.seed}')
 
-        random.seed(seed)
-
-        gen = Splitter(g=g, cfg=cfg, name=name)
-        yield gen.create()
+    random.seed(cfg.seed)
+    Splitter(g=g, cfg=cfg, name=name).create()
 
 
 def analyse(path: pathlib.Path):
