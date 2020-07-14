@@ -6,9 +6,11 @@ from ryn.common import logging
 
 import git
 
+import os
 import pickle
 import pathlib
 import inspect
+
 from datetime import datetime
 from dataclasses import dataclass
 from collections import OrderedDict
@@ -53,6 +55,19 @@ def timed(fn, name='unknown'):
 
 
 # --- UTILITY
+
+
+def notebook():
+    # %load_ext autoreload
+    # %autoreload 2
+    cwd = pathlib.Path.cwd()
+
+    if cwd.name != 'ryn':
+        print('changing directory')
+        os.chdir(cwd.parent)
+
+    logger = logging.logging.getLogger()
+    logger.setLevel(logging.logging.INFO)
 
 
 def relpath(path: pathlib.Path):
