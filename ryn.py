@@ -6,7 +6,6 @@ import test
 from ryn import graphs
 from ryn import embers
 
-from ryn import RynError
 from ryn.common import logging
 
 import sys
