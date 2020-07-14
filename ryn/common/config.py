@@ -1,6 +1,4 @@
-
 # -*- coding: utf-8 -*-
-
 
 from ryn import RynError
 from ryn.common import logging

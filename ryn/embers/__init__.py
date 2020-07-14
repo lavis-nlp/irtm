@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
 
-
-from ryn.embers import oke
 from ryn.common import config
 from ryn.common import logging
+
+from ryn.embers import keen
 
 
 log = logging.get('embers')
@@ -16,8 +16,8 @@ desc = 'work with graph embeddings'
 
 
 CMDS = {
-    'oke': {
-        'train': oke.train_from_args,
+    'keen': {
+        'train': keen.train_from_args,
     }
 }
 
@@ -32,7 +32,7 @@ def args(parser):
     parser.add_argument(
         'subcmd', type=str,
         help=(
-            f'oke:  ({", ".join(CMDS["oke"])}),'
+            f'keen:  ({", ".join(CMDS["keen"])}),'
         ))
 
 
