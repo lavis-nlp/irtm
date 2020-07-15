@@ -19,19 +19,32 @@ CMDS = {
     'graph': {
         'cli': graph._cli,
     },
+    'split': {
+        'create': split.create_from_args
+    }
 }
 
 
 def args(parser):
     parser.add_argument(
         'cmd', type=str,
-        help=f'one of {", ".join(CMDS)}')
+        help=f'one of {", ".join(CMDS)}', )
 
     parser.add_argument(
         'subcmd', type=str,
-        help=(
-            f'graph:  ({", ".join(CMDS["graph"])}),'
-        ))
+        help=f'graph:  ({", ".join(CMDS["graph"])}),', )
+
+    parser.add_argument(
+        '--uri', type=str,
+        help='graph uri (see graphs.loader.load_graphs_from_uri)', )
+
+    parser.add_argument(
+        '--seeds', type=int, nargs='+',
+        help='random seeds', )
+
+    parser.add_argument(
+        '--ratios', type=int, nargs='+',
+        help='ratio thresholds (cut at n-th relation for concepts)', )
 
     loader.add_graph_arguments(parser)
 

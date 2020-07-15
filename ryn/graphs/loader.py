@@ -245,8 +245,8 @@ def load_graphs_from_uri(*uris: str):
     assert all(providers[0] == p for p in providers)
     provider = providers[0]
 
-    spec = str(ryn.ENV.CONF_DIR / 'graphs.spec.conf')
-    conf = str(ryn.ENV.CONF_DIR / f'graphs.{provider}.conf')
+    spec = str(ryn.ENV.CONF_DIR / 'graphs' / 'spec.conf')
+    conf = str(ryn.ENV.CONF_DIR / 'graphs' / f'{provider}.conf')
 
     graph_dict = load_graphs_from_conf(conf=conf, spec=spec, graphs=uris)
 
