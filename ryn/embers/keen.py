@@ -12,6 +12,7 @@ from ryn.graphs import split
 from ryn.common import logging
 
 import random
+import pathlib
 
 from dataclasses import dataclass
 
@@ -75,3 +76,43 @@ def train(tfs: TripleFactories, **kwargs):
         validation_triples_factory=tfs.valid,
         testing_triples_factory=tfs.test,
         **kwargs)
+
+
+# def run(exp: config.Config):
+def run():
+    log.info('✝ running embers.keen')
+
+    path = pathlib.Path('data/split/oke.fb15k237_0.50-0.70_50_30061990/')
+    models = 'DistMult', 'Complex', 'TransE'
+    dims = (128, )
+
+    ds = split.Dataset.load(path)
+    tfs = TripleFactories.create(ds)
+
+    for model in models:
+        for dim in dims:
+
+            print(f'\nrunning {model}-{dim}\n')
+
+            kwargs = dict(
+                model=model,
+                model_kwargs=dict(embedding_dim=dim),
+                training_kwargs=dict(num_epochs=500, batch_size=256),
+                evaluation_kwargs=dict(batch_size=256),
+                stopper='early',
+                stopper_kwargs=dict(frequency=10, patience=5, delta=0.0002),
+            )
+
+            res = train(tfs=tfs, **kwargs)
+
+            emb_dims = kwargs["model_kwargs"]["embedding_dim"]
+            fname = f'{kwargs["model"]}-{emb_dims}'
+            path = ds.path / 'models' / fname
+
+            res.save_to_directory(str(path))
+
+
+def train_from_args(args):
+    run()
+    # log.info('running embers.keen training')
+    # config.Config.execute(fconf=args.config, fspec=args.spec, callback=run)
