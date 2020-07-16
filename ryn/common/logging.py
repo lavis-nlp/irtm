@@ -24,8 +24,8 @@ path = pathlib.Path('conf/logging.conf')
 if path.is_file():
     f_conf = str(path)
 
-if 'ARAS_LOG' in os.environ:
-    f_conf = str(os.environ['ARAS_LOG'])
+if 'RYN_LOG' in os.environ:
+    f_conf = str(os.environ['RYN_LOG'])
 
 if f_conf is not None:
     fileConfig(f_conf)
