@@ -6,7 +6,6 @@ ryn specific graph abstractions and utilities
 
 """
 
-import ryn
 from ryn.common import logging
 
 import networkx
