@@ -461,6 +461,8 @@ class Graph:
                  source: GraphImport = None,
                  freeze: bool = False):
 
+        assert type(name) is str if name is not None else True, f'{name=}'
+
         # properties
         self._nx = networkx.MultiDiGraph()
         self._edges = defaultdict(set)

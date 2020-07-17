@@ -35,10 +35,6 @@ def args(parser):
         help=f'graph:  ({", ".join(CMDS["graph"])}),', )
 
     parser.add_argument(
-        '--uri', type=str,
-        help='graph uri (see graphs.loader.load_graphs_from_uri)', )
-
-    parser.add_argument(
         '--seeds', type=int, nargs='+',
         help='random seeds', )
 

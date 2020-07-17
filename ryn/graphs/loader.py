@@ -226,11 +226,14 @@ def load_graphs_from_conf(
 
 
 def load_graphs_from_args(args: argparse.Namespace, single: bool = False):
-    return load_graphs_from_conf(
-        conf=args.config,
-        spec=args.spec,
-        graphs=args.graphs,
-        single=single)
+    if args.uri:
+        return load_graphs_from_uri(*args.uri)
+    else:
+        return load_graphs_from_conf(
+            conf=args.config,
+            spec=args.spec,
+            graphs=args.graphs,
+            single=single)
 
 
 def load_graphs_from_uri(*uris: str):
@@ -305,6 +308,8 @@ class LazyGraphLoader:
 
 def add_graph_arguments(parser: argparse.ArgumentParser):
 
+    # either
+
     parser.add_argument(
         '-c', '--config', type=str,
         help='config file (conf/*.conf)',
@@ -318,4 +323,11 @@ def add_graph_arguments(parser: argparse.ArgumentParser):
     parser.add_argument(
         '-g', '--graphs', type=str, nargs='+',
         help='selection of graphs (names defined in --config)'
+    )
+
+    # or
+
+    parser.add_argument(
+        '--uri', type=str, nargs='+',
+        help='instead of -c -s -g combination'
     )
