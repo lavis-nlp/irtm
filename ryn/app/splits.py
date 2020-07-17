@@ -5,7 +5,6 @@ from ryn import app
 from ryn.app import helper
 from ryn.graphs import split
 
-import random
 import pathlib
 from dataclasses import dataclass
 
@@ -140,8 +139,8 @@ class Context(app.Context):
 
         helper.legend({
             'ow entities': 'open world entities (so far unseen)',
-            'linked c': 'no of concept entities present',
-            'c triples': 'no of triples containing concept entities',
+            'linked c': 'linked concept entities',
+            'c triples': 'triples containing concept entities',
         })
 
     def _show_concept_entities(self, ds: split.Dataset):
@@ -151,8 +150,7 @@ class Context(app.Context):
             min_value=1, max_value=len(ds.concepts),
             value=10, step=1)
 
-        ents = list(ds.concepts)[:num_ents]
-        random.shuffle(ents)
+        ents = list(ds.concepts)
 
         df = pd.DataFrame({
             'id': ents,
@@ -184,12 +182,12 @@ class Context(app.Context):
             index=1,
         ) == 'yep'
 
-        df = df.sort_values(by=opts[sorter], ascending=asc)
+        df = df.sort_values(by=opts[sorter], ascending=asc)[:num_ents]
 
         st.dataframe(df)
         helper.legend({
-            'cw triples': 'no of closed world triples containing the concept',
-            'ow triples': 'no of open world triples containing the concept',
+            'cw triples': 'closed world triples containing the concept',
+            'ow triples': 'open world triples containing the concept',
             'degree': 'original node degree over all triples'
         })
 
