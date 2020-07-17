@@ -530,10 +530,11 @@ def create(g: graph.Graph, cfg: Config):
 
 def create_from_args(args: argparse.Namespace):
     assert args.uri, 'provide a graph uri'
+    assert len(args.uri) == 1, 'provide a single graph uri'
     assert args.seeds, 'provide seeds'
     assert args.ratios, 'provide ratio thresholds'
 
-    g = loader.load_graphs_from_uri(args.uri)[0]
+    g = loader.load_graphs_from_uri(args.uri[0])[0]
     log.info(f'loaded {g.name}, analysing relations')
 
     rels = Relation.from_graph(g)
