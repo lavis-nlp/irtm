@@ -105,6 +105,12 @@ class Part:
 
     owe: Set[int]  # open world entities
     triples: Set[Tuple[int]]
+    concepts: Set[int]
+
+    @property
+    @lru_cache
+    def g(self) -> graph.Graph:
+        return graph.Graph(source=graph.GraphImport(triples=self.triples))
 
     @property
     @lru_cache
@@ -120,6 +126,17 @@ class Part:
     @lru_cache
     def tails(self) -> Set[int]:
         return set(tuple(zip(*self.triples))[1])
+
+    @property
+    @lru_cache
+    def linked_concepts(self) -> Set[int]:
+        return self.entities & self.concepts
+
+    @property
+    @lru_cache
+    def concept_triples(self) -> Set[Tuple[int]]:
+        g = graph.Graph(source=graph.GraphImport(triples=self.triples))
+        return g.find(heads=self.concepts, tails=self.concepts)
 
     # ---
 
@@ -220,6 +237,7 @@ class Dataset:
 
         def _load_triples(fp) -> Part:
             nonlocal owe
+            nonlocal concepts
 
             with fp.open(mode='r') as fd:
                 num = int(fd.readline())
@@ -231,7 +249,7 @@ class Dataset:
             assert num == len(triples)
 
             ents = _ents_from_triples(triples)
-            part = Part(triples=triples, owe=ents - owe)
+            part = Part(triples=triples, owe=ents - owe, concepts=concepts)
             owe |= ents
 
             return part
