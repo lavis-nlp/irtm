@@ -23,8 +23,8 @@ Open World Knowledge Graph Completion
 
 
 CTXS = {
-    'KGC Embeddings': embers.Context(),
     'HyperFB Datasets': splits.Context(),
+    'KGC Embeddings': embers.Context(),
 }
 
 
