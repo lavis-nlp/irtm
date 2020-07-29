@@ -120,27 +120,28 @@ class Context(app.Context):
                 len(ds.cw_valid.owe),
                 len(ds.ow_valid.owe),
                 len(ds.ow_test.owe),
-            ], 'linked c': [
+            ], 'linked': [
                 len(ds.cw_train.linked_concepts),
                 len(ds.cw_valid.linked_concepts),
                 len(ds.ow_valid.linked_concepts),
                 len(ds.ow_test.linked_concepts),
-            ], 'c triples': [
+            ], 'ctriples': [
                 len(ds.cw_train.concept_triples),
                 len(ds.cw_valid.concept_triples),
                 len(ds.ow_valid.concept_triples),
                 len(ds.ow_test.concept_triples),
             ]
         }, index=[
-            'open world test',
-            'open world validation',
+            'closed world training',
             'closed world validation',
-            'closed world training'], ))
+            'open world validation',
+            'open world test',
+        ], ))
 
         helper.legend({
             'ow entities': 'open world entities (so far unseen)',
-            'linked c': 'linked concept entities',
-            'c triples': 'triples containing concept entities',
+            'linked': 'linked concept entities',
+            'ctriples': 'triples containing concept entities',
         })
 
     def _show_concept_entities(self, ds: split.Dataset):
