@@ -19,8 +19,8 @@ class ENV:
 
     DATA_DIR:  pathlib.Path = _root_path / _DATA_DIR
     CACHE_DIR: pathlib.Path = _root_path / _DATA_DIR / 'cache'
-    EXP_DIR:   pathlib.Path = _root_path / _DATA_DIR / 'experiments'
     SPLIT_DIR: pathlib.Path = _root_path / _DATA_DIR / 'split'
+    EMBER_DIR: pathlib.Path = _root_path / _DATA_DIR / 'ember'
 
 
 log.info(f'! initialized path to ryn: {ENV.ROOT_DIR}')

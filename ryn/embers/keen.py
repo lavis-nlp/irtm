@@ -8,6 +8,7 @@ https://github.com/pykeen/pykeen
 
 """
 
+import ryn
 from ryn.graphs import split
 from ryn.common import logging
 
@@ -93,21 +94,9 @@ def run():
     path = pathlib.Path('data/split/oke.fb15k237_30061990_50/')
 
     epochs = 2000
-
-    # configs = [
-    #     Config(model='DistMult', emb_dim=64, batch_size=768),
-    #     Config(model='DistMult', emb_dim=128, batch_size=512),
-    #     Config(model='DistMult', emb_dim=256, batch_size=320),
-    #     Config(model='DistMult', emb_dim=512, batch_size=160),
-    #     Config(model='DistMult', emb_dim=1024, batch_size=86),
-    # ]
-
     configs = [
-        Config(model='Complex', emb_dim=64, batch_size=384),
-        Config(model='Complex', emb_dim=128, batch_size=192),
-        Config(model='Complex', emb_dim=256, batch_size=90),
-        Config(model='Complex', emb_dim=512, batch_size=50),
-        Config(model='Complex', emb_dim=1024, batch_size=30),
+        # batch_size currently unused
+        Config(model='DistMult', emb_dim=256, batch_size=320),
     ]
 
     ds = split.Dataset.load(path)
@@ -121,20 +110,23 @@ def run():
             model_kwargs=dict(embedding_dim=config.emb_dim),
 
             training_kwargs=dict(
-                num_epochs=epochs, batch_size=config.batch_size),
+                num_epochs=epochs,
+                # batch_size=config.batch_size,
+            ),
+
             evaluation_kwargs=dict(
-                batch_size=config.batch_size),
+                # batch_size=config.batch_size,
+            ),
 
             stopper='early',
             stopper_kwargs=dict(
-                frequency=50, patience=2, delta=0.0002),
+                frequency=5, patience=50, delta=0.0002),
         )
 
         res = train(tfs=tfs, **kwargs)
 
-        emb_dims = kwargs["model_kwargs"]["embedding_dim"]
-        fname = f'{kwargs["model"]}-{emb_dims}'
-        path = ds.path / 'models' / fname
+        path = ryn.ENV.EMBER_DIR / f'{kwargs["model"]}-{config.emb_dim}'
+        log.info(f'writing results to {path}')
 
         res.save_to_directory(str(path))
 
