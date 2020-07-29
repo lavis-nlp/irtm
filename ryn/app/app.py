@@ -4,7 +4,7 @@
 
 RYN STREAMLIT
 
-to start the webserver: streamlit run ryn_app.py
+to start the webserver: streamlit run ryn/app/app.py
 
 """
 from ryn.app import splits

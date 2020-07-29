@@ -11,3 +11,10 @@ conda create --name ryn python=3.8
 pip install -r requirements.txt
 pip install -e .
 ```
+
+
+## Streamlit
+
+``` bash
+streamlit run ryn/app/app.py
+```
