@@ -24,9 +24,9 @@ usage: ryn CMD [ARGS]
   possible values for CMD:
        help: print this message
         app: handle streamlit instances
-      tests: run some tests
      graphs: analyse paths through the networks
      embers: work with graph embeddings
+      tests: run some tests
 
 to get CMD specific help type ryn CMD --help
 e.g. ryn embers --help

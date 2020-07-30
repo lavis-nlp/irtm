@@ -18,9 +18,9 @@ log = logging.get('ryn')
 
 mods = {
     'app': app,
-    'tests': tests,
     'graphs': graphs,
     'embers': embers,
+    'tests': tests,
 }
 
 
