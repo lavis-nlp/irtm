@@ -1,7 +1,4 @@
-#!/usr/bin/env python
-
-
-from ryn import common
+import ryn
 from ryn import logging
 
 import inotify.adapters
@@ -15,14 +12,10 @@ from datetime import datetime
 log = logging.get('test')
 
 
-t_dir = 'tests/'
-desc = 'run the test suite'
-
-
 def run(name: str = None):
     runner = unittest.TextTestRunner()
     loader = unittest.TestLoader()
-    tests = loader.discover(t_dir, '*.py')
+    tests = loader.discover(ryn.ENV.TEST_DIR, '*.py')
 
     if name:
         # e.g. 'graph.FindTests'
@@ -39,16 +32,6 @@ def _spawn():
     p.join()
 
 
-def args(parser):
-    parser.add_argument(
-        'cmd', type=str, help='one of {run, watch}'
-    )
-
-    parser.add_argument(
-        '--name', type=str, help='test case(s) to run'
-    )
-
-
 def main(args):
     if args.cmd == 'run':
         log.info(f'running tests: {args.name or "all"}')
@@ -59,9 +42,9 @@ def main(args):
         print('\nover the mountain watching the watcher\n')
         ify = inotify.adapters.Inotify()
 
-        ify.add_watch(t_dir)
-        ify.add_watch('conf/')
-        ify.add_watch('ryn/')
+        ify.add_watch('.')
+        ify.add_watch('../conf/')
+        ify.add_watch('../ryn/')
 
         for evt in ify.event_gen(yield_nones=False):
             _, types, path, fname = evt
@@ -80,4 +63,20 @@ def main(args):
 
         return
 
-    raise a_common.RynError('unknown command: {args.cmd}')
+    raise ryn.RynError('unknown command: {args.cmd}')
+
+
+# --- ryn interface
+
+
+desc = 'run some tests'
+
+
+def args(parser):
+    parser.add_argument(
+        'cmd', type=str, help='one of {run, watch}'
+    )
+
+    parser.add_argument(
+        '--name', type=str, help='test case(s) to run'
+    )

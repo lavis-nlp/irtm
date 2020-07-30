@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-import test
 
+from ryn import app
+from ryn import tests
 from ryn import graphs
 from ryn import embers
 
@@ -16,7 +17,8 @@ log = logging.get('ryn')
 
 
 mods = {
-    'test': test,
+    'app': app,
+    'tests': tests,
     'graphs': graphs,
     'embers': embers,
 }
@@ -36,14 +38,14 @@ def term(message: str = None, status=0):
 
 def print_help():
     print('RYN - working with knowledge graphs\n')
-    print('usage: ./ryn.py CMD [ARGS]\n')
+    print('usage: ryn CMD [ARGS]\n')
     print('  possible values for CMD:')
     print('       help: print this message')
     for name, mod in mods.items():
         print(f'    {name:>7s}: {mod.desc}')
 
-    print('\nto get CMD specific help type ./ryn.py CMD --help')
-    print('e.g. ./ryn.py ember --help')
+    print('\nto get CMD specific help type ryn CMD --help')
+    print('e.g. ryn embers --help')
 
 
 def main():
@@ -88,9 +90,8 @@ def main():
         log.error(f'catched exception: {exc}')
         raise exc  # offer stracktrace
 
-    return 0
+    log.info('terminating gracefully')
 
 
 if __name__ == '__main__':
-    rc = main()
-    term(message='terminating gracefully', status=rc)
+    main()
