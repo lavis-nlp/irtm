@@ -1,5 +1,7 @@
+# -*- coding: utf-8 -*-
+
 import ryn
-from ryn import logging
+from ryn.common import logging
 
 import inotify.adapters
 

@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 
 
+import ryn
 from ryn import app
 from ryn import tests
 from ryn import graphs
@@ -49,6 +50,7 @@ def print_help():
 
 
 def main():
+    log.info(f'! initialized path to ryn: {ryn.ENV.ROOT_DIR}')
 
     # --- select module
 

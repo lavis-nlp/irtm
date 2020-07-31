@@ -2,10 +2,6 @@
 
 import pathlib
 
-from ryn.common import logging
-
-log = logging.get('ryn')
-
 _root_path = pathlib.Path(__file__).parent.parent
 _DATA_DIR = 'data'
 
@@ -25,9 +21,6 @@ class ENV:
     CACHE_DIR: pathlib.Path = _root_path / _DATA_DIR / 'cache'
     SPLIT_DIR: pathlib.Path = _root_path / _DATA_DIR / 'split'
     EMBER_DIR: pathlib.Path = _root_path / _DATA_DIR / 'ember'
-
-
-log.info(f'! initialized path to ryn: {ENV.ROOT_DIR}')
 
 
 class RynError(Exception):
