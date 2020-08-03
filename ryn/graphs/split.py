@@ -22,6 +22,7 @@ from datetime import datetime
 from functools import partial
 from functools import lru_cache
 from dataclasses import dataclass
+from itertools import combinations
 
 import git
 from tqdm import tqdm as _tqdm
@@ -198,6 +199,56 @@ class Dataset:
 
     # ---
 
+    def check(self):
+        """
+
+        Run some self diagnosis
+
+        """
+        log.info(f'running self check for {self.path.name}')
+
+        # no triples must be shared between splits
+
+        triplesets = (
+            ('cw.train', self.cw_train.triples, ),
+            ('cw.valid', self.cw_valid.triples, ),
+            ('ow.valid', self.ow_valid.triples, ),
+            ('ow.test', self.ow_test.triples, ),
+        )
+
+        for (n1, s1), (n2, s2) in combinations(triplesets, 2):
+            assert s1.isdisjoint(s2), f'{n1} and {n2} share triples'
+
+        # no ow entities must be shared between splits
+
+        owesets = (
+            ('cw.train', self.cw_train.owe, ),
+            ('cw.valid', self.cw_valid.owe, ),
+            ('ow.valid', self.ow_valid.owe, ),
+            ('ow.test', self.ow_test.owe, ),
+        )
+
+        for (n1, s1), (n2, s2) in combinations(owesets, 2):
+            assert s1.isdisjoint(s2), f'{n1} and {n2} share owe entities'
+
+        # ow entities must not be seen in earlier splits
+        # and no ow entities must occur in cw.valid
+        # (use .entities property which gets this information directly
+        # directly from the triple sets)
+
+        assert self.cw_train.owe == self.cw_train.entities, (
+            'cw.train owe != cw.train entities')
+        assert not len(self.cw_valid.owe), (
+            'cw.valid contains owe entities')
+
+        seen = self.cw_train.entities | self.cw_valid.entities
+        assert self.ow_valid.owe.isdisjoint(seen), (
+            'entities in ow valid leaked')
+
+        seen |= self.ow_valid.entities
+        assert self.ow_test.owe.isdisjoint(seen), (
+            'entities in ow test leaked)')
+
     @classmethod
     def load(K, path: Union[str, pathlib.Path]) -> 'Dataset':
         """
@@ -233,10 +284,7 @@ class Dataset:
         id2ent = _load_dict(path / 'entity2id.txt')
         id2rel = _load_dict(path / 'relation2id.txt')
 
-        owe = set()
-
-        def _load_triples(fp) -> Part:
-            nonlocal owe
+        def _load_part(fp, seen: Set[int]) -> Part:
             nonlocal concepts
 
             with fp.open(mode='r') as fd:
@@ -249,23 +297,31 @@ class Dataset:
             assert num == len(triples)
 
             ents = _ents_from_triples(triples)
-            part = Part(triples=triples, owe=ents - owe, concepts=concepts)
-            owe |= ents
+            part = Part(triples=triples, owe=ents - seen, concepts=concepts)
 
             return part
+
+        parts = {}
+        seen = set()
+
+        for name, fp in (
+                ('cw_train', path / 'cw.train2id.txt'),
+                ('cw_valid', path / 'cw.valid2id.txt'),
+                ('ow_valid', path / 'ow.valid2id.txt'),
+                ('ow_test', path / 'ow.test2id.txt'), ):
+
+            part = _load_part(fp, seen)
+            seen |= part.entities
+            parts[name] = part
 
         dataset = K(
             path=path,
             g=g, cfg=cfg,
             concepts=concepts,
-            id2ent=id2ent,
-            id2rel=id2rel,
-            cw_train=_load_triples(path / 'cw.train2id.txt'),
-            cw_valid=_load_triples(path / 'cw.valid2id.txt'),
-            ow_valid=_load_triples(path / 'ow.valid2id.txt'),
-            ow_test=_load_triples(path / 'ow.test2id.txt'),
-        )
+            id2ent=id2ent, id2rel=id2rel,
+            **parts)
 
+        dataset.check()
         return dataset
 
 
@@ -473,6 +529,8 @@ class Splitter:
 
         # ---
 
+        # move all cw.valid triples containing
+        # entities unseen in cw.train
         _n_train = len(cw.train)
         known = _ents_from_triples(cw.train)
         misplaced = set(filter(
