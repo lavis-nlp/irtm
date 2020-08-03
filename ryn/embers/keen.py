@@ -12,17 +12,46 @@ import ryn
 from ryn.graphs import split
 from ryn.common import logging
 
+import copy
 import random
 import pathlib
 
+from datetime import datetime
 from dataclasses import dataclass
 
 import numpy as np
+from pykeen import pipeline
 from pykeen import triples as keen_triples
-from pykeen import pipeline as keen_pipeline
 
 
 log = logging.get('embers.keen')
+
+
+# ---
+
+
+DATEFMT = '%Y.%m.%d-%H%M%S.%f'
+
+
+@dataclass
+class Model:
+    """
+    As loaded from PipelineResult.
+
+    """
+
+    path: pathlib.Path
+    result: pipeline.PipelineResult
+
+    @classmethod
+    def from_path(K, path: pathlib.Path):
+        return K(
+            path=path,
+            result=pipeline.pipeline_from_path(str(path / 'metadata.json')),
+        )
+
+
+# ---
 
 
 @dataclass
@@ -71,11 +100,22 @@ class TripleFactories:
 
 
 def train(tfs: TripleFactories, **kwargs):
-    return keen_pipeline.pipeline(
+
+    kwargs = {**dict(
         random_seed=tfs.ds.cfg.seed,
+    ), **kwargs}
+
+    return pipeline.pipeline(
+
         training_triples_factory=tfs.train,
         validation_triples_factory=tfs.valid,
         testing_triples_factory=tfs.test,
+
+        metadata=dict(
+            metadata={},
+            pipeline=copy.deepcopy(kwargs),
+        ),
+
         **kwargs)
 
 
@@ -93,10 +133,10 @@ def run():
 
     path = pathlib.Path('data/split/oke.fb15k237_30061990_50/')
 
-    epochs = 2000
+    epochs = 10_000
     configs = [
         # batch_size currently unused
-        Config(model='DistMult', emb_dim=256, batch_size=320),
+        Config(model='DistMult', emb_dim=256, batch_size=1024),
     ]
 
     ds = split.Dataset.load(path)
@@ -109,23 +149,32 @@ def run():
             model=config.model,
             model_kwargs=dict(embedding_dim=config.emb_dim),
 
+            optimizer='Adagrad',
+            optimizer_kwargs=dict(lr=0.01),
+
+            # loss='CrossEntropyLoss',
+
             training_kwargs=dict(
                 num_epochs=epochs,
-                # batch_size=config.batch_size,
+                batch_size=config.batch_size,
             ),
-
             evaluation_kwargs=dict(
                 # batch_size=config.batch_size,
             ),
 
             stopper='early',
             stopper_kwargs=dict(
-                frequency=5, patience=50, delta=0.0002),
+                frequency=5, patience=50, delta=0.002),
         )
 
         res = train(tfs=tfs, **kwargs)
 
-        path = ryn.ENV.EMBER_DIR / f'{kwargs["model"]}-{config.emb_dim}'
+        fname = '-'.join((
+            config.model,
+            str(config.emb_dim),
+            str(datetime.now().strftime(DATEFMT)), ))
+
+        path = ryn.ENV.EMBER_DIR / fname
         log.info(f'writing results to {path}')
 
         res.save_to_directory(str(path))
