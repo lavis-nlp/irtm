@@ -615,3 +615,30 @@ def create_from_args(args: argparse.Namespace):
             cfg = K(seed=seed, threshold=threshold)
             create(g, cfg)
             bar.update(1)
+
+
+# ---
+
+
+def _cli(args):
+    import IPython
+
+    print()
+    if not args.path:
+        raise ryn.RynError('please provide a --path')
+
+    ds = Dataset.load(args.path)
+    print(f'{ds}')
+
+    banner = '\n'.join((
+        '',
+        '-' * 20,
+        ' RYN DATASET CLIENT',
+        '-' * 20,
+        '',
+        'variables in scope:',
+        '    ds: Dataset',
+        '',
+    ))
+
+    IPython.embed(banner1=banner)

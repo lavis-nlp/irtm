@@ -20,7 +20,8 @@ CMDS = {
         'cli': graph._cli,
     },
     'split': {
-        'create': split.create_from_args
+        'create': split.create_from_args,
+        'cli': split._cli,
     }
 }
 
@@ -41,6 +42,10 @@ def args(parser):
     parser.add_argument(
         '--ratios', type=int, nargs='+',
         help='ratio thresholds (cut at n-th relation for concepts)', )
+
+    parser.add_argument(
+        '--path', type=str,
+        help='path to file or directory')
 
     loader.add_graph_arguments(parser)
 
