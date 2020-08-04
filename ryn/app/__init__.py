@@ -2,11 +2,23 @@
 
 
 from ryn.common import logging
-from streamlit import cli
 import sys
 
+import streamlit
+from streamlit import cli as streamlit_cli
+from streamlit import logger as streamlit_logger
 
 log = logging.get('app')
+
+
+# streamlit registers a streamhandler per logger...
+# https://github.com/streamlit/streamlit/blob/a8a90461bd77359ad812d847943b0e421ac85de9/lib/streamlit/logger.py#L66
+streamlit.logger.set_log_level('INFO')
+for logger in streamlit_logger.LOGGERS.values():
+    logger.removeHandler(logger.streamlit_console_handler)
+
+
+# ---
 
 
 class Context:
@@ -26,14 +38,10 @@ def args(parser):
 
 
 # streamlit internally relies on click contexts
-# and there is a bug if there is no parent context.
-# So: I just steal the streamlit click context
-
-
-@cli.main.command()
+@streamlit_cli.main.command()
 def ryn():
     from ryn.app import app
-    cli._main_run(app.__file__)
+    streamlit_cli._main_run(app.__file__)
 
 
 def main(args):
@@ -41,4 +49,4 @@ def main(args):
 
     # clear argv to obtain a clean click state
     sys.argv = [sys.argv[0], 'ryn']
-    cli.main()
+    streamlit_cli.main()
