@@ -32,28 +32,24 @@ def ds_to_row(ds: split.Dataset):
 
 
 @dataclass
-class SplitWidgets:
+class SplitWidgets(app.Widgets):
 
     seed: int
     threshold: int
 
     @classmethod
     def create(K, datasets):
-        val_all = 'all'
-
         seeds, thresholds, *_ = [
-            [val_all] + list(s) for s in
+            list(s) for s in
             map(set, zip(*(ds_to_row(ds) for ds in datasets)))
         ]
 
-        def _init(fn, name, vals, mapper):
-            val = fn(name, vals)
-            return None if val == val_all else mapper(val)
-
         return K(
-            seed=_init(st.sidebar.selectbox, 'Seed', seeds, int),
-            threshold=_init(st.sidebar.selectbox, 'Threshold', thresholds, int)
-        )
+            seed=app.Widgets.read(
+                st.sidebar.selectbox, 'Seed', seeds, int),
+
+            threshold=app.Widgets.read(
+                st.sidebar.selectbox, 'Threshold', thresholds, int), )
 
 
 class Context(app.Context):
@@ -72,12 +68,12 @@ class Context(app.Context):
             bar.progress((i + 1) / len(glob))
 
     def filter_datasets(self):
-        conds = (
+        conditions = (
             (self.widgets.seed, lambda ds: ds.cfg.seed),
             (self.widgets.threshold, lambda ds: ds.cfg.threshold),
         )
 
-        for val, fn in conds:
+        for val, fn in conditions:
             if val is not None:
                 self.datasets = list(filter(
                     lambda ds: fn(ds) == val,
@@ -92,11 +88,11 @@ class Context(app.Context):
             'tris:ow.valid', '%', 'trisles:ow.test', '%',
             'owe-ents:ow.valid', 'owe-ents:ow.test', ]
 
-        pd_overview = pd.DataFrame(
+        df = pd.DataFrame(
             data=[ds_to_row(ds) for ds in self.datasets],
             columns=cols)
 
-        st.dataframe(pd_overview)
+        st.dataframe(df)
 
     # ---
 

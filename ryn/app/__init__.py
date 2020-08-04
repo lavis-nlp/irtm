@@ -2,7 +2,9 @@
 
 
 from ryn.common import logging
+
 import sys
+from dataclasses import dataclass
 
 import streamlit
 from streamlit import cli as streamlit_cli
@@ -19,6 +21,19 @@ for logger in streamlit_logger.LOGGERS.values():
 
 
 # ---
+
+
+@dataclass
+class Widgets:
+
+    @staticmethod
+    def read(widget, name, vals, mapper):
+        VAL_ALL = 'all'
+
+        vals = [VAL_ALL] + vals
+        val = widget(name, vals)
+
+        return None if val == VAL_ALL else mapper(val)
 
 
 class Context:
