@@ -12,6 +12,7 @@ import ryn
 from ryn.graphs import split
 from ryn.common import logging
 
+import json
 import copy
 import random
 import pathlib
@@ -23,6 +24,10 @@ import numpy as np
 from pykeen import pipeline
 from pykeen import triples as keen_triples
 
+from typing import Any
+from typing import Dict
+from typing import Union
+
 
 log = logging.get('embers.keen')
 
@@ -30,24 +35,58 @@ log = logging.get('embers.keen')
 # ---
 
 
-DATEFMT = '%Y.%m.%d-%H%M%S.%f'
+DATEFMT = '%Y.%m.%d.%H%M%S.%f'
 
 
 @dataclass
 class Model:
-    """
-    As loaded from PipelineResult.
-
-    """
 
     path: pathlib.Path
-    result: pipeline.PipelineResult
+    timestamp: datetime
+
+    results: Dict[str, Any]
+    parameters: Dict[str, Any]
+    metadata: Dict[str, Any]
+
+    @property
+    def name(self) -> str:
+        return self.parameters['model']
+
+    @property
+    def dimensions(self) -> int:
+        return self.parameters['model_kwargs']['embedding_dim']
+
+    def __str__(self) -> str:
+        return (
+            'KGC Model\n'
+            f'  Loaded from {self.path}'
+        )
 
     @classmethod
-    def from_path(K, path: pathlib.Path):
+    def from_path(K, path: Union[str, pathlib.Path]):
+        path = pathlib.Path(path)
+
+        try:
+            _, _, created = path.name.split('-')
+            timestamp = datetime.strptime(created, DATEFMT)
+        except ValueError as exc:
+            log.error(f'cannot read {path}')
+            raise exc
+
+        with (path / 'metadata.json').open(mode='r') as fd:
+            raw = json.load(fd)
+            parameters = raw['pipeline']
+            metadata = raw['metadata']
+
+        with (path / 'results.json').open(mode='r') as fd:
+            results = json.load(fd)
+
         return K(
             path=path,
-            result=pipeline.pipeline_from_path(str(path / 'metadata.json')),
+            timestamp=timestamp,
+            results=results,
+            parameters=parameters,
+            metadata=metadata,
         )
 
 
@@ -112,7 +151,11 @@ def train(tfs: TripleFactories, **kwargs):
         testing_triples_factory=tfs.test,
 
         metadata=dict(
-            metadata={},
+            metadata=dict(
+                dataset_name=tfs.ds.path.name,
+                dataset_path=str(tfs.ds.path),
+                graph_name=tfs.ds.g.name,
+            ),
             pipeline=copy.deepcopy(kwargs),
         ),
 
@@ -174,7 +217,7 @@ def run():
             str(config.emb_dim),
             str(datetime.now().strftime(DATEFMT)), ))
 
-        path = ryn.ENV.EMBER_DIR / fname
+        path = ryn.ENV.EMBER_DIR / ds.path.name / fname
         log.info(f'writing results to {path}')
 
         res.save_to_directory(str(path))
