@@ -227,3 +227,30 @@ def train_from_args(args):
     run()
     # log.info('running embers.keen training')
     # config.Config.execute(fconf=args.config, fspec=args.spec, callback=run)
+
+
+# ---
+
+
+def _cli(args):
+    import IPython
+
+    print()
+    if not args.path:
+        raise ryn.RynError('please provide a --path')
+
+    m = Model.from_path(args.path)
+    print(f'{m}')
+
+    banner = '\n'.join((
+        '',
+        '-' * 20,
+        ' RYN KEEN CLIENT',
+        '-' * 20,
+        '',
+        'variables in scope:',
+        '    m: Model',
+        '',
+    ))
+
+    IPython.embed(banner1=banner)

@@ -18,6 +18,7 @@ desc = 'work with graph embeddings'
 CMDS = {
     'keen': {
         'train': keen.train_from_args,
+        'cli': keen._cli,
     }
 }
 
@@ -34,6 +35,10 @@ def args(parser):
         help=(
             f'keen:  ({", ".join(CMDS["keen"])}),'
         ))
+
+    parser.add_argument(
+        '--path', type=str,
+        help='path to file or directory')
 
 
 def main(args):
