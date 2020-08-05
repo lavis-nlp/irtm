@@ -14,7 +14,9 @@ from datetime import timedelta
 from dataclasses import dataclass
 from collections import defaultdict
 
+from typing import Any
 from typing import Set
+from typing import Dict
 from typing import Tuple
 
 
@@ -26,28 +28,51 @@ class EmberWidgets(app.Widgets):
     timestamp: datetime
 
     @classmethod
-    def create(K, models, dims, timestamps):
+    def create(K, models, dimensions, timestamps):
+
+        def _reduce(
+                dic: Dict[Any, Set[pathlib.Path]],
+                selected_paths: Set[pathlib.Path]):
+
+            # reduces all path sets such that only paths remain
+            # that are defined in "selected_paths"
+            return dict(filter(lambda t: len(t[1]), (
+                (x, (paths & selected_paths) if selected_paths else paths)
+                for x, paths in dic.items()
+            )))
+
+        selected_model = app.Widgets.read(
+            st.sidebar.selectbox,
+            'Model',
+            list(models.keys()),
+            str, )
+
+        selected_paths = models.get(
+            selected_model,
+            set.union(*models.values()))
+
+        dimensions = _reduce(dimensions, selected_paths)
+        selected_dimensions = app.Widgets.read(
+            st.sidebar.selectbox,
+            'Dimensions',
+            list(map(str, dimensions.keys())),
+            int, )
+
+        selected_paths &= dimensions.get(
+            selected_dimensions,
+            set.union(*dimensions.values()))
+
+        timestamps = _reduce(timestamps, selected_paths)
+        selected_timestamp = app.Widgets.read(
+            st.sidebar.selectbox,
+            'Timestamp',
+            list(map(datetime.isoformat, timestamps.keys())),
+            datetime.fromisoformat, )
 
         return EmberWidgets(
-            model=app.Widgets.read(
-                st.sidebar.selectbox,
-                'Model',
-                list(models.keys()),
-                str),
-
-            dimensions=app.Widgets.read(
-                st.sidebar.selectbox,
-                'Dimensions',
-                list(map(str, dims.keys())),
-                int, ),
-
-            timestamp=app.Widgets.read(
-                st.sidebar.selectbox,
-                'Timestamp',
-                list(map(datetime.isoformat, timestamps.keys())),
-                datetime.fromisoformat,
-            )
-        )
+            model=selected_model,
+            dimensions=selected_dimensions,
+            timestamp=selected_timestamp, )
 
 
 @st.cache(allow_output_mutation=True)
@@ -162,7 +187,8 @@ class Context(app.Context):
 
         selection = (
             _get(self._data_models, self._widgets.model) &
-            _get(self._data_dimensions, self._widgets.dimensions)
+            _get(self._data_dimensions, self._widgets.dimensions) &
+            _get(self._data_timestamps, self._widgets.timestamp)
         )
 
         st.write('Found {n} trained{model}model(s)'.format(
