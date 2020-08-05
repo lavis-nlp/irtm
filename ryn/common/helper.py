@@ -53,6 +53,7 @@ def notebook():
     # %autoreload 2
     cwd = pathlib.Path.cwd()
 
+    # TODO no longer necessary since introducing ryn.ENV?
     if cwd.name != 'ryn':
         print('changing directory')
         os.chdir(cwd.parent)
