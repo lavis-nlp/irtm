@@ -174,19 +174,18 @@ class Config:
 def run():
     log.info('✝ running embers.keen')
 
-    path = pathlib.Path('data/split/oke.fb15k237_30061990_50/')
+    path = ryn.ENV.SPLIT_DIR / 'oke.fb15k237_30061990_50/'
 
-    epochs = 10_000
+    epochs = 3000
     configs = [
-        # batch_size currently unused
-        Config(model='DistMult', emb_dim=256, batch_size=1024),
+        Config(model='DistMult', emb_dim=256, batch_size=512),
     ]
 
     ds = split.Dataset.load(path)
     tfs = TripleFactories.create(ds)
 
     for config in configs:
-        print(f'\nrunning {config.model}-{config.emb_dim}\n')
+        print(f'\nrunning {config.model}-{config.emb_dim} {ds.path.name}\n')
 
         kwargs = dict(
             model=config.model,
@@ -199,7 +198,7 @@ def run():
 
             training_kwargs=dict(
                 num_epochs=epochs,
-                batch_size=config.batch_size,
+                # batch_size=config.batch_size,
             ),
             evaluation_kwargs=dict(
                 # batch_size=config.batch_size,
