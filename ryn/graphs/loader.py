@@ -329,5 +329,7 @@ def add_graph_arguments(parser: argparse.ArgumentParser):
 
     parser.add_argument(
         '--uri', type=str, nargs='+',
-        help='instead of -c -s -g combination'
+        help=(
+            'instead of -c -s -g combination;'
+            ' {provider}.{dataset} (e.g. oke.fb15k237-train)')
     )
