@@ -139,22 +139,11 @@ class Context(app.Context):
 
         # ---
 
-        metrics = model.results['metrics']
-
         st.write('### Evaluation')
-        st.write(f'Adjusted mean rank: {metrics["adjusted_mean_rank"]:3f}')
-
-        data = {}
-        for i in (1, 3, 5, 10):
-            data[f'hits@{i}'] = {
-                kind: model.results['metrics']['hits_at_k'][kind][f'{i}']
-                for kind in ('avg', 'best', 'worst')
-            }
-
-        data['MR'] = metrics['mean_rank']
-        data['MRR'] = metrics['mean_reciprocal_rank']
-
-        st.dataframe(pd.DataFrame(data))
+        st.write(
+            'Adjusted mean rank: '
+            f'{model["metrics"]["adjusted_mean_rank"]:3f}')
+        st.dataframe(model.metrics)
 
         # ---
 
