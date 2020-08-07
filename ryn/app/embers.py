@@ -3,6 +3,7 @@
 import ryn
 from ryn import app
 from ryn.embers import keen
+from ryn.common import logging
 
 import pandas as pd
 import streamlit as st
@@ -18,6 +19,9 @@ from typing import Any
 from typing import Set
 from typing import Dict
 from typing import Tuple
+
+
+log = logging.get('app.embers')
 
 
 @dataclass
@@ -77,6 +81,7 @@ class EmberWidgets(app.Widgets):
 
 @st.cache(allow_output_mutation=True)
 def load_keen(path) -> keen.Model:
+    log.error('load_keen cache miss')
     return keen.Model.from_path(path)
 
 
@@ -104,7 +109,7 @@ class Context(app.Context):
         self._data_timestamps = defaultdict(set)
 
         for path in glob:
-            model = keen.Model.from_path(path)
+            model = load_keen(path)
             self._data_models[model.name].add(path)
             self._data_dimensions[model.dimensions].add(path)
             self._data_timestamps[model.timestamp].add(path)
@@ -142,7 +147,7 @@ class Context(app.Context):
         st.write('### Evaluation')
         st.write(
             'Adjusted mean rank: '
-            f'{model["metrics"]["adjusted_mean_rank"]:3f}')
+            f'{model.results["metrics"]["adjusted_mean_rank"]:3f}')
         st.dataframe(model.metrics)
 
         # ---
