@@ -10,6 +10,7 @@ https://github.com/pykeen/pykeen
 
 import ryn
 from ryn.graphs import split
+from ryn.graphs import graph
 from ryn.common import logging
 
 import json
@@ -19,6 +20,7 @@ import pathlib
 import textwrap
 
 from datetime import datetime
+from functools import partial
 from dataclasses import dataclass
 
 import torch
@@ -32,16 +34,75 @@ from pykeen.models import base as keen_base
 
 from typing import Any
 from typing import Dict
+from typing import List
 from typing import Union
+from typing import Tuple
+from typing import Collection
 
 
 log = logging.get('embers.keen')
+DATEFMT = '%Y.%m.%d.%H%M%S.%f'
 
 
 # ---
 
 
-DATEFMT = '%Y.%m.%d.%H%M%S.%f'
+def e2s(g: graph.Graph, e: int):
+    return f'{e}:{g.source.ents[e]}'
+
+
+def r2s(g: graph.Graph, r: int):
+    return f'{r}:{g.source.rels[r]}'
+
+
+def triple_to_str(g: graph.Graph, htr: Tuple[int]):
+    """
+
+    Transform a ryn.graphs triple to a pykeen string representation
+
+    Parameters
+    ----------
+
+    g: graph.Graph
+      ryn graph instance
+
+    htr: Tuple[int]
+      ryn graph triple
+
+    """
+    h, t, r = htr
+    return e2s(g, h), e2s(g, t), r2s(g, r)
+
+
+def triples_to_ndarray(g: graph.Graph, triples: Collection[Tuple[int]]):
+    """
+
+    Transform htr triples to hrt ndarrays of strings
+
+    Parameters
+    ----------
+
+    g: graph.Graph
+      ryn graph instance
+
+    htr: Collection[Tuple[int]]
+      ryn graph triples
+
+    Returns
+    -------
+
+    Numpy array of shape [N, 3] containing triples as
+    strings of form hrt.
+
+    """
+
+    # transform triples to ndarray and re-arrange
+    # triple columns from (h, t, r) to (h, r, t)
+    f = partial(triple_to_str, g)
+    return np.array(list(map(f, triples)))[:, (0, 2, 1)]
+
+
+# ---
 
 
 @dataclass
@@ -62,6 +123,9 @@ class TripleFactories:
     test: keen_triples.TriplesFactory
 
     def check(self):
+        ds = self.ds
+        log.info(f'! running self-check for {ds.path.name} TripleFactories')
+
         assert self.valid.num_entities <= self.train.num_entities, (
             f'{self.valid.num_entities=} > {self.train.num_entities=}')
         assert self.test.num_entities <= self.valid.num_entities, (
@@ -72,37 +136,56 @@ class TripleFactories:
         assert self.train.num_entities == len(self.ds.cw_train.entities), (
             f'{self.train.num_entities=} != {len(self.ds.cw_train.entities)=}')
 
+        # all known entities and relations are contained in the mappings
+
+        entities = 0, 2
+        relations = 1,
+
+        def _triples_to_set(triples, indexes):
+            nonlocal ds
+            arr = triples_to_ndarray(ds.g, triples)
+            return set(arr[:, indexes].flatten())
+
+        for factory in (self.train, self.valid, self.test):
+
+            _mapped = _triples_to_set(ds.cw_train.triples, entities)
+            assert len(factory.entity_to_id.keys() - _mapped) == 0, (
+                f'{(len(factory.entity_to_id.keys() - _mapped) != 0)=}')
+
+            _mapped = _triples_to_set(ds.cw_train.triples, relations)
+            assert len(factory.relation_to_id.keys() - _mapped) == 0, (
+                f'{(len(factory.relation_to_id.keys() - _mapped) == 0)=}')
+
+            _mapped = _triples_to_set(ds.cw_valid.triples, entities)
+            assert _mapped.issubset(factory.entity_to_id.keys()), (
+                f'{_mapped.issubset(factory.entity_to_id.keys())=}')
+
+            _mapped = _triples_to_set(ds.cw_valid.triples, relations)
+            assert _mapped.issubset(factory.entity_to_id.keys()), (
+                f'{_mapped.issubset(factory.entity_to_id.keys())=}')
+
     @classmethod
     def create(K, ds: split.Dataset) -> 'TripleFactories':
-
         log.info(f'creating triple factories from {ds.path}')
-
-        def _triple_to_str(htr):
-            nonlocal ds
-            h, t, r = htr
-
-            return (
-                 f'{h}:{ds.g.source.ents[h]}',
-                 f'{t}:{ds.g.source.ents[t]}',
-                 f'{r}:{ds.g.source.rels[r]}', )
-
-        def _to_ndarray(triples):
-            # transform triples to ndarray and re-arrange
-            # triple columns from (h, t, r) to (h, r, t)
-            return np.array(list(map(_triple_to_str, triples)))[:, (0, 2, 1)]
 
         log.info(f'setting seed to {ds.cfg.seed}')
         random.seed(ds.cfg.seed)
 
+        to_a = partial(triples_to_ndarray, ds.g)
+
         # keen uses its own internal indexing
         # so strip own indexes and create "translated" triple matrix
-        train, valid = keen_triples.TriplesFactory(
-            triples=_to_ndarray(ds.cw_train.triples)
-        ).split(
-            ds.cfg.train_split, random_state=ds.cfg.seed)
+        train = keen_triples.TriplesFactory(
+            triples=to_a(ds.cw_train.triples), )
 
+        # default split is 80/20
+        train, valid = train.split(
+            ds.cfg.train_split,
+            random_state=ds.cfg.seed, )
+
+        # re-use existing entity/relation mappings
         test = keen_triples.TriplesFactory(
-            triples=_to_ndarray(ds.cw_valid.triples),
+            triples=to_a(ds.cw_valid.triples),
             entity_to_id=train.entity_to_id,
             relation_to_id=train.relation_to_id, )
 
@@ -110,7 +193,6 @@ class TripleFactories:
 
         self = K(ds=ds, train=train, valid=valid, test=test)
         self.check()
-
         return self
 
 
@@ -128,7 +210,7 @@ class Model:
     path: pathlib.Path
     timestamp: datetime
 
-    # is attempted to be loaded but might fail
+    # is attempted to be loaded but may fail
     dataset: Union[split.Dataset, None]
 
     results: Dict[str, Any]
@@ -176,6 +258,47 @@ class Model:
             f'Trained: {self.timestamp.strftime("%d.%m.%Y %H:%M")}\n'
             f'Dataset: {self.metadata["dataset_name"]}\n\n'
             f'{self.metrics}\n', '  ')
+
+    #
+    # ---  PYKEEN ABSTRACTION
+    #
+
+    def predict_scores(self, triples: List[Tuple[int]]) -> Tuple[float]:
+        """
+
+        Score a triple list with the KGC model
+
+        Parameters
+        ----------
+
+        triples: List[Tuple[int]]
+          List of triples with the ids provided by ryn.graphs.graph.Graph
+          (not the internally used ids of pykeen!)
+
+        Returns
+        -------
+
+        Scores in the order of the associated triples
+
+        """
+        assert self.dataset, 'no dataset loaded'
+
+        array = triples_to_ndarray(self.dataset.g, triples)
+        batch = self.keen.triples_factory.map_triples_to_id(array)
+        batch = batch.to(device=self.keen.device)
+        scores = self.keen.predict_scores(batch)
+
+        return [float(t) for t in scores]
+
+    def predict_heads(self, t: int, r: int, **kwargs) -> pd.DataFrame:
+        tstr, rstr = e2s(self.dataset.g, t), r2s(self.dataset.g, r)
+        return self.keen.predict_heads(rstr, tstr, **kwargs)
+
+    def predict_tails(self, h: int, r: int, **kwargs):
+        hstr, rstr = e2s(self.dataset.g, h), r2s(self.dataset.g, r)
+        return self.keen.predict_tails(hstr, rstr, **kwargs)
+
+    # ---
 
     @classmethod
     def from_path(K, path: Union[str, pathlib.Path]):
