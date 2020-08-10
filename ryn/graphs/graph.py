@@ -1106,29 +1106,32 @@ class Graph:
         with path.open(mode='rb') as fd:
             return pickle.load(fd)
 
+    #
+    # ---| SUGAR
+    #
+
+    def tabulate_triples(self, triples):
+        from tabulate import tabulate
+
+        src = self.source
+
+        rows = [(
+            h, src.ents[h],
+            t, src.ents[t],
+            r, src.rels[r])
+                for h, t, r in triples]
+
+        return tabulate(rows, headers=('', 'head', '', 'tail', '', 'relation'))
+
+    def str_triple(self, triple):
+        h, t, r = triple
+        return (
+            f'{self.source.ents[h]} | '
+            f'{self.source.ents[t]} | '
+            f'{self.source.rels[r]}')
+
 
 # ---
-
-
-# TODO move to Graph
-
-
-def tabulate_triples(g, triples):
-    from tabulate import tabulate
-
-    rows = [
-        (g.source.ents[h], g.source.ents[t], g.source.rels[r])
-        for h, t, r in triples]
-
-    return tabulate(rows, headers=('head', 'tail', 'relation'))
-
-
-def str_triple(g, triple):
-    h, t, r = triple
-    return (
-        f'{g.source.ents[h]} | '
-        f'{g.source.ents[t]} | '
-        f'{g.source.rels[r]}')
 
 
 def _cli(args):
