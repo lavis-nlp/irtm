@@ -7,10 +7,14 @@ import os
 import pathlib
 import inspect
 
+from tqdm import tqdm as _tqdm
+
 from datetime import datetime
+from functools import partial
 
 
 log = logging.get('common.helper')
+tqdm = partial(_tqdm, ncols=80)
 
 
 # --- DECORATOR
