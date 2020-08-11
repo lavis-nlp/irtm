@@ -176,6 +176,12 @@ class Dataset:
 
     # ---
 
+    @property
+    def name(self):
+        return self.path.name
+
+    # ---
+
     def __str__(self) -> str:
         s = (
             'RYN.SPLIT DATASET\n'
@@ -205,7 +211,7 @@ class Dataset:
         Run some self diagnosis
 
         """
-        log.info(f'running self check for {self.path.name}')
+        log.info(f'! running self-check for {self.path.name} Dataset')
 
         # no triples must be shared between splits
 
