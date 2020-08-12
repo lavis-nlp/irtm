@@ -207,6 +207,30 @@ class GraphImport:
 
     # --
 
+    # not using _set_all for backwards compatibility
+    # with older pickled versions - FIXME migrate?
+    @property
+    def e2id(self):
+        try:
+            self._e2id
+        except AttributeError:
+            rev = frozendict({v: k for k, v in self.ents.items()})
+            self._set('_e2id', rev)
+
+        return self._e2id
+
+    @property
+    def r2id(self):
+        try:
+            self._r2id
+        except AttributeError:
+            rev = frozendict({v: k for k, v in self.ents.items()})
+            self._set('_r2id', rev)
+
+        return self._r2id
+
+    # ---
+
     def _set(self, prop: str, *args, **kwargs):
         object.__setattr__(self, prop, *args, **kwargs)
 
@@ -949,9 +973,6 @@ class Graph:
     def stroll(self,
                center: int = None,
                cutoff: int = None) -> Stroll:
-
-        assert center is not None
-        assert cutoff is not None
         """
 
         Samples all walks, patterns and grounds around a given graph center.
@@ -981,6 +1002,9 @@ class Graph:
         How cycles are handled is debatable...
 
         """
+        assert center is not None
+        assert cutoff is not None
+
         # log.info(
         #     f'strolling over {self.name}' +
         #     f'({self.source.ents[center]}) cutoff={cutoff}')
