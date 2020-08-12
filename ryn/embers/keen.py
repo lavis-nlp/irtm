@@ -73,6 +73,10 @@ def _cached_predictions(predict_all):
     return _inner
 
 
+def _triples_to_set(t: torch.Tensor) -> Set[Tuple[int]]:
+    return set(map(lambda triple: tuple(triple.tolist()), t))
+
+
 # ---
 
 
@@ -261,8 +265,8 @@ class TripleFactories:
                 f'{_mapped.issubset(factory.entity_to_id.keys())=}')
 
             _mapped = _triples_to_set(ds.cw_valid.triples, relations)
-            assert _mapped.issubset(factory.entity_to_id.keys()), (
-                f'{_mapped.issubset(factory.entity_to_id.keys())=}')
+            assert _mapped.issubset(factory.relation_to_id.keys()), (
+                f'{_mapped.issubset(factory.relation_to_id.keys())=}')
 
     @classmethod
     def create(K, ds: split.Dataset) -> 'TripleFactories':
@@ -318,6 +322,7 @@ class Model:
     metadata: Dict[str, Any]
 
     keen: keen_base.Model  # which is a torch.nn.Module
+    triple_factories: TripleFactories
 
     @property
     def name(self) -> str:
@@ -335,20 +340,30 @@ class Model:
         return self.parameters['model_kwargs']['embedding_dim']
 
     @property
+    @lru_cache
     def metrics(self) -> pd.DataFrame:
         metrics = self.results['metrics']
+        hits_at_k = metrics['hits_at_k']['both']
 
         data = {}
         for i in (1, 3, 5, 10):
             data[f'hits@{i}'] = {
-                kind: self.results['metrics']['hits_at_k'][kind][f'{i}']
+                kind: hits_at_k[kind][f'{i}']
                 for kind in ('avg', 'best', 'worst')
             }
 
-        data['MR'] = metrics['mean_rank']
-        data['MRR'] = metrics['mean_reciprocal_rank']
+        data['MR'] = metrics['mean_rank']['both']
+        data['MRR'] = metrics['mean_reciprocal_rank']['both']
 
         return pd.DataFrame(data)
+
+    # ---
+
+    @property
+    def ds(self) -> split.Dataset:
+        return self.dataset
+
+    # ---
 
     def __str__(self) -> str:
         title = f'\nKGC Model {self.name}-{self.dimensions}\n'
@@ -361,7 +376,11 @@ class Model:
     def __hash__(self) -> int:
         return hash(self.uri)
 
-    # ---
+    #
+    # ---  PYKEEN ABSTRACTION
+    #
+
+    # translate ryn graph ids to pykeen ids
 
     def e2s(self, e: int) -> str:
         return e2s(self.dataset.g, e)
@@ -370,21 +389,44 @@ class Model:
         return r2s(self.dataset.g, r)
 
     def e2id(self, e: int) -> int:
-        return self.keen.triples_factory.entity_to_id[self.e2s(e)]
+        try:
+            return self.keen.triples_factory.entity_to_id[self.e2s(e)]
+
+        # open world entities
+        except KeyError:
+            return -1
 
     def r2id(self, r: int) -> int:
         return self.keen.triples_factory.relation_to_id[self.r2s(r)]
 
+    def triple2id(self, htr: Tuple[int]) -> Tuple[int]:
+        h, t, r = htr
+
+        assert h in self.ds.g.source.ents
+        assert t in self.ds.g.source.ents
+        assert r in self.ds.g.source.rels
+
+        return self.e2id(h), self.r2id(r), self.e2id(t)
+
+    def triples2id(self, triples: Collection[Tuple[int]]) -> List[Tuple[int]]:
+        return list(map(self.triple2id, triples))
+
     @property
     @lru_cache
     def mapped_train_triples(self) -> Set[Tuple[int]]:
-        return set(map(
-            lambda t: tuple(t.tolist()),
-            self.keen.triples_factory.mapped_triples))
+        return _triples_to_set(self.triple_factories.train.mapped_triples)
 
-    #
-    # ---  PYKEEN ABSTRACTION
-    #
+    @property
+    @lru_cache
+    def mapped_valid_triples(self) -> Set[Tuple[int]]:
+        return _triples_to_set(self.triple_factories.valid.mapped_triples)
+
+    @property
+    @lru_cache
+    def mapped_test_triples(self) -> Set[Tuple[int]]:
+        return _triples_to_set(self.triple_factories.test.mapped_triples)
+
+    # ---
 
     def predict_scores(self, triples: List[Tuple[int]]) -> Tuple[float]:
         """
@@ -459,9 +501,7 @@ class Model:
 
     # @_cached_predictions
     def _predict_all(self, e: int, tails: bool) -> pd.DataFrame:
-
         # FIXME h=1333 (warlord) is unknown
-
         # awaiting https://github.com/pykeen/pykeen/pull/51
 
         e = self.e2id(e)
@@ -495,20 +535,35 @@ class Model:
             res[i, :, 2 if tails else 0] = eids
             res[i, :, 1] = r
 
-        # build dataframe
-
         n = len(rids) * len(eids)
         res = res.view(n, 3)
 
-        in_train = list(map(
-            lambda t: tuple(t.tolist()) in self.mapped_train_triples,
-            res))
+        print('containment')
 
-        _to_df = partial(tensor_to_df, self.keen.triples_factory)
-        df = _to_df(res, scores=y.view((n, )), train=in_train, )
+        # check split the triples occur in
+        def _is_in(ref):
+            return [tuple(triple.tolist()) in ref for triple in res]
+
+        # build dataframe
+        # FIXME slow; look at vectorized options (novel in pykeen)
+        in_train = _is_in(self.mapped_train_triples)
+        in_valid = _is_in(self.mapped_valid_triples)
+        in_test = _is_in(self.mapped_test_triples)
+
+        in_cw = _is_in(set(self.triples2id(
+            self.ds.cw_train.triples | self.ds.cw_valid.triples)))
+        in_ow = _is_in(set(self.triples2id(
+            self.ds.ow_valid.triples | self.ds.ow_test.triples)))
+
+        print('df construction')
+
+        df = tensor_to_df(
+            self.keen.triples_factory, res,
+            scores=y.view((n, )),
+            cw=in_cw, ow=in_ow,
+            train=in_train, valid=in_valid, test=in_test, )
 
         df = df.sort_values(by='scores', ascending=False)
-
         return df
 
     def predict_all_tails(self, *, h: int = None) -> pd.DataFrame:
@@ -580,6 +635,13 @@ class Model:
         log.info(f'loading pykeen model from {keen_path}')
         keen_model = torch.load(keen_path)
 
+        log.info('reconstructing triple factories')
+        triple_factories = TripleFactories.create(dataset)
+
+        assert triple_factories.train.mapped_triples.equal(
+            keen_model.triples_factory.mapped_triples), (
+                'cannot reproduce triple split')
+
         return K(
             path=path,
             timestamp=timestamp,
@@ -588,6 +650,7 @@ class Model:
             metadata=metadata,
             dataset=dataset,
             keen=keen_model,
+            triple_factories=triple_factories,
         )
 
 
