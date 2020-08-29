@@ -21,8 +21,27 @@ tqdm = partial(_tqdm, ncols=80)
 
 
 def notnone(fn):
+
+    # def f(a, b)
+    # spec: args=['a', 'b'], defaults=None, kwonlyargs=[]
+    #
+    # def f(a, b, foo=None, bar=None)
+    # spec: args=['a', 'b', 'foo', 'bar'], defaults=(None, None), kwonlyargs=[]
+    #
+    # def f(foo=None, bar=None)
+    # spec: args=['foo', 'bar'], defaults=(None, None), kwonlyargs=[]
+    #
+    # def f(*, foo=None, bar=None)
+    # spec: args=[], defaults=None, kwonlyargs=['foo', 'bar']
+
     spec = inspect.getfullargspec(fn)
-    kwarg_names = spec.args[-len(spec.defaults):]
+
+    try:
+        kwarg_names = spec.args[-len(spec.defaults):]
+
+    # spec.defaults is None for kwonly functions
+    except TypeError:
+        kwarg_names = spec.kwonlyargs
 
     def _proxy(*args, **kwargs):
         for argname in kwarg_names:
