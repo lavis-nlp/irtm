@@ -104,6 +104,7 @@ class Config:
 @dataclass(eq=False)  # id based hashing
 class Part:
 
+    name: str
     owe: Set[int]  # open world entities
     triples: Set[Tuple[int]]
     concepts: Set[int]
@@ -290,7 +291,7 @@ class Dataset:
         id2ent = _load_dict(path / 'entity2id.txt')
         id2rel = _load_dict(path / 'relation2id.txt')
 
-        def _load_part(fp, seen: Set[int]) -> Part:
+        def _load_part(fp, seen: Set[int], name: str) -> Part:
             nonlocal concepts
 
             with fp.open(mode='r') as fd:
@@ -303,7 +304,11 @@ class Dataset:
             assert num == len(triples)
 
             ents = _ents_from_triples(triples)
-            part = Part(triples=triples, owe=ents - seen, concepts=concepts)
+            part = Part(
+                name=name.replace('_', '.'),
+                triples=triples,
+                owe=ents - seen,
+                concepts=concepts)
 
             return part
 
@@ -316,7 +321,7 @@ class Dataset:
                 ('ow_valid', path / 'ow.valid2id.txt'),
                 ('ow_test', path / 'ow.test2id.txt'), ):
 
-            part = _load_part(fp, seen)
+            part = _load_part(fp, seen, name)
             seen |= part.entities
             parts[name] = part
 
