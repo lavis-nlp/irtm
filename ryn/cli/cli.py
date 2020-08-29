@@ -4,6 +4,7 @@
 
 import ryn
 from ryn import app
+from ryn import text
 from ryn import tests
 from ryn import graphs
 from ryn import embers
@@ -21,6 +22,7 @@ mods = {
     'app': app,
     'graphs': graphs,
     'embers': embers,
+    'text': text,
     'tests': tests,
 }
 

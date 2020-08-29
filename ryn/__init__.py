@@ -18,6 +18,7 @@ class ENV:
     # data heap
 
     DATA_DIR:  pathlib.Path = _root_path / _DATA_DIR
+    TEXT_DIR:  pathlib.Path = _root_path / _DATA_DIR / 'text'
     CACHE_DIR: pathlib.Path = _root_path / _DATA_DIR / 'cache'
     SPLIT_DIR: pathlib.Path = _root_path / _DATA_DIR / 'split'
     EMBER_DIR: pathlib.Path = _root_path / _DATA_DIR / 'ember'

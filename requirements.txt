@@ -1,5 +1,6 @@
 # core
 tqdm
+h5py
 numpy
 pandas
 pykeen
@@ -8,6 +9,7 @@ networkx
 tabulate
 configobj
 gitpython
+transformers
 
 # tests
 inotify
