@@ -1,6 +1,4 @@
-# --- | OPEN KE IMPORTER
-#       https://github.com/thunlp/OpenKE
-
+# -*- coding: utf-8 -*-
 
 import ryn
 from ryn import RynError
@@ -40,6 +38,10 @@ def _oke_parse(path: str = None, fn=None) -> Generator[Any, None, None]:
         fd.readline()
         for i, line in enumerate(fd):
             yield line if fn is None else fn(line)
+
+
+# --- | OPEN KE IMPORTER
+#       https://github.com/thunlp/OpenKE
 
 
 def load_oke(
