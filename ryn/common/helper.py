@@ -7,6 +7,7 @@ import os
 import pathlib
 import inspect
 
+import git
 from tqdm import tqdm as _tqdm
 
 from datetime import datetime
@@ -83,3 +84,9 @@ def notebook():
 
     logger = logging.logging.getLogger()
     logger.setLevel(logging.logging.INFO)
+
+
+def git_hash() -> str:
+    repo = git.Repo(search_parent_directories=True)
+    # dirty = '-dirty' if repo.is_dirty else ''
+    return str(repo.head.object.hexsha)

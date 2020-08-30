@@ -24,7 +24,6 @@ from functools import lru_cache
 from dataclasses import dataclass
 from itertools import combinations
 
-import git
 from tqdm import tqdm as _tqdm
 
 from typing import Set
@@ -65,10 +64,7 @@ class Config:
     date: datetime = None
 
     def __post_init__(self):
-        repo = git.Repo(search_parent_directories=True)
-        # dirty = '-dirty' if repo.is_dirty else ''
-        self.git = f'{repo.head.object.hexsha}'
-
+        self.git = helper.git_hash()
         self.date = datetime.now()
 
     def __str__(self) -> str:
