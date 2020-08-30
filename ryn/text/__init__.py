@@ -38,8 +38,8 @@ def args(parser):
         help='path to sqlite text database')
 
     parser.add_argument(
-        '--contexts', type=int,
-        help='(max) number of contexts per entity')
+        '--sentences', type=int,
+        help='(max) number of sentences per entity')
 
     parser.add_argument(
         '--tokens', type=int,
