@@ -62,6 +62,7 @@ class TransformContext:
 
     fd_sentences: IO[str]
     fd_indexes: IO[str]
+    fd_nocontext: IO[str]
 
     h5fd: h5py.File
     tokenizer: Tokenizer
@@ -90,6 +91,8 @@ def _transform_split(ctx: TransformContext, part: split.Part):
         '# Format: <ID> <NAME> <SENTENCE>\n'.encode())
     ctx.fd_indexes.write(
         '# Format: <ID>, <IDXS>, <TOKEN_TYPES>, <ATT_MASK>\n'.encode())
+    ctx.fd_nocontext.write(
+        'No contexts were found for:\n'.encode())
 
     # ---
 
@@ -100,9 +103,13 @@ def _transform_split(ctx: TransformContext, part: split.Part):
     log.info(f'creating dataset of size {shape}')
     ds = ctx.h5fd.create_dataset(part.name, shape, dtype='uint16')
 
-    gen = ((e, ctx.dataset.id2ent[e]) for e in list(ents)[:10])
+    gen = list((e, ctx.dataset.id2ent[e]) for e in ents)
     for e, name in helper.tqdm(gen):
         result = ctx.select.by_entity(name)  # TODO replace with id selection
+        if not result:
+            ctx.fd_nocontext.write(f'{e} {name}\n'.encode())
+            continue
+
         texts = list(zip(*result))[1]
 
         # TODO remove; then do '\n'.join(...).split('\n')
@@ -172,12 +179,15 @@ def transform(
     # --
 
     with contextlib.ExitStack() as stack:
-
         ctx = TransformContext(
+
             fd_sentences=stack.enter_context(
                 gzip.open(str(p_out / 'sentences.txt.gz'), mode='wb')),
             fd_indexes=stack.enter_context(
                 gzip.open(str(p_out / 'indexes.txt.gz'), mode='wb')),
+            fd_nocontext=stack.enter_context(
+                gzip.open(str(p_out / 'nocontext.txt.gz'), mode='wb')),
+
             select=stack.enter_context(
                 loader.SQLite(database=database)),
             h5fd=stack.enter_context(
