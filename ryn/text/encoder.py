@@ -9,11 +9,13 @@ from ryn.common import helper
 from ryn.common import logging
 
 import gzip
+import json
 import random
 import pathlib
 import contextlib
 
 from datetime import datetime
+from functools import partial
 from dataclasses import dataclass
 
 import h5py
@@ -85,7 +87,7 @@ def _transform_split(ctx: TransformContext, part: split.Part):
     log.info(f'setting seed to {ctx.dataset.cfg.seed}')
     random.seed(ctx.dataset.cfg.seed)
 
-    # ---
+    # init text files
 
     ctx.fd_sentences.write(
         '# Format: <ID> <NAME> <SENTENCE>\n'.encode())
@@ -94,37 +96,56 @@ def _transform_split(ctx: TransformContext, part: split.Part):
     ctx.fd_nocontext.write(
         'No contexts were found for:\n'.encode())
 
-    # ---
+    # init h5
 
     ents = part.entities
     shape = len(ents), ctx.sentences, 3, ctx.tokens
 
     # BERT vocabulary size is 30k -> 2**16 is around 65k
     log.info(f'creating dataset of size {shape}')
-    ds = ctx.h5fd.create_dataset(part.name, shape, dtype='uint16')
+    assert len(ents) < 2**16, 'switch to uint32'
 
-    gen = list((e, ctx.dataset.id2ent[e]) for e in ents)
-    for e, name in helper.tqdm(gen):
+    h5_grp = ctx.h5fd.create_group(part.name)
+
+    h5_idx = h5_grp.create_dataset('idx', shape, dtype='uint16')
+    h5_len = h5_grp.create_dataset('len', shape[:2], dtype='uint16')
+    h5_map = h5_grp.create_dataset('map', shape[:1], dtype='uint16')
+
+    # iterate entities
+
+    gen = list((i, e, ctx.dataset.id2ent[e]) for i, e in enumerate(ents))
+    assert (len(gen) == shape[0]) and (shape[0] == len(ents))
+
+    for i, e, name in helper.tqdm(gen):
         result = ctx.select.by_entity(name)  # TODO replace with id selection
         if not result:
+            log.info(f'! no contexts found for {e}: {name}')
             ctx.fd_nocontext.write(f'{e} {name}\n'.encode())
             continue
 
         texts = list(zip(*result))[1]
 
+        # process text
         # TODO remove; then do '\n'.join(...).split('\n')
+
         texts = map(split_sentences, texts)
         sentences = [t for sub in texts for t in sub]
 
+        # select text
+
         random.shuffle(sentences)
         sentences = sentences[:ctx.sentences]
+
+        # tokenize and map to vocabulary ids
+
         toks = ctx.tokenizer(
             sentences=sentences,
             padding='max_length',
             max_length=ctx.tokens,
             truncation=True)
 
-        # write
+        # write clear text
+
         ctx.fd_sentences.write(('\n'.join(
             f'{e} {name} {s}'
             for s in toks['decoded']) + '\n').encode())
@@ -136,10 +157,20 @@ def _transform_split(ctx: TransformContext, part: split.Part):
             f'{_ints2str(toks["attention_mask"][i])}'
             for i, _ in enumerate(sentences)) + '\n').encode())
 
+        # write h5
+
         n = len(sentences)
-        ds[e, :n, 0] = toks['input_ids']
-        ds[e, :n, 1] = toks['token_type_ids']
-        ds[e, :n, 2] = toks['attention_mask']
+
+        # entity position mapping
+        h5_map[i] = e
+
+        # vocabulary indexes
+        h5_idx[i, :n, 0] = toks['input_ids']
+        h5_idx[i, :n, 1] = toks['token_type_ids']
+        h5_idx[i, :n, 2] = toks['attention_mask']
+
+        # sequence lengths
+        h5_len[i] = (h5_idx[i, :, 0] != 0).sum(axis=1)
 
 
 @helper.notnone
@@ -154,44 +185,52 @@ def transform(
 
     Tokenize and map the text for a dataset
 
+    The produced files can be read by text.model.Data
+
     """
 
-    p_out = (
-        ryn.ENV.TEXT_DIR /
-        'transformed' /
-        dataset.name /
-        f'{model}.{sentences}'
-    )
+    name = f'{model}.{sentences}.{tokens}'
+    p_out = ryn.ENV.TEXT_DIR / 'data' / dataset.name / name
+
+    if p_out.exists():
+        raise ryn.RynError(f'dataset already exists: {p_out}')
 
     log.info(f'creating {p_out}')
-    p_out.mkdir(exist_ok=True, parents=True)
+    p_out.mkdir(parents=True)
 
-    with (p_out / 'info.txt').open(mode='w') as fd:
-        fd.write('\n'.join((
-            f'created: {datetime.now()}',
-            f'git hash: {helper.git_hash()}',
-            f'dataset: {dataset.name}',
-            f'database: {pathlib.Path(database).name}',
-            f'sentences: {sentences}',
-            f'tokens: {tokens}',
-            f'model: {model}')) + '\n')
+    with (p_out / 'info.json').open(mode='w') as fd:
+
+        info = dict(
+            created=datetime.now().isoformat(),
+            git_hash=helper.git_hash(),
+            dataset=dataset.name,
+            database=pathlib.Path(database).name,
+            sentences=sentences,
+            tokens=tokens,
+            model=model,
+        )
+
+        json.dump(info, fd, indent=2)
 
     # --
 
-    with contextlib.ExitStack() as stack:
+    def _get_ctx(stack, split: str):
+        gopen = partial(gzip.open, mode='wb')
+
         ctx = TransformContext(
 
             fd_sentences=stack.enter_context(
-                gzip.open(str(p_out / 'sentences.txt.gz'), mode='wb')),
+                gopen(str(p_out / f'{split}-sentences.txt.gz'))),
             fd_indexes=stack.enter_context(
-                gzip.open(str(p_out / 'indexes.txt.gz'), mode='wb')),
+                gopen(str(p_out / f'{split}-indexes.txt.gz'))),
             fd_nocontext=stack.enter_context(
-                gzip.open(str(p_out / 'nocontext.txt.gz'), mode='wb')),
+                gopen(str(p_out / f'{split}-nocontext.txt.gz'))),
 
             select=stack.enter_context(
                 loader.SQLite(database=database)),
+
             h5fd=stack.enter_context(
-                h5py.File(str(p_out / 'idxs.h5'), mode='w')),
+                h5py.File(str(p_out / 'idxs.h5'), mode='a')),
 
             tokenizer=Tokenizer(model=model),
             dataset=dataset,
@@ -199,7 +238,25 @@ def transform(
             tokens=tokens,
         )
 
-        _transform_split(ctx, dataset.cw_train)
+        return ctx
+
+    with contextlib.ExitStack() as stack:
+
+        print('\nclosed world - train:')
+        log.info('! transforming: closed world - train')
+        _transform_split(_get_ctx(stack, 'cw.train'), dataset.cw_train)
+
+        print('\nclosed world - valid:')
+        log.info('! transforming: closed world - valid')
+        _transform_split(_get_ctx(stack, 'cw.valid'), dataset.cw_valid)
+
+        print('\nopen world - valid:')
+        log.info('! transforming: open world - valid')
+        _transform_split(_get_ctx(stack, 'ow.valid'), dataset.ow_valid)
+
+        print('\nopen world - test:')
+        log.info('! transforming: open world - test')
+        _transform_split(_get_ctx(stack, 'ow.test'), dataset.ow_test)
 
 
 def _transform_from_args(args):
