@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-from ryn.text import encoder
+from ryn.text import data
 from ryn.common import logging
 
 
@@ -14,8 +14,8 @@ desc = 'work with text data'
 
 
 CMDS = {
-    'encoder': {
-        'transform': encoder._transform_from_args,
+    'data': {
+        'transform': data._transform_from_args,
     },
 }
 
@@ -27,7 +27,7 @@ def args(parser):
 
     parser.add_argument(
         'subcmd', type=str,
-        help=f'encoder:  ({", ".join(CMDS["encoder"])}),', )
+        help=f'encoder:  ({", ".join(CMDS["data"])}),', )
 
     parser.add_argument(
         '--dataset', type=str,
