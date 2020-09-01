@@ -25,6 +25,7 @@ from nltk.tokenize import sent_tokenize as split_sentences
 from typing import IO
 from typing import List
 from typing import Dict
+from typing import Union
 
 
 log = logging.get('text.encoder')
@@ -50,11 +51,6 @@ class Tokenizer:
         res = self._tok(sentences, **kwargs)
         decoded = [self._tok.decode(ids) for ids in res['input_ids']]
         return {**res, **{'decoded': decoded}}
-
-
-class Model:
-
-    pass
 
 
 # ---
@@ -97,8 +93,6 @@ def _transform_split(ctx: TransformContext, part: split.Part):
         '# Format: <ID> <NAME> <TOKEN1> <TOKEN2> ...\n'.encode())
     ctx.fd_nocontext.write(
         '# Format: <ID> <NAME>\n'.encode())
-
-    # init h5
 
     ents = list(part.entities)
     shape = len(ents), ctx.sentences, 3, ctx.tokens
@@ -247,5 +241,106 @@ def _transform_from_args(args):
         model=args.model, )
 
 
-def embed():
-    pass
+@dataclass
+class Part:
+    """
+    Data for a specific split
+
+    Initialized in model.Data
+
+    """
+
+    name: str  # e.g. cw.trian (matches split.Part.name)
+    no_context: Dict[int, str]
+
+    @classmethod
+    def load(
+            K,
+            name: str = None,
+            path: pathlib.Path = None):
+
+        # no contexts
+
+        no_context_file = f'{name}-nocontext.txt.gz'
+        no_context_path = path / no_context_file
+
+        with gzip.open(str(no_context_path), mode='r') as fd:
+            fd.readline()  # skip head comment
+
+            no_context = {
+                int(k): v for k, v in (
+                    line.split(' ', maxsplit=1) for line in (
+                        fd.read().decode().strip().split('\n')))}
+
+        log.info(
+            f'loaded {len(no_context)} contextless entities '
+            f'from {no_context_path}')
+
+        return K(name=name, no_context=no_context)
+
+
+@dataclass
+class Dataset:
+    """
+
+    Tokenized text data ready to be used by a model
+
+    This data is produced by ryn.text.encoder.transform.
+    Files required for loading:
+
+      - info.json
+      - idxs.h5
+      - <SPLIT>-nocontext.txt.gz
+
+    """
+
+    created: datetime
+    git_hash: str
+
+    model: str
+    dataset: str
+    database: str
+
+    sentences: int
+    tokens: int
+
+    cw_train: Part
+    cw_valid: Part
+    ow_valid: Part
+    ow_test: Part
+
+    @property
+    def name(self) -> str:
+        return (
+            f'{self.dataset}/{self.database}/'
+            f'{self.model}.{self.sentences}.{self.tokens}')
+
+    def close(self):
+        log.info(f'closing model.Data for {self.name}')
+        self.h5fd.close()
+
+    @classmethod
+    def load(K, path: Union[str, pathlib.Path]):
+        path = pathlib.Path(path)
+
+        with (path / 'info.json').open(mode='r') as fd:
+            info = json.load(fd)
+
+        data = Dataset(
+            created=datetime.fromisoformat(info['created']),
+            git_hash=info['git_hash'],
+            model=info['model'],
+            dataset=info['dataset'],
+            database=info['database'],
+            sentences=info['sentences'],
+            tokens=info['tokens'],
+
+            cw_train=Part.load('cw.train', path),
+            cw_valid=Part.load('cw.valid', path),
+            ow_valid=Part.load('ow.valid', path),
+            ow_test=Part.load('ow.test', path),
+        )
+
+        log.info('loaded {data.name}')
+
+        return data
