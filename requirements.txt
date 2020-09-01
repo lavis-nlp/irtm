@@ -1,6 +1,5 @@
 # core
 tqdm
-h5py
 numpy
 pandas
 pykeen
