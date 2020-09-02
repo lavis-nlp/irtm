@@ -251,9 +251,11 @@ class Part:
 
     """
 
-    name: str  # e.g. cw.trian (matches split.Part.name)
+    name: str  # e.g. cw.train (matches split.Part.name)
     no_context: Dict[int, str]
+
     id2toks: Dict[int, List[str]]
+    id2ent: Dict[int, str]
 
     @classmethod
     @helper.notnone
@@ -264,29 +266,36 @@ class Part:
         tokens_path = path / f'{name}-tokenized.txt.gz'
         with gzip.open(str(tokens_path), mode='r') as fd:
             fd.readline()  # skip head comment
-            id2toks = defaultdict(list)
-            for tokens in map(str.split, map(bytes.decode, fd.readlines())):
-                id2toks[int(tokens[0])].append(tokens[1:])
+            id2ent, id2toks = {}, defaultdict(list)
 
-        log.info(
-            f'loaded {len(id2toks)} entities and their sentences')
+            for line in map(bytes.decode, fd.readlines()):
+                parts = line.split(',', maxsplit=2)
+                e_str, e_name, tokens = map(str.strip, parts)
+                e = int(e_str)
+
+                id2ent[e] = e_name
+                id2toks[e].append(tokens)
+
+        log.info(f'loaded {len(id2toks)} entities and their sentences')
 
         # no contexts
 
         no_context_path = path / f'{name}-nocontext.txt.gz'
         with gzip.open(str(no_context_path), mode='r') as fd:
             fd.readline()  # skip head comment
+            lines = fd.read().decode().strip().split('\n')
+            items = (line.split(',', maxsplit=1) for line in lines)
 
-            no_context = {
-                int(k): v for k, v in (
-                    line.split(' ', maxsplit=1) for line in (
-                        fd.read().decode().strip().split('\n')))}
+            no_context = {int(k): v for k, v in items}
 
         log.info(
             f'loaded {len(no_context)} contextless entities '
             f'from {no_context_path}')
 
-        return K(name=name, no_context=no_context, id2toks=id2toks)
+        return K(
+            name=name,
+            id2toks=id2toks, id2ent=id2ent,
+            no_context=no_context)
 
 
 @dataclass
