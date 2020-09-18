@@ -9,6 +9,7 @@ Create graph splits exposing tbox proxies.
 import ryn
 from ryn.graphs import graph
 from ryn.graphs import loader
+from ryn.common import helper
 from ryn.common import logging
 
 import pickle
@@ -145,6 +146,14 @@ class Part:
             f'entities: {len(self.entities)}\n'
             f'heads: {len(self.heads)}\n'
             f'tails: {len(self.tails)}'
+        )
+
+    def __or__(self, other: 'Part') -> 'Part':
+        return Part(
+            name=f'{self.name}|{other.name}',
+            owe=self.owe | other.owe,
+            triples=self.triples | other.triples,
+            concepts=self.concepts | other.concepts,
         )
 
 
