@@ -257,6 +257,14 @@ class Part:
     id2toks: Dict[int, List[str]]
     id2ent: Dict[int, str]
 
+    def __or__(self, other: 'Part') -> 'Part':
+        return Part(
+            name=f'{self.name}|{other.name}',
+            no_context={**self.no_context, **other.no_context},
+            id2toks={**self.id2toks, **other.id2toks},
+            id2ent={**self.id2ent, **other.id2ent},
+        )
+
     @classmethod
     @helper.notnone
     def load(K, *, name: str = None, path: pathlib.Path = None):
@@ -340,7 +348,7 @@ class Dataset:
 
     @classmethod
     @helper.notnone
-    def load(K, *, path: Union[str, pathlib.Path]):
+    def load(K, path: Union[str, pathlib.Path]):
         path = pathlib.Path(path)
 
         with (path / 'info.json').open(mode='r') as fd:
