@@ -596,9 +596,9 @@ def create(g: graph.Graph, cfg: Config):
     name = f'{g.name.split("-")[0]}'
     name += f'_{cfg.seed}_{cfg.threshold}'
 
-    log.info(f'! creating dataset {name=}; set seed to {cfg.seed}')
+    log.info(f'! creating dataset {name=}')
 
-    random.seed(cfg.seed)
+    helper.seed(cfg.seed)
     Splitter(g=g, cfg=cfg, name=name).create()
 
 

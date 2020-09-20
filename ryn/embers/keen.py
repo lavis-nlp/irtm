@@ -11,12 +11,12 @@ https://github.com/pykeen/pykeen
 import ryn
 from ryn.graphs import split
 from ryn.graphs import graph
+from ryn.common import helper
 from ryn.common import logging
 
 import json
 import copy
 import pickle
-import random
 import pathlib
 import textwrap
 
@@ -29,7 +29,8 @@ import torch
 import numpy as np
 import pandas as pd
 
-from pykeen import pipeline
+# from pykeen import pipeline
+from pykeen.hpo import hpo_pipeline
 from pykeen import triples as keen_triples
 from pykeen.models import base as keen_base
 
@@ -272,8 +273,7 @@ class TripleFactories:
     def create(K, ds: split.Dataset) -> 'TripleFactories':
         log.info(f'creating triple factories from {ds.path}')
 
-        log.info(f'setting seed to {ds.cfg.seed}')
-        random.seed(ds.cfg.seed)
+        helper.seed(ds.cfg.seed)
 
         to_a = partial(triples_to_ndarray, ds.g)
 
@@ -663,7 +663,7 @@ def train(tfs: TripleFactories, **kwargs):
         random_seed=tfs.ds.cfg.seed,
     ), **kwargs}
 
-    return pipeline.pipeline(
+    return hpo_pipeline(
 
         training_triples_factory=tfs.train,
         validation_triples_factory=tfs.valid,
@@ -685,7 +685,6 @@ def train(tfs: TripleFactories, **kwargs):
 class Config:
 
     emb_dim: int
-    batch_size: int
     model: str
 
 
@@ -695,9 +694,9 @@ def run():
 
     path = ryn.ENV.SPLIT_DIR / 'oke.fb15k237_30061990_50/'
 
-    epochs = 3000
+    # epochs = 3000
     configs = [
-        Config(model='DistMult', emb_dim=256, batch_size=512),
+        Config(model='DistMult', emb_dim=256)
     ]
 
     ds = split.Dataset.load(path)
@@ -707,25 +706,26 @@ def run():
         print(f'\nrunning {config.model}-{config.emb_dim} {ds.path.name}\n')
 
         kwargs = dict(
+            n_trials=30,
             model=config.model,
-            model_kwargs=dict(embedding_dim=config.emb_dim),
+            # model_kwargs=dict(embedding_dim=config.emb_dim),
 
-            optimizer='Adagrad',
-            optimizer_kwargs=dict(lr=0.01),
+            # optimizer='Adagrad',
+            # optimizer_kwargs=dict(lr=0.01),
 
             # loss='CrossEntropyLoss',
 
-            training_kwargs=dict(
-                num_epochs=epochs,
-                # batch_size=config.batch_size,
-            ),
-            evaluation_kwargs=dict(
-                # batch_size=config.batch_size,
-            ),
+            # training_kwargs=dict(
+            #     num_epochs=epochs,
+            #     batch_size=256,
+            # ),
+            # evaluation_kwargs=dict(
+            #     batch_size=256,
+            # ),
 
             stopper='early',
             stopper_kwargs=dict(
-                frequency=5, patience=50, delta=0.002),
+                frequency=50, patience=10, delta=0.002),
         )
 
         res = train(tfs=tfs, **kwargs)
@@ -735,7 +735,7 @@ def run():
             str(config.emb_dim),
             str(datetime.now().strftime(DATEFMT)), ))
 
-        path = ryn.ENV.EMBER_DIR / ds.path.name / fname
+        path = ryn.ENV.EMBER_DIR / 'hpo' / ds.path.name / fname
         log.info(f'writing results to {path}')
 
         res.save_to_directory(str(path))

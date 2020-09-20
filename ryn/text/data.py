@@ -83,8 +83,7 @@ def _transform_split(ctx: TransformContext, part: split.Part):
 
     # ---
 
-    log.info(f'setting seed to {ctx.dataset.cfg.seed}')
-    random.seed(ctx.dataset.cfg.seed)
+    helper.seed(ctx.dataset.cfg.seed)
 
     # init text files
 

@@ -4,10 +4,13 @@ from ryn import RynError
 from ryn.common import logging
 
 import os
+import random
 import pathlib
 import inspect
 
 import git
+import numpy as np
+import numpy.random
 from tqdm import tqdm as _tqdm
 
 from datetime import datetime
@@ -72,6 +75,18 @@ def timed(fn, name='unknown'):
 # --- UTILITY
 
 
+def seed(seed: int) -> np.random.Generator:
+    log.info(f'! setting seed to {seed}')
+    random.seed(seed)
+    return np.random.default_rng(seed)
+
+
+def git_hash() -> str:
+    repo = git.Repo(search_parent_directories=True)
+    # dirty = '-dirty' if repo.is_dirty else ''
+    return str(repo.head.object.hexsha)
+
+
 def notebook():
     # %load_ext autoreload
     # %autoreload 2
@@ -84,9 +99,3 @@ def notebook():
 
     logger = logging.logging.getLogger()
     logger.setLevel(logging.logging.INFO)
-
-
-def git_hash() -> str:
-    repo = git.Repo(search_parent_directories=True)
-    # dirty = '-dirty' if repo.is_dirty else ''
-    return str(repo.head.object.hexsha)
