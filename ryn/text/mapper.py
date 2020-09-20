@@ -3,12 +3,12 @@
 import ryn
 from ryn.text import data
 from ryn.embers import keen
-from ryn.graphs import split
 from ryn.common import logging
 
-import torch
+import torch as t
+import torch.optim
 from torch import nn
-from torch.utils import data as tdata
+import torch.utils.data as torch_data
 
 import transformers as tf
 import pytorch_lightning as pl
@@ -19,9 +19,9 @@ from dataclasses import field
 from dataclasses import dataclass
 
 from typing import Any
-from typing import List
 from typing import Dict
 from typing import Union
+from typing import Tuple
 
 log = logging.get('text.mapper')
 
@@ -140,6 +140,9 @@ _impl(Comparator, EuclideanComparator)
 @dataclass
 class Components:
 
+    Optimizer: t.optim.Optimizer
+    optimizer_args: Dict[str, Any]
+
     # text encoder
     encoder: tf.BertModel
 
@@ -169,6 +172,17 @@ class Mapper(pl.LightningModule):
         super().__init__()
         self._c = c
 
+        self.encode = c.encoder
+        self.aggregate = c.aggregator
+        self.project = c.projector
+
+        self.loss = c.comparator
+
+    def configure_optimizers(self):
+        optim = self.c.Optimizer(self.parameters(), **self.c.optimizer_args)
+        log.info(f'initialized optimizer with {self.parameters()}')
+        return optim
+
     def forward(self, X):
         print('forward')
         __import__('IPython').embed(); __import__('sys').exit()
@@ -189,29 +203,61 @@ class Mapper(pl.LightningModule):
 # --- TRAINING
 
 
-class Dataset(tdata.Dataset):
+class Dataset(torch_data.Dataset):
 
     @property
-    def tokens(self) -> List[str]:
+    def tokens(self) -> Tuple[str]:
         return self._tokens
 
     @property
-    def entities(self) -> List[int]:
+    def entities(self) -> Tuple[int]:
         return self._entities
 
     def __len__(self):
         return len(self.tokens)
 
-    def __getitem(self, idx: int):
+    def __getitem__(self, idx: int) -> Tuple[str, int]:
         return self.tokens[idx], self.entities[idx]
 
-    def __init__(self, *, part: data.Part = None):
-        flat = [
-            (e, toks)
-            for e, lis in part.id2toks.items()
-            for toks in lis]
+    def __init__(
+            self, *,
+            # either
+            part: data.Part = None,
+            # or
+            entities: Tuple[int] = None,
+            tokens: Tuple[str] = None):
 
-        self._entities, self._tokens = zip(*flat)
+        if any((
+                not part and not (tokens and entities),
+                part and (tokens or entities), )):
+            raise ryn.RynError('Either provide part or entities and tokens')
+
+        if part:
+            flat = [
+                (e, toks)
+                for e, lis in part.id2toks.items()
+                for toks in lis]
+
+            self._entities, self._tokens = zip(*flat)
+
+        else:
+            self._entities = entities
+            self._tokens = tokens
+
+    def split(self, ratio: float) -> Tuple['Dataset']:
+        n = int(len(self.entities) * ratio)
+        e = self.entities[n]
+
+        while self.entities[n] == e:
+            n += 1
+
+        log.info(
+            f'splitting dataset with param {ratio}'
+            f' at {n} ({n / len(self.entities) * 100:2.2f}%)')
+
+        return (
+            Dataset(entities=self.entities[:n], tokens=self.tokens[:n]),
+            Dataset(entities=self.entities[n:], tokens=self.tokens[n:]), )
 
 
 @dataclass
@@ -230,6 +276,9 @@ class Config:
     # for more information see tyn.text.data.Dataset
     text_dataset: Union[str, pathlib.Path]
 
+    optimizer: str
+    optimizer_args: Dict[str, Any]
+
     # see the respective <Class>.impl dictionary
     # for available implementations
     # and possibly <Class>.Config for the
@@ -242,6 +291,11 @@ class Config:
     aggregator_args: Dict[str, Any] = field(default_factory=dict)
     projector_args: Dict[str, Any] = field(default_factory=dict)
     comparator_args: Dict[str, Any] = field(default_factory=dict)
+
+
+OPTIMIZER = {
+    'adam': torch.optim.Adam,
+}
 
 
 def train(*, config=Config):
@@ -270,6 +324,8 @@ def train(*, config=Config):
         **config.comparator_args)
 
     model = Mapper(c=Components(
+        Optimizer=OPTIMIZER[config.optimizer],
+        optimizer_args=config.optimizer_args,
         encoder=text_encoder,
         aggregator=aggregator,
         projector=projector,
@@ -280,16 +336,17 @@ def train(*, config=Config):
     # handling data
 
     train = Dataset(part=text_dataset.cw_train | text_dataset.cw_valid)
-    valid, test = tdata.random_split(
-        Dataset(part=text_dataset.ow_valid),
-
-        # TODO split needs to be done based on entities not text contexts!
-        [int(config.valid_split * len(text_dataset)])
+    valid, test = Dataset(part=text_dataset.ow_valid).split(config.valid_split)
 
     # torment the machine
 
     trainer = pl.Trainer(max_epochs=2)
-    trainer.fit(model, tdata.DataLoader(train), tdata.DataLoader(valid))
+    trainer.fit(
+        model,
+        torch_data.DataLoader(train),
+        torch_data.DataLoader(valid))
+
+    log.info('done')
 
 
 def train_from_args(args: argparse.Namespace):
@@ -305,6 +362,9 @@ def train_from_args(args: argparse.Namespace):
         text_dataset=(
             ryn.ENV.TEXT_DIR /
             'data' / split_dataset / 'bert-large-cased.200.256'),
+
+        optimizer='adam',
+        optimizer_args=dict(lr=0.001),
 
         aggregator='max pooling',
         projector='affine',
