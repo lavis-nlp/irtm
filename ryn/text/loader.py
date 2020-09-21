@@ -50,8 +50,11 @@ class SQLite:
 
     TABLE contexts:
       id INTEGER PRIMARY KEY AUTOINCREMENT
-      entity TEXT
+      entity INTEGER
+      entity_label TEXT
       context TEXT
+
+    "entity_label" is the mention
 
     """
 
@@ -60,9 +63,8 @@ class SQLite:
     # ---
 
     COL_ID = 'id'
-    COL_RYN_ID = 'ryn_id'
     COL_ENTITY = 'entity'
-    COL_MENTION = 'mention'
+    COL_MENTION = 'entity_label'
     COL_CONTEXT = 'context'
 
     # ---
@@ -73,12 +75,28 @@ class SQLite:
         conn: sqlite3.Connection
         cursor: sqlite3.Cursor
 
-        def by_ryn_id(self, ryn_id: int, count: bool = False):
-            raise NotImplementedError
+        def by_entity_id(self, entity_id: int, count: bool = False):
+            query = (
+                'SELECT '
+                f'{SQLite.COL_ENTITY}, '
+                f'{SQLite.COL_MENTION}, '
+                f'{SQLite.COL_CONTEXT} '
+
+                f'FROM {SQLite.DB_NAME} '
+                f'WHERE {SQLite.COL_ENTITY}=?')
+
+            params = (entity_id, )
+
+            self.cursor.exectute(query, params)
+            return self.cursor.fetchall()
 
         def by_entity(self, entity: str, count: bool = False):
             query = (
-                f'SELECT {SQLite.COL_ENTITY}, {SQLite.COL_CONTEXT} '
+                'SELECT '
+                f'{SQLite.COL_ENTITY}, '
+                f'{SQLite.COL_MENTION}, '
+                f'{SQLite.COL_CONTEXT} '
+
                 f'FROM {SQLite.DB_NAME} '
                 f'WHERE {SQLite.COL_ENTITY}=?')
 
