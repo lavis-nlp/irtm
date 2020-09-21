@@ -27,12 +27,16 @@ from typing import IO
 from typing import List
 from typing import Dict
 from typing import Union
+from typing import Tuple
 
-
-log = logging.get('text.encoder')
+log = logging.get('text.data')
 
 
 class Tokenizer:
+
+    @property
+    def base(self):
+        return self._tok
 
     @property
     @lru_cache
@@ -63,6 +67,7 @@ class TransformContext:
     select: loader.SQLite
 
     fd_indexes: IO[str]
+    fd_sentences: IO[str]
     fd_tokenized: IO[str]
     fd_nocontext: IO[str]
 
@@ -71,6 +76,38 @@ class TransformContext:
     dataset: split.Dataset
     sentences: int
     tokens: int
+
+
+def _split_sentences(blob: str) -> Tuple[str]:
+    blob = ' '.join(blob.split())
+    split = split_sentences(blob)
+    sel = tuple(s for s in split if '[MASK]' in s)
+    return sel  # sel.replace('[MASK]', '[unused1]')
+
+
+def _transform_result(result, *, e: int = None, amount: int = None):
+    entities, mentions, blobs = zip(*result)
+    assert all(e == db_entity for db_entity in entities)
+
+    # TODO adjust after next db update
+    # ----------
+    mult = [_split_sentences(blob) for blob in blobs]
+    sentences = [sentence for res in mult for sentence in res]
+
+    if not sentences:
+        return None
+
+    # ----------
+
+    # select text
+
+    random.shuffle(sentences)
+    sentences = tuple(
+        # remove unnecessary whitespace
+        ' '.join(sentence.split()) for sentence in
+        sentences[:amount])
+
+    return sentences
 
 
 def _transform_split(ctx: TransformContext, part: split.Part):
@@ -90,6 +127,8 @@ def _transform_split(ctx: TransformContext, part: split.Part):
     ctx.fd_indexes.write(
         '# Format: <ID>, <INDEX1> <INDEX2> ...\n'.encode())
     ctx.fd_tokenized.write(
+        '# Format: <ID>, <NAME>, <SENTENCE>\n'.encode())
+    ctx.fd_tokenized.write(
         '# Format: <ID>, <NAME>, <TOKEN1> <TOKEN2> ...\n'.encode())
     ctx.fd_nocontext.write(
         '# Format: <ID>, <NAME>\n'.encode())
@@ -103,39 +142,43 @@ def _transform_split(ctx: TransformContext, part: split.Part):
     assert (len(gen) == shape[0]) and (shape[0] == len(ents))
 
     for i, e, name in helper.tqdm(gen):
-        result = ctx.select.by_entity(name)  # TODO replace with id selection
+        result = ctx.select.by_entity(e)
+
+        def _log(msg: str):
+            fn = log.error if e in part.owe else log.info
+            suffix = ' (OWE)' if e in part.owe else ''
+            fn(f'! {msg} {e}: {name}{suffix}')
+
         if not result:
-            log.info(f'! no contexts found for {e}: {name}')
+            _log('no contexts found for')
             ctx.fd_nocontext.write(f'{e}, {name}\n'.encode())
             continue
 
-        texts = list(zip(*result))[1]
+        sentences = _transform_result(result, e=e, amount=ctx.sentences)
 
-        # process text
-        # TODO remove; then do '\n'.join(...).split('\n')
-
-        texts = map(split_sentences, texts)
-        sentences = [t for sub in texts for t in sub]
-
-        # select text
-
-        random.shuffle(sentences)
-        sentences = sentences[:ctx.sentences]
+        if not sentences:
+            _log('no sentences with [MASK] found for')
+            ctx.fd_nocontext.write(f'{e}, {name}\n'.encode())
+            continue
 
         # tokenize and map to vocabulary ids
 
-        toks = ctx.tokenizer(
+        tokenized = ctx.tokenizer(
             sentences=sentences,
             padding=False,
             max_length=ctx.tokens,
             truncation=True)
 
         # write clear text
-
         # you cannot use 'decoded' for is_tokenized=True
+
         tokens = (
             ' '.join(ctx.tokenizer.vocab[idx] for idx in sentence)
-            for sentence in toks['input_ids'])
+            for sentence in tokenized['input_ids'])
+
+        ctx.fd_sentences.write('\n'.join(
+            f'{e}, {name}, {sentence}'
+            for sentence in sentences).encode())
 
         ctx.fd_tokenized.write(('\n'.join(
             f'{e}, {name}, {t}'
@@ -143,7 +186,7 @@ def _transform_split(ctx: TransformContext, part: split.Part):
 
         ctx.fd_indexes.write(('\n'.join(
             f'{e}, '
-            f'{_ints2str(toks["input_ids"][i])}'
+            f'{_ints2str(tokenized["input_ids"][i])}'
             for i in range(len(sentences))) + '\n').encode())
 
 
@@ -190,6 +233,8 @@ def transform(
 
             fd_tokenized=stack.enter_context(
                 gopen(str(p_out / f'{split}-tokenized.txt.gz'))),
+            fd_sentences=stack.enter_context(
+                gopen(str(p_out / f'{split}-sentences.txt.gz'))),
             fd_indexes=stack.enter_context(
                 gopen(str(p_out / f'{split}-indexes.txt.gz'))),
             fd_nocontext=stack.enter_context(
@@ -246,13 +291,12 @@ class Part:
     """
     Data for a specific split
 
-    Initialized in model.Data
-
     """
 
     name: str  # e.g. cw.train (matches split.Part.name)
     no_context: Dict[int, str]
 
+    id2sent: Dict[int, List[str]]
     id2toks: Dict[int, List[str]]
     id2ent: Dict[int, str]
 
@@ -260,6 +304,7 @@ class Part:
         return Part(
             name=f'{self.name}|{other.name}',
             no_context={**self.no_context, **other.no_context},
+            id2sent={**self.id2toks, **other.id2toks},
             id2toks={**self.id2toks, **other.id2toks},
             id2ent={**self.id2ent, **other.id2ent},
         )
@@ -269,21 +314,33 @@ class Part:
     def load(K, *, name: str = None, path: pathlib.Path = None):
         log.info(f'! loading text dataset from {path}')
 
-        # tokens
-        tokens_path = path / f'{name}-tokenized.txt.gz'
-        with gzip.open(str(tokens_path), mode='r') as fd:
-            fd.readline()  # skip head comment
-            id2ent, id2toks = {}, defaultdict(list)
+        id2ent = {}
 
+        def _read(dic, fd):
+            fd.readline()  # skip head comment
+
+            dic = defaultdict(list)
             for line in map(bytes.decode, fd.readlines()):
                 parts = line.split(',', maxsplit=2)
-                e_str, e_name, tokens = map(str.strip, parts)
+                e_str, e_name, line = map(str.strip, parts)
                 e = int(e_str)
 
                 id2ent[e] = e_name
-                id2toks[e].append(tokens)
+                dic[e].append(line)
 
-        log.info(f'loaded {len(id2toks)} entities and their sentences')
+        # sentences
+        sentences_path = path / f'{name}-sentences.txt.gz'
+        with gzip.open(str(sentences_path), mode='r') as fd:
+            id2sent = _read(fd)
+            log.info(f'loaded {len(id2sent)} sentences')
+
+        # tokens
+        tokens_path = path / f'{name}-tokenized.txt.gz'
+        with gzip.open(str(tokens_path), mode='r') as fd:
+            id2toks = _read(fd)
+            log.info(f'loaded {len(id2toks)} tokens')
+
+        log.info(f'loaded {len(id2ent)} distinct entities')
 
         # no contexts
 
