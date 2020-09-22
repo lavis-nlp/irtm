@@ -1,5 +1,6 @@
 # core
 tqdm
+wandb
 numpy
 pandas
 pykeen
@@ -9,6 +10,7 @@ tabulate
 configobj
 gitpython
 transformers
+pytorch-lightning
 
 # tests
 inotify
