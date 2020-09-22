@@ -12,6 +12,7 @@ import gzip
 import json
 import random
 import pathlib
+import textwrap
 import contextlib
 
 from datetime import datetime
@@ -113,6 +114,11 @@ def _transform_result(result, *, e: int = None, amount: int = None):
 def _transform_split(ctx: TransformContext, part: split.Part):
     log.info(f'transforming split {part.name}')
 
+    # cannot save that to a csv
+    _commas = set(name for name in part.entities if ',' in name)
+    if _commas:
+        raise ryn.RynError('entities contain ",": {_commas}')
+
     # ---
 
     def _ints2str(lis: List[int]):
@@ -126,7 +132,7 @@ def _transform_split(ctx: TransformContext, part: split.Part):
 
     ctx.fd_indexes.write(
         '# Format: <ID>, <INDEX1> <INDEX2> ...\n'.encode())
-    ctx.fd_tokenized.write(
+    ctx.fd_sentences.write(
         '# Format: <ID>, <NAME>, <SENTENCE>\n'.encode())
     ctx.fd_tokenized.write(
         '# Format: <ID>, <NAME>, <TOKEN1> <TOKEN2> ...\n'.encode())
@@ -309,6 +315,17 @@ class Part:
             id2ent={**self.id2ent, **other.id2ent},
         )
 
+    def __str__(self) -> str:
+        summed = sum(len(sents) for sents in self.id2sent.values())
+        avg = (summed / len(self.id2sent)) if len(self.id2sent) else 0
+
+        return '\n'.join((
+            f'Part: {self.name}',
+            f'  total entities: {len(self.id2ent)}',
+            f'  average sentences per entity: {avg:2.2f}',
+            f'  no contexts: {len(self.no_context)}',
+        ))
+
     @classmethod
     @helper.notnone
     def load(K, *, name: str = None, path: pathlib.Path = None):
@@ -316,7 +333,7 @@ class Part:
 
         id2ent = {}
 
-        def _read(dic, fd):
+        def _read(fd):
             fd.readline()  # skip head comment
 
             dic = defaultdict(list)
@@ -327,6 +344,8 @@ class Part:
 
                 id2ent[e] = e_name
                 dic[e].append(line)
+
+            return dic
 
         # sentences
         sentences_path = path / f'{name}-sentences.txt.gz'
@@ -358,7 +377,9 @@ class Part:
 
         return K(
             name=name,
-            id2toks=id2toks, id2ent=id2ent,
+            id2ent=id2ent,
+            id2toks=id2toks,
+            id2sent=id2sent,
             no_context=no_context)
 
 
@@ -391,6 +412,24 @@ class Dataset:
     cw_valid: Part
     ow_valid: Part
     ow_test: Part
+
+    def __str__(self) -> str:
+        buf = '\n'.join((
+            'ryn.text.data.Dataset',
+            f'{self.name}',
+            f'created: {self.created}',
+            f'git_hash: {self.git_hash}',
+            '',
+        ))
+
+        for part in (
+                self.cw_train,
+                self.cw_valid,
+                self.ow_valid,
+                self.ow_test):
+            buf += textwrap.indent(str(part), '  ') + '\n'
+
+        return buf
 
     @property
     def name(self) -> str:
@@ -428,3 +467,27 @@ class Dataset:
         log.info(f'loaded {data.name}')
 
         return data
+
+
+def _cli(args):
+    import IPython
+
+    print()
+    if not args.dataset:
+        raise ryn.RynError('please provide a --dataset')
+
+    ds = Dataset.load(args.dataset)
+    print(f'{ds}')
+
+    banner = '\n'.join((
+        '',
+        '-' * 20,
+        ' RYN KEEN CLIENT',
+        '-' * 20,
+        '',
+        'variables in scope:',
+        '    ds: Dataset',
+        '',
+    ))
+
+    IPython.embed(banner1=banner)

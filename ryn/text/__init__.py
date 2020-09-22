@@ -15,6 +15,7 @@ desc = 'work with text data'
 
 
 CMDS = {
+    'cli': data._cli,
     'transform': data._transform_from_args,
     'train': mapper.train_from_args,
 }
