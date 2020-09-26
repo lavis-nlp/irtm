@@ -209,6 +209,14 @@ class Dataset:
 
         return s
 
+    def __getitem__(self, key: str):
+        return {
+            'cw.train': self.cw_train,
+            'cw.valid': self.cw_valid,
+            'ow.valid': self.ow_valid,
+            'ow.test': self.ow_test,
+        }[key]
+
     # ---
 
     def check(self):
