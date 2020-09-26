@@ -95,7 +95,3 @@ def main():
         raise exc  # offer stracktrace
 
     log.info('terminating gracefully')
-
-
-if __name__ == '__main__':
-    main()
