@@ -367,6 +367,55 @@ class Part:
         _deep_check(self.id2sents, self.id2toks)
         _deep_check(self.id2sents, self.id2idxs)
 
+    @helper.notnone
+    def split(self, *, ratio: float = None):
+        n = int(len(self.id2idxs) * ratio)
+        log.info(f'split {self.name} at {n}/{len(self.id2idxs)} ({ratio=})')
+
+        def _split_dic(dic):
+            lis = list(dic.items())
+            return dict(lis[:n]), dict(lis[n:])
+
+        kwargs_split = dict(
+            id2toks=_split_dic(self.id2toks),
+            id2idxs=_split_dic(self.id2idxs),
+            id2sents=_split_dic(self.id2sents),
+        )
+
+        kwargs_a = {k: v[0] for k, v in kwargs_split.items()}
+        kwargs_b = {k: v[1] for k, v in kwargs_split.items()}
+
+        def _take(ids, src):
+            return {i: src[i] for i in ids}
+
+        def _refine_kwargs(kwargs, suffix: str):
+            return {
+                **kwargs,
+                **dict(
+                    name=self.name + suffix,
+                    no_context=_take(self.no_context, kwargs['id2idxs']),
+                    id2ent=_take(self.id2ent, kwargs['id2idxs'])
+                )
+            }
+
+        split_a = Part(**_refine_kwargs(kwargs_a, '-split_a'))
+        split_b = Part(**_refine_kwargs(kwargs_b, '-split_b'))
+
+        split_a.check()
+        split_b.check()
+
+        def _disjoint(a, b):
+            return not (len(set(a) & set(a)) > 0)
+
+        log.info('checking split criteria')
+        assert _disjoint(split_a.id2ent, split_b.id2ent)
+        assert _disjoint(split_a.id2toks, split_b.id2toks)
+        assert _disjoint(split_a.id2idxs, split_b.id2idxs)
+        assert _disjoint(split_a.id2sents, split_b.id2sents)
+        assert _disjoint(split_a.no_context, split_b.no_context)
+
+        return split_a, split_b
+
     # ---
 
     @staticmethod
