@@ -270,6 +270,7 @@ class Dataset:
             'entities in ow test leaked)')
 
     @classmethod
+    @helper.cached('.cached.dataset.pkl')
     def load(K, path: Union[str, pathlib.Path]) -> 'Dataset':
         """
 
@@ -338,15 +339,15 @@ class Dataset:
             seen |= part.entities
             parts[name] = part
 
-        dataset = K(
+        self = K(
             path=path,
             g=g, cfg=cfg,
             concepts=concepts,
             id2ent=id2ent, id2rel=id2rel,
             **parts)
 
-        dataset.check()
-        return dataset
+        self.check()
+        return self
 
 
 # ---
@@ -651,7 +652,7 @@ def _cli(args):
     if not args.path:
         raise ryn.RynError('please provide a --path')
 
-    ds = Dataset.load(args.path)
+    ds = Dataset.load(path=args.path)
     print(f'{ds}')
 
     banner = '\n'.join((

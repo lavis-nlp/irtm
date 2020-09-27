@@ -14,7 +14,7 @@ import streamlit as st
 
 @st.cache(allow_output_mutation=True)  # Datasets aren't hashable
 def load_dataset(path: pathlib.Path) -> split.Dataset:
-    return split.Dataset.load(path)
+    return split.Dataset.load(path=path)
 
 
 def ds_to_row(ds: split.Dataset):

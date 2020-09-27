@@ -48,9 +48,9 @@ DATEFMT = '%Y.%m.%d.%H%M%S.%f'
 
 
 # ---
-# might re-introduce the helper.file_cache at some point...
 
 
+# TODO use helper.cached
 def _cached_predictions(predict_all):
     def _inner(self: split.Dataset, e: int):
         path = ryn.ENV.CACHE_DIR / 'embers.keen'
@@ -221,14 +221,14 @@ class TripleFactories:
 
     """
 
-    ds: split.Dataset
+    dataset: split.Dataset
 
     train: keen_triples.TriplesFactory
     valid: keen_triples.TriplesFactory
     test: keen_triples.TriplesFactory
 
     def check(self):
-        ds = self.ds
+        ds = self.dataset
         log.info(f'! running self-check for {ds.path.name} TripleFactories')
 
         assert self.valid.num_entities <= self.train.num_entities, (
@@ -238,8 +238,9 @@ class TripleFactories:
 
         # all entities must be known at training time
         # (this implicitly checks if there are entities with the same name)
-        assert self.train.num_entities == len(self.ds.cw_train.entities), (
-            f'{self.train.num_entities=} != {len(self.ds.cw_train.entities)=}')
+        n_train = self.train.num_entities
+        n_dataset = len(self.dataset.cw_train.entities)
+        assert n_train == n_dataset, f'{n_train=} != {n_dataset=}'
 
         # all known entities and relations are contained in the mappings
 
@@ -270,32 +271,37 @@ class TripleFactories:
                 f'{_mapped.issubset(factory.relation_to_id.keys())=}')
 
     @classmethod
-    def create(K, ds: split.Dataset) -> 'TripleFactories':
-        log.info(f'creating triple factories from {ds.path}')
+    @helper.cached('.cached.keen.factories.pkl')
+    def create(
+            K, *,
+            path: pathlib.Path = None,
+            dataset: split.Dataset = None) -> 'TripleFactories':
 
-        helper.seed(ds.cfg.seed)
+        log.info(f'creating triple factories {path}')
 
-        to_a = partial(triples_to_ndarray, ds.g)
+        helper.seed(dataset.cfg.seed)
+
+        to_a = partial(triples_to_ndarray, dataset.g)
 
         # keen uses its own internal indexing
         # so strip own indexes and create "translated" triple matrix
         train = keen_triples.TriplesFactory(
-            triples=to_a(ds.cw_train.triples), )
+            triples=to_a(dataset.cw_train.triples), )
 
         # default split is 80/20
         train, valid = train.split(
-            ds.cfg.train_split,
-            random_state=ds.cfg.seed, )
+            dataset.cfg.train_split,
+            random_state=dataset.cfg.seed, )
 
         # re-use existing entity/relation mappings
         test = keen_triples.TriplesFactory(
-            triples=to_a(ds.cw_valid.triples),
+            triples=to_a(dataset.cw_valid.triples),
             entity_to_id=train.entity_to_id,
             relation_to_id=train.relation_to_id, )
 
         # ---
 
-        self = K(ds=ds, train=train, valid=valid, test=test)
+        self = K(dataset=dataset, train=train, valid=valid, test=test)
         self.check()
         return self
 
@@ -402,9 +408,9 @@ class Model:
     def triple2id(self, htr: Tuple[int]) -> Tuple[int]:
         h, t, r = htr
 
-        assert h in self.ds.g.source.ents
-        assert t in self.ds.g.source.ents
-        assert r in self.ds.g.source.rels
+        assert h in self.dataset.g.source.ents
+        assert t in self.dataset.g.source.ents
+        assert r in self.dataset.g.source.rels
 
         return self.e2id(h), self.r2id(r), self.e2id(t)
 
@@ -551,9 +557,9 @@ class Model:
         in_test = _is_in(self.mapped_test_triples)
 
         in_cw = _is_in(set(self.triples2id(
-            self.ds.cw_train.triples | self.ds.cw_valid.triples)))
+            self.dataset.cw_train.triples | self.dataset.cw_valid.triples)))
         in_ow = _is_in(set(self.triples2id(
-            self.ds.ow_valid.triples | self.ds.ow_test.triples)))
+            self.dataset.ow_valid.triples | self.dataset.ow_test.triples)))
 
         print('df construction')
 
@@ -603,6 +609,8 @@ class Model:
         log.info(f'loading keen model from {path}')
         path = pathlib.Path(path)
 
+        # TODO do not use path information and put a timestamp
+        # into the metadata.json
         try:
             _, _, created = path.name.split('-')
             timestamp = datetime.strptime(created, DATEFMT)
@@ -611,32 +619,25 @@ class Model:
             raise exc
 
         md_path = path / 'metadata.json'
-        log.info(f'reading metadata from {md_path}')
         with (md_path).open(mode='r') as fd:
             raw = json.load(fd)
             parameters = raw['pipeline']
             metadata = raw['metadata']
 
         res_path = path / 'results.json'
-        log.info(f'reading results from {res_path}')
         with (res_path).open(mode='r') as fd:
             results = json.load(fd)
 
         ds_path = ryn.ENV.ROOT_DIR / metadata['dataset_path']
-        log.info(f'loading dataset from {ds_path}')
-        try:
-            dataset = split.Dataset.load(ds_path)
-        except FileNotFoundError as exc:
-            log.error('dataset could not be found')
-            dataset = None
-            raise exc
+        dataset = split.Dataset.load(path=ds_path)
 
         keen_path = str(path / 'trained_model.pkl')
-        log.info(f'loading pykeen model from {keen_path}')
         keen_model = torch.load(keen_path)
 
         log.info('reconstructing triple factories')
-        triple_factories = TripleFactories.create(dataset)
+        triple_factories = TripleFactories.create(
+            path=dataset.path,
+            dataset=dataset)
 
         assert triple_factories.train.mapped_triples.equal(
             keen_model.triples_factory.mapped_triples), (
@@ -660,7 +661,7 @@ class Model:
 def train(tfs: TripleFactories, **kwargs):
 
     kwargs = {**dict(
-        random_seed=tfs.ds.cfg.seed,
+        random_seed=tfs.dataset.cfg.seed,
     ), **kwargs}
 
     return hpo_pipeline(
@@ -671,9 +672,9 @@ def train(tfs: TripleFactories, **kwargs):
 
         metadata=dict(
             metadata=dict(
-                dataset_name=tfs.ds.path.name,
-                dataset_path=str(tfs.ds.path),
-                graph_name=tfs.ds.g.name,
+                dataset_name=tfs.dataset.path.name,
+                dataset_path=str(tfs.dataset.path),
+                graph_name=tfs.dataset.g.name,
             ),
             pipeline=copy.deepcopy(kwargs),
         ),
@@ -699,7 +700,7 @@ def run():
         Config(model='DistMult', emb_dim=256)
     ]
 
-    ds = split.Dataset.load(path)
+    ds = split.Dataset.load(path=path)
     tfs = TripleFactories.create(ds)
 
     for config in configs:

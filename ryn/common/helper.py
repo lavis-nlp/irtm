@@ -4,6 +4,7 @@ from ryn import RynError
 from ryn.common import logging
 
 import os
+import pickle
 import random
 import pathlib
 import inspect
@@ -14,7 +15,10 @@ import numpy.random
 from tqdm import tqdm as _tqdm
 
 from datetime import datetime
+from functools import wraps
 from functools import partial
+
+from typing import Union
 
 
 log = logging.get('common.helper')
@@ -47,6 +51,7 @@ def notnone(fn):
     except TypeError:
         kwarg_names = spec.kwonlyargs
 
+    @wraps(notnone)
     def _proxy(*args, **kwargs):
         for argname in kwarg_names:
             if kwargs.get(argname) is None:
@@ -59,6 +64,7 @@ def notnone(fn):
 
 
 def timed(fn, name='unknown'):
+    @wraps(timed)
     def _proxy(*args, **kwargs):
 
         ts = datetime.now()
@@ -70,6 +76,35 @@ def timed(fn, name='unknown'):
         return ret
 
     return _proxy
+
+
+def cached(filename: str):
+
+    def _cached(fn):
+        @wraps(cached)
+        def _proxy(*args, path: Union[str, pathlib.Path], **kwargs):
+
+            cache = pathlib.Path(path) / filename
+            if cache.is_file():
+                log.info(f'loading from cache: {cache}')
+                with cache.open(mode='rb') as fd:
+                    return pickle.load(fd)
+
+            # ---
+
+            log.info(f'cache miss for {path.name}/{filename}')
+            obj = fn(*args, path=path, **kwargs)
+
+            # ---
+
+            with cache.open(mode='wb') as fd:
+                log.info(f'writing cache file: {cache}')
+                pickle.dump(obj, fd)
+
+            return obj
+        return _proxy
+
+    return _cached
 
 
 # --- UTILITY

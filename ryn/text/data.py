@@ -303,7 +303,7 @@ def _transform_from_args(args):
     assert args.tokens, 'provide --tokens'
     assert args.model, 'provide --model'
 
-    dataset = split.Dataset.load(args.dataset)
+    dataset = split.Dataset.load(path=args.dataset)
     transform(
         dataset=dataset,
         database=args.database,
@@ -381,8 +381,6 @@ class Part:
     @classmethod
     @helper.notnone
     def load(K, *, name: str = None, path: pathlib.Path = None):
-        log.info(f'! loading text dataset from {path}')
-
         read = partial(Part._read, path)
         id2ent = {}
 
@@ -419,7 +417,7 @@ class Part:
             f'loaded {len(no_context)} contextless entities '
             f'from {no_context_path}')
 
-        dataset = K(
+        part = K(
             name=name,
             id2ent=id2ent,
             id2toks=id2toks,
@@ -427,8 +425,8 @@ class Part:
             id2sents=id2sents,
             no_context=no_context)
 
-        dataset.check()
-        return dataset
+        part.check()
+        return part
 
 
 @dataclass
@@ -458,7 +456,7 @@ class Dataset:
     sentences: int
     tokens: int
 
-    # there are now open world entities in cw.valid
+    # there are no open world entities in cw.valid
     cw_train: Part
     ow_valid: Part
     ow_test: Part
@@ -488,7 +486,9 @@ class Dataset:
 
     @classmethod
     @helper.notnone
+    @helper.cached('.cached.data.dataset.pkl')
     def load(K, path: Union[str, pathlib.Path]):
+
         path = pathlib.Path(path)
         if not path.is_dir():
             raise ryn.RynError(f'Dataset cannot be found: {path}')
@@ -496,7 +496,7 @@ class Dataset:
         with (path / 'info.json').open(mode='r') as fd:
             info = json.load(fd)
 
-        data = Dataset(
+        self = Dataset(
             created=datetime.fromisoformat(info['created']),
             git_hash=info['git_hash'],
             model=info['model'],
@@ -510,9 +510,8 @@ class Dataset:
             ow_test=Part.load(name='ow.test', path=path),
         )
 
-        log.info(f'loaded {data.name}')
-
-        return data
+        log.info(f'loaded {self.name}')
+        return self
 
 
 def _cli(args):
@@ -522,7 +521,7 @@ def _cli(args):
     if not args.dataset:
         raise ryn.RynError('please provide a --dataset')
 
-    ds = Dataset.load(args.dataset)
+    ds = Dataset.load(path=args.dataset)
     print(f'{ds}')
 
     banner = '\n'.join((
