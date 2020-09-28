@@ -14,17 +14,21 @@ from torch.nn.utils.rnn import pad_sequence
 
 import transformers as tf
 import pytorch_lightning as pl
+from pytorch_lightning.callbacks.base import Callback
 # from pytorch_lightning.loggers.wandb import WandbLogger as Logger
 
 import gc
+import yaml
 import pathlib
 import argparse
 
+from itertools import chain
+from itertools import repeat
 from functools import partial
-
 from datetime import datetime
 from dataclasses import field
 from dataclasses import dataclass
+from collections import defaultdict
 
 from typing import Any
 from typing import Dict
@@ -37,6 +41,8 @@ log = logging.get('text.mapper')
 
 class Base(nn.Module):
 
+    registered = defaultdict(dict)
+
     @dataclass
     class Config:
         pass
@@ -44,22 +50,48 @@ class Base(nn.Module):
     # to be implemented
     # name = 'name of the module'
 
+    @property
+    def config(self):
+        return self._config
+
     def __init__(self, *args, config: Config = None, **kwargs):
         super().__init__(*args, **kwargs)
         self._config = config
 
-    @classmethod
-    def init(K, *, name: str = None, **kwargs):
+    def __str__(self) -> str:
+        return self.__name__
 
-        A = K.impl[name]
+    # decorater
+    @classmethod
+    def module(Child, Impl):
+        try:
+            Impl.name
+        except AttributeError:
+            msg = 'Class {Impl} has no attribute .name'
+            raise ryn.RynError(msg)
+
+        Base.registered[Child.__name__][Impl.name] = Impl
+        return Impl
+
+    @classmethod
+    def init(Child, *, name: str = None, **kwargs):
+
+        try:
+            A = Base.registered[Child.__name__][name]
+        except KeyError:
+            dicrep = yaml.dump(Base.registered, default_flow_style=False)
+
+            msg = (
+                f'could not find module "{name}"\n\n'
+                f'available modules:\n'
+                f'{dicrep}')
+
+            raise ryn.RynError(msg)
+
         config = A.Config(**kwargs)
 
         log.info(f'! initializing {A.__name__} with {config}')
         return A(config=config)
-
-
-def _impl(Parent, *Klasses):
-    Parent.impl = {Klass.name: Klass for Klass in Klasses}
 
 
 # --- AGGREGATION
@@ -68,19 +100,14 @@ class Aggregator(Base):
     pass
 
 
-class AggregatorMaxPooling(Aggregator):
+@Aggregator.module
+class AggregatorMaxPooling_1(Aggregator):
 
-    name = 'max pooling'
+    name = 'max 1'
 
-    def forward(
-            self,
-            X: torch.Tensor  # batch x tokens x text_dims
-    ) -> torch.Tensor:       # batch x text_dims
-
+    # batch x tokens x text_dims -> batch x text_dims
+    def forward(self, X: torch.Tensor) -> torch.Tensor:
         return X.max(axis=1).values
-
-
-_impl(Aggregator, AggregatorMaxPooling)
 
 
 # --- PROJECTION
@@ -90,9 +117,15 @@ class Projector(Base):
     pass
 
 
-class AffineProjector(Projector):
+@Projector.module
+class AffineProjector_1(Projector):
+    """
 
-    name = 'affine'
+    Y = Ax + b
+
+    """
+
+    name = 'affine 1'
 
     @dataclass
     class Config(Base.Config):
@@ -104,20 +137,53 @@ class AffineProjector(Projector):
 
     def __init__(
             self, *args,
-            config: 'AffineProjector.Config',
+            config: 'AffineProjector_1.Config',
             **kwargs):
 
         super().__init__(*args, config=config, **kwargs)
         self.projector = nn.Linear(config.input_dims, config.output_dims)
 
-    def forward(
-            self,
-            X: torch.Tensor  # batch x text_dims
-    ) -> torch.Tensor:       # batch x kge_dims
+    # batch x text_dims -> batch x kge_dims
+    def forward(self, X: torch.Tensor) -> torch.Tensor:
         return self.projector(X)
 
 
-_impl(Projector, AffineProjector)
+@Projector.module
+class MLPProjector_1(Projector):
+    """
+
+    One hidden layer, ReLU for hidden and tanh for output
+
+    """
+
+    name = 'mlp 1'
+
+    @dataclass
+    class Config(Base.Config):
+
+        input_dims: int
+        hidden_dims: int
+        output_dims: int
+
+    # ---
+
+    def __init__(
+            self, *args,
+            config: 'MLPProjector_1.Config',
+            **kwargs):
+
+        super().__init__(*args, config=config, **kwargs)
+
+        self.projector = nn.Sequential(
+            nn.Linear(config.input_dims, config.hidden_dims),
+            nn.ReLU(),
+            nn.Linear(config.hidden_dims, config.output_dims),
+            nn.Tanh(),
+        )
+
+    # batch x text_dims -> batch x kge_dims
+    def forward(self, X: torch.Tensor) -> torch.Tensor:
+        return self.projector(X)
 
 
 # --- COMPARING
@@ -127,15 +193,13 @@ class Comparator(Base):
     pass
 
 
-class EuclideanComparator(Comparator):
+@Comparator.module
+class EuclideanComparator_1(Comparator):
 
-    name = 'euclidean'
+    name = 'euclidean 1'
 
     def forward(self, X, Y):
         return torch.dist(X, Y, p=2)
-
-
-_impl(Comparator, EuclideanComparator)
 
 
 # --- WIRING
@@ -210,12 +274,21 @@ class MapperConfig:
 class Mapper(pl.LightningModule):
 
     @property
+    def lr(self):
+        return self._lr
+
+    @lr.setter  # required for auto_lr_find
+    def lr(self, val):
+        self._lr = val
+
+    @property
     def c(self) -> Components:
         return self._c
 
     def __init__(self, *, c: Components = None):
         super().__init__()
         self._c = c
+        self._lr = self.c.optimizer_args['lr']
 
         self.encode = c.text_encoder
         self.aggregate = c.aggregator
@@ -228,21 +301,34 @@ class Mapper(pl.LightningModule):
         log.info(f'initialized optimizer with {self.c.optimizer_args}')
         return optim
 
+    #
+    #   SELF REALISATION
+    #
+
+    def forward_sentences(self, sentences: torch.Tensor):
+        # mask padding and [MASK] tokens
+        mask = self.c.tokenizer.base.vocab['[MASK]']
+        attention_mask = (sentences > 0) | (sentences == mask)
+        attention_mask = attention_mask.to(dtype=torch.long)
+
+        return self.encode(
+            input_ids=sentences,
+            attention_mask=attention_mask)[0]
+
+    def forward_entities(self, entities: torch.Tensor):
+        # TODO: add embeddings to self; take care of id mapping
+        return self.c.kgc_model.embeddings(
+            entities=entities,
+            device=self.device)
+
     @helper.notnone
     def forward(
             self, *,
             sentences: torch.Tensor = None,  # batch x tokens
             entities: Tuple[int] = None):    # batch
 
-        # mask padding and [MASK] tokens
-        mask = self.c.tokenizer.base.vocab['[MASK]']
-        attention_mask = (sentences > 0) | (sentences == mask)
-        attention_mask = attention_mask.to(dtype=torch.long)
-
         # batch x tokens x text_dims
-        encoded = self.encode(
-            input_ids=sentences,
-            attention_mask=attention_mask)[0]
+        encoded = self.forward_sentences(sentences)
 
         # batch x text_dims
         aggregated = self.aggregate(encoded)
@@ -251,11 +337,13 @@ class Mapper(pl.LightningModule):
         projected = self.project(aggregated)
 
         # batch x kge_dims
-        target = self.c.kgc_model.embeddings(
-            entities=entities,
-            device=self.device)
+        target = self.forward_entities(entities)
 
         return projected, target
+
+    #
+    #   TRAINING
+    #
 
     def training_step(self, batch, batch_idx: int):
         sentences, entities = batch
@@ -265,7 +353,17 @@ class Mapper(pl.LightningModule):
             entities=entities)
 
         loss = self.loss(projected, target)
-        return loss
+
+        # --
+
+        result = pl.TrainResult(loss)
+        result.log('train_loss_step', loss)
+
+        return result
+
+    #
+    #   VALIDATION
+    #
 
     def validation_step(self, batch, batch_idx: int):
         sentences, entities = batch
@@ -275,7 +373,21 @@ class Mapper(pl.LightningModule):
             entities=entities)
 
         loss = self.loss(projected, target)
-        return loss
+
+        # --
+
+        result = pl.EvalResult(loss)
+        result.log('valid_loss_step', loss)
+
+        return result
+
+    def validation_epoch_end(self, val_step_outputs: List[pl.EvalResult]):
+        avg = val_step_outputs['valid_loss_step'].mean()
+
+        result = pl.EvalResult(avg)
+        result.log('valid_loss_epoch', avg)
+
+        return result
 
     # ---
 
@@ -401,28 +513,62 @@ OPTIMIZER = {
 }
 
 
-def _probe(
-        *,
-        model: Mapper = None,
-        train: torch_data.DataLoader = None,
-        valid: torch_data.DataLoader = None, ):
+class TrainerCallback(Callback):
 
-    log.info('probing for functioning configuration')
+    @property
+    def config(self):
+        return self._config
 
-    max_seq_len = max(
-        max(len(seq) for seq, _ in train.dataset),
-        max(len(seq) for seq, _ in valid.dataset), )
+    @property
+    def dl_train(self) -> torch_data.DataLoader:
+        return self._dl_train
 
-    log.info(f'determined max sequence length: {max_seq_len}')
+    @property
+    def dl_valid(self) -> torch_data.DataLoader:
+        return self._dl_valid
 
-    log.info('clean up after probing')
+    def __init__(
+            self,
+            *args,
+            config: MapperConfig = None,
+            dl_train: torch_data.DataLoader = None,
+            dl_valid: torch_data.DataLoader = None,
+            **kwargs):
 
-    for p in model.parameters():
-        if p.grad is not None:
-            del p.grad
+        super().__init__(*args, **kwargs)
+        self._config = config
+        self._dl_train = dl_train
+        self._dl_valid = dl_valid
 
-    torch.cuda.empty_cache()
-    gc.collect()
+    def on_sanity_check_start(self, trainer, mapper):
+        log.info('probing for functioning configuration')
+
+        max_seq = []
+        for seq, _ in chain(self.dl_train.dataset, self.dl_valid.dataset):
+            if len(max_seq) < len(seq):
+                max_seq = seq
+
+        log.info(f'determined max sequence length: {len(max_seq)}')
+
+        for batch_size in set((
+                self.config.dataloader_train_args['batch_size'],
+                self.config.dataloader_valid_args['batch_size'], )):
+
+            log.info(f'testing {batch_size=}')
+            sentences = max_seq.repeat(batch_size, 1).to(device=mapper.device)
+
+            mapper(
+                sentences=sentences,
+                entities=repeat(0, batch_size))
+
+        log.info('clean up after probing')
+
+        for p in mapper.parameters():
+            if p.grad is not None:
+                del p.grad
+
+        torch.cuda.empty_cache()
+        gc.collect()
 
 
 @helper.notnone
@@ -438,7 +584,10 @@ def train(*, config: MapperConfig = None):
 
     # # TODO make option
     model.c.text_encoder.eval()
-    helper.seed(model.c.kgc_model.ds.cfg.seed)
+
+    # to reproduce runs:
+    # pl.seed_everything(model.c.kgc_model.ds.cfg.seed)
+    # also pl.Trainer(deterministic=True, ...)
 
     assert model.c.tokenizer.base.vocab['[PAD]'] == 0
 
@@ -452,30 +601,35 @@ def train(*, config: MapperConfig = None):
     dl_train = DataLoader(ds_train, **config.dataloader_train_args)
     dl_valid = DataLoader(ds_valid, **config.dataloader_valid_args)
 
-    # probe configuration
-
-    _probe(model=model, train=dl_train, valid=dl_valid)
-
     # torment the machine
 
-    # trainer = pl.Trainer(**config.trainer_args)
-    # trainer.fit(model, dl_train, dl_valid)
+    # callback = TrainerCallback(
+    #     config=config,
+    #     dl_train=dl_train,
+    #     dl_valid=dl_valid)
+
+    trainer = pl.Trainer(**config.trainer_args)
+    trainer.fit(model, dl_train, dl_valid)
 
     log.info('done')
 
 
 def train_from_args(args: argparse.Namespace):
 
+    DEBUG = True
+    if DEBUG:
+        log.warning('phony debug run!')
+
     DATEFMT = '%Y.%m.%d.%H%M%S'
 
     # ---
 
     kgc_model = 'DistMult'
-    text_encoder = 'bert-large-cased'
+    text_encoder = 'bert-base-cased'
     split_dataset = 'oke.fb15k237_30061990_50'
 
     kgc_model_dir = f'{kgc_model}-256-2020.08.12.120540.777006'
-    text_encoder_dir = f'{text_encoder}.200.768'
+    text_encoder_dir = f'{text_encoder}.200.768-small'
 
     # ---
 
@@ -490,45 +644,56 @@ def train_from_args(args: argparse.Namespace):
     logger = pl.loggers.wandb.WandbLogger(
         name=name,
         save_dir=str(out),
-        offline=True,
+        offline=DEBUG,
         project='ryn',
         log_model=False,
     )
 
     # ---
 
+    # bert-large-cased: hidden size 1024
+    # bert-base-cased: hidden size 768
+
     train(config=MapperConfig(
 
+        # pytorch lightning trainer
         # https://pytorch-lightning.readthedocs.io/en/latest/trainer.html#trainer-class-api
         trainer_args=dict(
             max_epochs=2,
             gpus=1,
             logger=logger,
+            weights_save_path=out / 'weights',
+            # auto_lr_find=True,
+            fast_dev_run=DEBUG,
         ),
 
+        # torch dataloader
         # https://pytorch.org/docs/stable/data.html#torch.utils.data.DataLoader
         dataloader_train_args=dict(
             num_workers=64,
-            batch_size=2,
+            batch_size=8,
             shuffle=True,
         ),
         dataloader_valid_args=dict(
             num_workers=64,
-            batch_size=2,
+            batch_size=8,
         ),
 
+        # ryn upstream
         kgc_model=(
             ryn.ENV.EMBER_DIR / split_dataset / kgc_model_dir),
 
         text_dataset=(
             ryn.ENV.TEXT_DIR / 'data' / split_dataset / text_encoder_dir),
 
+        # pytorch
         optimizer='adam',
         optimizer_args=dict(lr=0.001),
 
-        aggregator='max pooling',
-        projector='affine',
-        projector_args=dict(input_dims=1024, output_dims=256),
-        comparator='euclidean',
+        # ryn models
+        aggregator='max 1',
+        projector='mlp 1',
+        projector_args=dict(input_dims=768, hidden_dims=500, output_dims=256),
+        comparator='euclidean 1',
         valid_split=0.7,
     ))
