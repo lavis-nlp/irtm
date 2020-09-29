@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
 from ryn.text import data
-from ryn.text import mapper
+from ryn.text import trainer
 from ryn.common import logging
 
 
@@ -17,7 +17,7 @@ desc = 'work with text data'
 CMDS = {
     'cli': data._cli,
     'transform': data._transform_from_args,
-    'train': mapper.train_from_args,
+    'train': trainer.train_from_args,
 }
 
 
