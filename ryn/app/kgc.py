@@ -2,7 +2,7 @@
 
 import ryn
 from ryn import app
-from ryn.embers import keen
+from ryn.kgc import keen
 from ryn.common import logging
 
 import numpy as np
@@ -22,11 +22,11 @@ from typing import Dict
 from typing import Tuple
 
 
-log = logging.get('app.embers')
+log = logging.get('app.kgc')
 
 
 @dataclass
-class EmberWidgets(app.Widgets):
+class KGCWidgets(app.Widgets):
 
     model: str
     dimensions: int
@@ -74,7 +74,7 @@ class EmberWidgets(app.Widgets):
             list(map(datetime.isoformat, timestamps.keys())),
             datetime.fromisoformat, )
 
-        return EmberWidgets(
+        return KGCWidgets(
             model=selected_model,
             dimensions=selected_dimensions,
             timestamp=selected_timestamp, )
@@ -196,7 +196,7 @@ class Context(app.Context):
         st.write('## EMBERS')
         st.write('Knowledge Graph Embeddings')
 
-        path = ryn.ENV.EMBER_DIR
+        path = ryn.ENV.KGC_DIR
         glob = tuple(path.glob('*/*'))
 
         st.write(f'Reading: `{path}`')
@@ -205,7 +205,7 @@ class Context(app.Context):
         self._sort_glob(glob)
 
         # creates widgets
-        self._widgets = EmberWidgets.create(
+        self._widgets = KGCWidgets.create(
             self._data_models,
             self._data_dimensions,
             self._data_timestamps, )

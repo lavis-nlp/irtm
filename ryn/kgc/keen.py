@@ -43,7 +43,7 @@ from typing import Tuple
 from typing import Collection
 
 
-log = logging.get('embers.keen')
+log = logging.get('kgc.keen')
 DATEFMT = '%Y.%m.%d.%H%M%S.%f'
 
 
@@ -53,7 +53,7 @@ DATEFMT = '%Y.%m.%d.%H%M%S.%f'
 # TODO use helper.cached
 def _cached_predictions(predict_all):
     def _inner(self: split.Dataset, e: int):
-        path = ryn.ENV.CACHE_DIR / 'embers.keen'
+        path = ryn.ENV.CACHE_DIR / 'kgc.keen'
         path.mkdir(exist_ok=True, parents=True)
         path /= f'{self.uri}.{e}.pkl'
 
@@ -702,7 +702,7 @@ class Config:
 
 # def run(exp: config.Config):
 def run():
-    log.info('✝ running embers.keen')
+    log.info('✝ running kgc.keen')
 
     path = ryn.ENV.SPLIT_DIR / 'oke.fb15k237_30061990_50/'
 
@@ -747,7 +747,7 @@ def run():
             str(config.emb_dim),
             str(datetime.now().strftime(DATEFMT)), ))
 
-        path = ryn.ENV.EMBER_DIR / 'hpo' / ds.path.name / fname
+        path = ryn.ENV.KGC_DIR / 'hpo' / ds.path.name / fname
         log.info(f'writing results to {path}')
 
         res.save_to_directory(str(path))
@@ -755,7 +755,7 @@ def run():
 
 def train_from_args(args):
     run()
-    # log.info('running embers.keen training')
+    # log.info('running kgc.keen training')
     # config.Config.execute(fconf=args.config, fspec=args.spec, callback=run)
 
 

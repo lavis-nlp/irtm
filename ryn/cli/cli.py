@@ -4,10 +4,10 @@
 
 import ryn
 from ryn import app
+from ryn import kgc
 from ryn import text
 from ryn import tests
 from ryn import graphs
-from ryn import embers
 
 from ryn.common import logging
 
@@ -21,7 +21,7 @@ log = logging.get('ryn')
 mods = {
     'app': app,
     'graphs': graphs,
-    'embers': embers,
+    'kgc': kgc,
     'text': text,
     'tests': tests,
 }
@@ -48,7 +48,7 @@ def print_help():
         print(f'    {name:>7s}: {mod.desc}')
 
     print('\nto get CMD specific help type ryn CMD --help')
-    print('e.g. ryn embers --help')
+    print('e.g. ryn kgc --help')
 
 
 def main():

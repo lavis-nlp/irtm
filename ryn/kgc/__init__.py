@@ -3,16 +3,16 @@
 from ryn.common import config
 from ryn.common import logging
 
-from ryn.embers import keen
+from ryn.kgc import keen
 
 
-log = logging.get('embers')
+log = logging.get('kgc')
 
 
 # --- ryn interface
 
 
-desc = 'work with graph embeddings'
+desc = 'work with knowledge graph embeddings'
 
 
 CMDS = {
@@ -42,5 +42,5 @@ def args(parser):
 
 
 def main(args):
-    log.info('running embers')
+    log.info('running kgc')
     CMDS[args.cmd][args.subcmd](args)

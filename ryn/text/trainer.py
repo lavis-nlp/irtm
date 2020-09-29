@@ -277,7 +277,7 @@ def train_from_args(args: argparse.Namespace):
 
         # ryn upstream
         kgc_model=(
-            ryn.ENV.EMBER_DIR / split_dataset / kgc_model_dir),
+            ryn.ENV.KGC_DIR / split_dataset / kgc_model_dir),
 
         text_dataset=(
             ryn.ENV.TEXT_DIR / 'data' / split_dataset / text_encoder_dir),

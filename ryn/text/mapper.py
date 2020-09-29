@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 
 import ryn
+from ryn.kgc import keen
 from ryn.text import data
-from ryn.embers import keen
 from ryn.common import helper
 from ryn.common import logging
 
@@ -236,7 +236,7 @@ class MapperConfig:
     valid_split: int
 
     # the trained knowledge graph completion model
-    # for more information see ryn.embers.keen.Model
+    # for more information see ryn.kgc.keen.Model
     kgc_model: Union[str, pathlib.Path]
 
     # this is the pre-processed text data
