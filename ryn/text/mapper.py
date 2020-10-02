@@ -91,13 +91,23 @@ class Aggregator(Base):
 
 
 @Aggregator.module
-class AggregatorMaxPooling_1(Aggregator):
+class MaxPoolingAggregator_1(Aggregator):
 
     name = 'max 1'
 
     # batch x tokens x text_dims -> batch x text_dims
     def forward(self, X: torch.Tensor) -> torch.Tensor:
         return X.max(axis=1).values
+
+
+@Aggregator.module
+class CLSAggregator_1(Aggregator):
+
+    name = 'cls 1'
+
+    # batch x tokens x text_dims -> batch x text_dims
+    def forward(self, X: torch.Tensor) -> torch.Tensor:
+        return X[:, 0]
 
 
 # --- PROJECTION
@@ -109,11 +119,6 @@ class Projector(Base):
 
 @Projector.module
 class AffineProjector_1(Projector):
-    """
-
-    Y = Ax + b
-
-    """
 
     name = 'affine 1'
 
@@ -195,6 +200,11 @@ class EuclideanComparator_1(Comparator):
 # --- WIRING
 
 
+OPTIMIZER = {
+    'adam': torch.optim.Adam,
+}
+
+
 @dataclass
 class Components:
 
@@ -223,6 +233,9 @@ class Components:
 
 @dataclass
 class MapperConfig:
+
+    # whether to fine-tune the text_encoder
+    freeze_text_encoder: bool
 
     # https://github.com/PyTorchLightning/pytorch-lightning/blob/9acee67c31c84dac74cc6169561a483d3b9c9f9d/pytorch_lightning/trainer/trainer.py#L81
     trainer_args: Dict[str, any]
@@ -366,7 +379,7 @@ class Mapper(pl.LightningModule):
 
         # --
 
-        result = pl.EvalResult(loss)
+        result = pl.EvalResult(early_stop_on=loss, checkpoint_on=loss)
         result.log('valid_loss_step', loss)
 
         return result
@@ -374,7 +387,7 @@ class Mapper(pl.LightningModule):
     def validation_epoch_end(self, val_step_outputs: List[pl.EvalResult]):
         avg = val_step_outputs['valid_loss_step'].mean()
 
-        result = pl.EvalResult(avg)
+        result = pl.EvalResult(early_stop_on=avg, checkpoint_on=avg)
         result.log('valid_loss_epoch', avg)
 
         return result

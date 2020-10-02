@@ -46,6 +46,11 @@ def args(parser):
         '--model', type=str,
         help='huggingface pretrained model')
 
+    parser.add_argument(
+        '--debug', action='store_true',
+        help='activate debug mode'
+    )
+
 
 def main(args):
     log.info('running text')

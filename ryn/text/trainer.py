@@ -12,10 +12,10 @@ from torch.nn.utils.rnn import pad_sequence
 
 import pytorch_lightning as pl
 from pytorch_lightning.callbacks.base import Callback
-# from pytorch_lightning.loggers.wandb import WandbLogger as Logger
 
 import gc
 import argparse
+import dataclasses
 
 from itertools import chain
 from itertools import repeat
@@ -104,11 +104,6 @@ def collate_fn(batch: List[Tuple]):
     return pad_sequence(idxs, batch_first=True), ents
 
 
-OPTIMIZER = {
-    'adam': torch.optim.Adam,
-}
-
-
 class TrainerCallback(Callback):
 
     @property
@@ -179,7 +174,9 @@ def train(*, config: mapper.MapperConfig = None):
         text_encoder_name=text_dataset.model)
 
     # # TODO make option
-    model.c.text_encoder.eval()
+    if config.freeze_text_encoder:
+        log.info('freezing text encoder')
+        model.c.text_encoder.eval()
 
     # to reproduce runs:
     # pl.seed_everything(model.c.kgc_model.ds.cfg.seed)
@@ -212,7 +209,7 @@ def train(*, config: mapper.MapperConfig = None):
 
 def train_from_args(args: argparse.Namespace):
 
-    DEBUG = True
+    DEBUG = args.debug
     if DEBUG:
         log.warning('phony debug run!')
 
@@ -249,14 +246,15 @@ def train_from_args(args: argparse.Namespace):
 
     # bert-large-cased: hidden size 1024
     # bert-base-cased: hidden size 768
+    config = mapper.MapperConfig(
 
-    train(config=mapper.MapperConfig(
+        freeze_text_encoder=True,
 
         # pytorch lightning trainer
         # https://pytorch-lightning.readthedocs.io/en/latest/trainer.html#trainer-class-api
         trainer_args=dict(
-            max_epochs=2,
             gpus=1,
+            max_epochs=25,
             logger=logger,
             weights_save_path=out / 'weights',
             # auto_lr_find=True,
@@ -292,4 +290,13 @@ def train_from_args(args: argparse.Namespace):
         projector_args=dict(input_dims=768, hidden_dims=500, output_dims=256),
         comparator='euclidean 1',
         valid_split=0.7,
-    ))
+    )
+
+    logger.experiment.config.update({
+        'kgc_model': kgc_model,
+        'text_encoder': text_encoder,
+        'split_dataset': split_dataset,
+        'mapper_config': dataclasses.asdict(config),
+    })
+
+    train(config=config)
