@@ -18,6 +18,7 @@ import multiprocessing as mp
 from datetime import datetime
 from functools import partial
 from functools import lru_cache
+from dataclasses import field
 from dataclasses import dataclass
 from collections import defaultdict
 
@@ -73,11 +74,14 @@ class TransformContext:
     tokens: int
 
 
-def _split_sentences(blob: str) -> Tuple[str]:
+def _split_sentences(blob: str, mention: str) -> Tuple[str]:
     blob = ' '.join(blob.split())
     split = split_sentences(blob)
-    sel = tuple(s for s in split if '[MASK]' in s)
-    return sel  # sel.replace('[MASK]', '[unused1]')
+    sel = tuple(
+        s.replace('[MASK]', mention)
+        for s in split if '[MASK]' in s)
+
+    return sel
 
 
 def _transform_result(result, *, e: int = None, amount: int = None):
@@ -86,8 +90,14 @@ def _transform_result(result, *, e: int = None, amount: int = None):
 
     # TODO adjust after next db update
     # ----------
-    mult = [_split_sentences(blob) for blob in blobs]
-    sentences = [sentence for res in mult for sentence in res if sentence]
+    mult = [
+        _split_sentences(blob, mention)
+        for blob, mention in zip(blobs, mentions)]
+
+    sentences = [
+        sentence
+        for res in mult for sentence in res
+        if sentence]
 
     if not sentences:
         return None
@@ -238,14 +248,14 @@ def _transform_worker(packed):
         _transform_split(wid, ctx, part)
 
 
-@helper.notnone
 def transform(
         *,
         dataset: split.Dataset = None,
         database: str = None,
         sentences: int = None,
         tokens: int = None,
-        model: str = None):
+        model: str = None,
+        suffix: str = None, ):
     """
 
     Tokenize and map the text for a dataset
@@ -257,11 +267,14 @@ def transform(
     # cannot save that to a csv
     _conflicts = set(name for name in dataset.id2ent.values() if SEP in name)
     if _conflicts:
-        raise ryn.RynError(f'entities contain ",": {_conflicts}')
+        raise ryn.RynError(f'entities contain "{SEP}": {_conflicts}')
 
     # ---
 
     name = f'{model}.{sentences}.{tokens}'
+    if suffix:
+        name = f'{name}-{suffix}'
+
     p_out = ryn.ENV.TEXT_DIR / 'data' / dataset.name / name
     p_out.mkdir(exist_ok=True, parents=True)
 
@@ -309,7 +322,8 @@ def _transform_from_args(args):
         database=args.database,
         sentences=args.sentences,
         tokens=args.tokens,
-        model=args.model, )
+        model=args.model,
+        suffix=args.suffix, )
 
 
 @dataclass
@@ -319,19 +333,17 @@ class Part:
 
     """
 
-    name: str  # e.g. cw.train (matches split.Part.name)
-    no_context: Dict[int, str]
+    name: str  # e.g. cw.train-SUFFIX (matches split.Part.name)
 
-    id2toks: Dict[int, List[str]]
-    id2idxs: Dict[int, List[int]]
-    id2sents: Dict[int, List[str]]
+    id2toks: Dict[int, List[str]] = field(default_factory=dict)
+    id2idxs: Dict[int, List[int]] = field(default_factory=dict)
+    id2sents: Dict[int, List[str]] = field(default_factory=dict)
 
-    id2ent: Dict[int, str]
+    id2ent: Dict[int, str] = field(default_factory=dict)
 
     def __or__(self, other: 'Part') -> 'Part':
         return Part(
             name=f'{self.name}|{other.name}',
-            no_context={**self.no_context, **other.no_context},
             id2sents={**self.id2sents, **other.id2sents},
             id2toks={**self.id2toks, **other.id2toks},
             id2idxs={**self.id2idxs, **other.id2idxs},
@@ -346,11 +358,10 @@ class Part:
             f'Part: {self.name}',
             f'  total entities: {len(self.id2ent)}',
             f'  average sentences per entity: {avg:2.2f}',
-            f'  no contexts: {len(self.no_context)}',
         ))
 
     def check(self):
-        log.info(f'! running self check for {self.name}')
+        log.info(f'running self check for {self.name}')
 
         assert len(self.id2sents) == len(self.id2ent), (
             f'{len(self.id2sents)=} != {len(self.id2ent)=}')
@@ -368,11 +379,14 @@ class Part:
         _deep_check(self.id2sents, self.id2idxs)
 
     @helper.notnone
-    def split(self, *, ratio: float = None):
+    def split_by_entity(self, *, ratio: float = None):
         n = int(len(self.id2idxs) * ratio)
-        log.info(f'split {self.name} at {n}/{len(self.id2idxs)} ({ratio=})')
 
-        def _split_dic(dic):
+        log.info(
+            f'split {self.name} by entity at '
+            f'{n}/{len(self.id2idxs)} ({ratio=})')
+
+        def _split_dic(dic: Dict) -> Tuple[Dict]:
             lis = list(dic.items())
             return dict(lis[:n]), dict(lis[n:])
 
@@ -385,42 +399,65 @@ class Part:
         kwargs_a = {k: v[0] for k, v in kwargs_split.items()}
         kwargs_b = {k: v[1] for k, v in kwargs_split.items()}
 
-        def _take(ids, src):
-            return {i: src[i] for i in ids}
-
         def _refine_kwargs(kwargs, suffix: str):
             return {
                 **kwargs,
                 **dict(
                     name=self.name + suffix,
-                    no_context=_take(self.no_context, kwargs['id2idxs']),
-                    id2ent=_take(self.id2ent, kwargs['id2idxs'])
+                    id2ent={e: self.id2ent[e] for e in kwargs['id2idxs']}
                 )
             }
 
-        split_a = Part(**_refine_kwargs(kwargs_a, '-split_a'))
-        split_b = Part(**_refine_kwargs(kwargs_b, '-split_b'))
+        p1 = Part(**_refine_kwargs(kwargs_a, '-entity_split_a'))
+        p2 = Part(**_refine_kwargs(kwargs_b, '-entity_split_b'))
 
-        split_a.check()
-        split_b.check()
+        p1.check()
+        p2.check()
 
-        def _disjoint(a, b):
-            return not (len(set(a) & set(a)) > 0)
+        return p1, p2
 
-        log.info('checking split criteria')
-        assert _disjoint(split_a.id2ent, split_b.id2ent)
-        assert _disjoint(split_a.id2toks, split_b.id2toks)
-        assert _disjoint(split_a.id2idxs, split_b.id2idxs)
-        assert _disjoint(split_a.id2sents, split_b.id2sents)
-        assert _disjoint(split_a.no_context, split_b.no_context)
+    @helper.notnone
+    def split_text_contexts(self, *, ratio: float = None):
+        log.info(f'split {self.name} text contexts ({ratio=})')
 
-        return split_a, split_b
+        p1 = Part(name=self.name + '-context_split_a')
+        p2 = Part(name=self.name + '-context_split_b')
+
+        def _split(lis):
+            n = int(len(lis) * ratio) + 1
+            return lis[:n], lis[n:]
+
+        for e in self.id2ent:
+            id2toks = _split(self.id2toks[e])
+            id2idxs = _split(self.id2idxs[e])
+            id2sents = _split(self.id2sents[e])
+
+            assert len(id2toks[0]), f'{e}: {self.id2toks[e]}'
+
+            p1.id2toks[e] = id2toks[0]
+            p1.id2idxs[e] = id2idxs[0]
+            p1.id2sents[e] = id2sents[0]
+            p1.id2ent[e] = self.id2ent[e]
+
+            if len(id2toks[1]):
+                p2.id2toks[e] = id2toks[1]
+                p2.id2idxs[e] = id2idxs[1]
+                p2.id2sents[e] = id2sents[1]
+                p2.id2ent[e] = self.id2ent[e]
+
+        p1.check()
+        p2.check()
+
+        _n = len(p1.id2ent) - len(p2.id2ent)
+        log.info(f'finished split: {_n} have no validation contexts')
+        return p1, p2
 
     # ---
 
     @staticmethod
     def _read(path, fname):
         with gzip.open(str(path / fname), mode='r') as fd:
+            log.info(f'reading {path.name}/{fname}')
             fd.readline()  # consume head comment
 
             for line in map(bytes.decode, fd.readlines()):
@@ -430,6 +467,8 @@ class Part:
     @classmethod
     @helper.notnone
     def load(K, *, name: str = None, path: pathlib.Path = None):
+        log.info(f'loading dataset from {path}')
+
         read = partial(Part._read, path)
         id2ent = {}
 
@@ -453,26 +492,12 @@ class Part:
 
         log.info(f'loaded data for {len(id2ent)} distinct entities')
 
-        # no contexts
-        no_context_path = path / f'{name}-nocontext.txt.gz'
-        with gzip.open(str(no_context_path), mode='r') as fd:
-            fd.readline()  # skip head comment
-            lines = fd.read().decode().strip().split('\n')
-            items = (line.split(SEP, maxsplit=1) for line in lines)
-
-            no_context = {int(k): v for k, v in items}
-
-        log.info(
-            f'loaded {len(no_context)} contextless entities '
-            f'from {no_context_path}')
-
         part = K(
             name=name,
             id2ent=id2ent,
             id2toks=id2toks,
             id2idxs=id2idxs,
-            id2sents=id2sents,
-            no_context=no_context)
+            id2sents=id2sents, )
 
         part.check()
         return part
@@ -484,14 +509,15 @@ class Dataset:
 
     Tokenized text data ready to be used by a model
 
-    This data is produced by ryn.text.data.transform.
+    This data is produced by ryn.text.data.transform and is
+    reflecting the data as seen by ryn.graph.split.Dataset.
+
     Files required for loading:
 
       - info.json
       - <SPLIT>-indexes.txt.gz
       - <SPLIT>-sentences.txt.g
       - <SPLIT>-tokens.txt.gz
-      - <SPLIT>-nocontext.txt.gz
 
     """
 
@@ -502,13 +528,19 @@ class Dataset:
     dataset: str
     database: str
 
-    sentences: int
-    tokens: int
+    max_sentence_count: int
+    max_token_count: int
 
-    # there are no open world entities in cw.valid
-    cw_train: Part
-    ow_valid: Part
-    ow_test: Part
+    train: Part
+    inductive: Part
+    transductive: Part
+    test: Part
+
+    @property
+    def name(self) -> str:
+        return (
+            f'{self.dataset}/{self.database}/{self.model}'
+            f'.{self.max_sentence_count}.{self.max_token_count}')
 
     def __str__(self) -> str:
         buf = '\n'.join((
@@ -523,20 +555,34 @@ class Dataset:
                 self.cw_train,
                 self.ow_valid,
                 self.ow_test):
+
             buf += textwrap.indent(str(part), '  ') + '\n'
 
         return buf
 
-    @property
-    def name(self) -> str:
-        return (
-            f'{self.dataset}/{self.database}/'
-            f'{self.model}.{self.sentences}.{self.tokens}')
+    def check(self):
+        log.info(f'running self check for {self.name}')
+
+        def _disjoint(a, b):
+            return not (len(set(a) & set(b)) > 0)
+
+        assert _disjoint(self.train.id2ent, self.inductive.id2ent)
+        assert _disjoint(self.train.id2toks, self.inductive.id2toks)
+        assert _disjoint(self.train.id2idxs, self.inductive.id2idxs)
+        assert _disjoint(self.train.id2sents, self.inductive.id2sents)
+
+        def _sub(a, b):
+            return set(a).issubset(set(b))
+
+        assert _sub(self.transductive.id2ent, self.train.id2ent)
+        assert _sub(self.transductive.id2toks, self.train.id2toks)
+        assert _sub(self.transductive.id2idxs, self.train.id2idxs)
+        assert _sub(self.transductive.id2sents, self.train.id2sents)
 
     @classmethod
     @helper.notnone
     @helper.cached('.cached.data.dataset.pkl')
-    def load(K, path: Union[str, pathlib.Path]):
+    def load(K, path: Union[str, pathlib.Path], ratio: float = None):
 
         path = pathlib.Path(path)
         if not path.is_dir():
@@ -545,19 +591,32 @@ class Dataset:
         with (path / 'info.json').open(mode='r') as fd:
             info = json.load(fd)
 
+        # create splits
+        train = Part.load(name='cw.train', path=path)
+        train, transductive = train.split_text_contexts(ratio=ratio)
+        inductive = Part.load(name='ow.valid', path=path)
+        inductive, test = inductive.split_by_entity(ratio=ratio)
+
         self = Dataset(
-            created=datetime.fromisoformat(info['created']),
-            git_hash=info['git_hash'],
+            # update
+            created=datetime.now().isoformat(),
+            git_hash=helper.git_hash(),
+
+            # copy
             model=info['model'],
             dataset=info['dataset'],
             database=info['database'],
-            sentences=info['sentences'],
-            tokens=info['tokens'],
+            max_sentence_count=info['sentences'],
+            max_token_count=info['tokens'],
 
-            cw_train=Part.load(name='cw.train', path=path),
-            ow_valid=Part.load(name='ow.valid', path=path),
-            ow_test=Part.load(name='ow.test', path=path),
+            # create
+            train=train,
+            inductive=inductive,
+            transductive=transductive,
+            test=test,
         )
+
+        self.check()
 
         log.info(f'loaded {self.name}')
         return self
