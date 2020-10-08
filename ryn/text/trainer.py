@@ -19,8 +19,8 @@ import dataclasses
 
 from itertools import chain
 from itertools import repeat
-from functools import partial
 from datetime import datetime
+from collections import defaultdict
 
 from typing import List
 from typing import Tuple
@@ -30,78 +30,58 @@ log = logging.get('text.trainer')
 
 class Dataset(torch_data.Dataset):
 
-    @property
-    def token_ids(self) -> Tuple[torch.Tensor]:
-        return self._token_ids
-
-    @property
-    def entity_ids(self) -> Tuple[int]:
-        return self._entity_ids
-
     def __len__(self):
-        return len(self.token_ids)
+        return len(self._flat)
 
     def __getitem__(self, idx: int) -> Tuple[torch.Tensor, int]:
-        return (
-            self.token_ids[idx],
-            self.entity_ids[idx], )
-
-    def __init__(
-            self, *,
-
-            # either
-            part: data.Part = None,
-            # or
-            entity_ids: Tuple[int] = None,
-            token_ids: Tuple[torch.Tensor] = None):
-
-        if any((
-                not part and not (token_ids and entity_ids),
-                part and (token_ids or entity_ids), )):
-            assert False, 'provide either a part or token & entity ids'
-
-        if part:
-            flat = [
-                (e, torch.Tensor(token_ids).to(dtype=torch.long))
-                for e, id_lists in part.id2idxs.items()
-                for token_ids in id_lists]
-
-            self._entity_ids, self._token_ids = zip(*flat)
-
-        else:
-            self._entity_ids = entity_ids
-            self._token_ids = token_ids
-
-        assert len(self.entity_ids) == len(self.token_ids)
-
-    def split(self, ratio: float) -> Tuple['Dataset']:
-        # must not be shuffled
-
-        n = int(len(self.entity_ids) * ratio)
-        e = self.entity_ids[n]
-
-        while self.entity_ids[n] == e:
-            n += 1
-
-        log.info(
-            f'splitting dataset with param {ratio}'
-            f' at {n} ({n / len(self.entity_ids) * 100:2.2f}%)')
-
-        a = Dataset(
-            entity_ids=self.entity_ids[:n],
-            token_ids=self.token_ids[:n])
-
-        b = Dataset(
-            entity_ids=self.entity_ids[n:],
-            token_ids=self.token_ids[n:])
-
-        assert not (set(a.entity_ids) & set(b.entity_ids))
-        return a, b
+        return self._flat[idx]
 
 
-def collate_fn(batch: List[Tuple]):
-    idxs, ents = zip(*batch)
-    return pad_sequence(idxs, batch_first=True), ents
+class TrainSet(Dataset):
+
+    @helper.notnone
+    def __init__(self, *, part: data.Part = None):
+        super().__init__()
+
+        self._flat = [
+            (e, torch.Tensor(idxs).to(dtype=torch.long))
+            for e, idx_lists in part.id2idxs.items()
+            for idxs in idx_lists]
+
+    @staticmethod
+    def collate_fn(batch: List[Tuple]):
+        ents, idxs = zip(*batch)
+        return pad_sequence(idxs, batch_first=True), ents
+
+
+class ValidationSet(Dataset):
+
+    def __init__(self, **parts: data.Part):
+        super().__init__()
+        self._flat = [
+            (name, e, torch.Tensor(idxs).to(dtype=torch.long))
+            for name, part in parts.items()
+            for e, idx_lists in part.id2idxs.items()
+            for idxs in idx_lists
+        ]
+
+    @staticmethod
+    def collate_fn(batch: List[Tuple]):
+
+        idxd = defaultdict(list)
+        entd = defaultdict(list)
+
+        for name, e, idxs in batch:
+            idxd[name].append(idxs)
+            entd[name].append(e)
+
+        resd = {}
+        for name in idxd:
+            resd[name] = (
+                pad_sequence(idxd[name], batch_first=True),
+                entd[name])
+
+        return resd
 
 
 class TrainerCallback(Callback):
@@ -167,34 +147,45 @@ def train(*, config: mapper.MapperConfig = None):
     # initializing models
     log.info('initializing models')
 
-    text_dataset = data.Dataset.load(path=config.text_dataset)
+    text_dataset = data.Dataset.load(
+        path=config.text_dataset,
+        ratio=config.valid_split)
+
+    # if a previous cache file with different ratio
+    # has not been deleted prior
+    assert text_dataset.ratio == config.valid_split, 'old cache file?'
 
     model = mapper.Mapper.from_config(
         config=config,
         text_encoder_name=text_dataset.model)
 
-    # # TODO make option
     if config.freeze_text_encoder:
         log.info('freezing text encoder')
         model.c.text_encoder.eval()
 
-    # to reproduce runs:
-    # pl.seed_everything(model.c.kgc_model.ds.cfg.seed)
+    # TODO to reproduce runs:
+    # pl.seed_everything(...)
     # also pl.Trainer(deterministic=True, ...)
 
     assert model.c.tokenizer.base.vocab['[PAD]'] == 0
 
-    # handling data
+    # --- handling data
 
-    ds = Dataset(part=text_dataset.cw_train)
-    ds_train, ds_valid = ds.split(config.valid_split)
-    # test = Dataset(part=text_dataset.ow_valid)
+    # TODO
+    # # test = Dataset(part=text_dataset.ow_valid)
+    dl_train = torch_data.DataLoader(
+        TrainSet(part=text_dataset.train),
+        collate_fn=TrainSet.collate_fn,
+        **config.dataloader_train_args)
 
-    DataLoader = partial(torch_data.DataLoader, collate_fn=collate_fn)
-    dl_train = DataLoader(ds_train, **config.dataloader_train_args)
-    dl_valid = DataLoader(ds_valid, **config.dataloader_valid_args)
+    dl_valid = torch_data.DataLoader(
+        ValidationSet(
+            inductive=text_dataset.inductive,
+            transductive=text_dataset.transductive),
+        collate_fn=ValidationSet.collate_fn,
+        **config.dataloader_valid_args)
 
-    # torment the machine
+    # --- torment the machine
 
     # callback = TrainerCallback(
     #     config=config,
@@ -222,7 +213,7 @@ def train_from_args(args: argparse.Namespace):
     split_dataset = 'oke.fb15k237_30061990_50'
 
     kgc_model_dir = f'{kgc_model}-256-2020.08.12.120540.777006'
-    text_encoder_dir = f'{text_encoder}.200.768-small'
+    text_encoder_dir = f'{text_encoder}.200.768-unmasked'
 
     # ---
 
@@ -282,7 +273,7 @@ def train_from_args(args: argparse.Namespace):
 
         # pytorch
         optimizer='adam',
-        optimizer_args=dict(lr=0.001),
+        optimizer_args=dict(lr=0.00001),
 
         # ryn models
         aggregator='max 1',

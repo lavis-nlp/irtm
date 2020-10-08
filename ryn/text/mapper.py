@@ -22,7 +22,6 @@ from collections import defaultdict
 
 from typing import Any
 from typing import Dict
-from typing import List
 from typing import Union
 from typing import Tuple
 
@@ -171,9 +170,8 @@ class MLPProjector_1(Projector):
 
         self.projector = nn.Sequential(
             nn.Linear(config.input_dims, config.hidden_dims),
-            nn.ReLU(),
-            nn.Linear(config.hidden_dims, config.output_dims),
             nn.Tanh(),
+            nn.Linear(config.hidden_dims, config.output_dims),
         )
 
     # batch x text_dims -> batch x kge_dims
@@ -293,6 +291,9 @@ class Mapper(pl.LightningModule):
         self._c = c
         self._lr = self.c.optimizer_args['lr']
 
+        log.info('setting kgc model to eval')
+        self.c.kgc_model.keen.eval()
+
         self.encode = c.text_encoder
         self.aggregate = c.aggregator
         self.project = c.projector
@@ -349,6 +350,8 @@ class Mapper(pl.LightningModule):
     #
 
     def training_step(self, batch, batch_idx: int):
+        assert not self.c.kgc_model.keen.training
+
         sentences, entities = batch
 
         projected, target = self.forward(
@@ -356,41 +359,37 @@ class Mapper(pl.LightningModule):
             entities=entities)
 
         loss = self.loss(projected, target)
+        self.log('train_loss_step', loss)
 
-        # --
-
-        result = pl.TrainResult(loss)
-        result.log('train_loss_step', loss)
-
-        return result
+        return loss
 
     #
     #   VALIDATION
     #
 
-    def validation_step(self, batch, batch_idx: int):
-        sentences, entities = batch
+    def validation_step(self, batchd, batch_idx: int):
+        """
 
-        projected, target = self.forward(
-            sentences=sentences,
-            entities=entities)
+        Each validation step makes two passes through the model
+        both for the inductive and the transductive setting.
 
-        loss = self.loss(projected, target)
+        """
+        losses = {}
+        for name, batch in batchd.items():
+            sentences, entities = batch
 
-        # --
+            projected, target = self.forward(
+                sentences=sentences,
+                entities=entities)
 
-        result = pl.EvalResult(early_stop_on=loss, checkpoint_on=loss)
-        result.log('valid_loss_step', loss)
+            # TODO (after keen training): there is a problem
+            # that 'loss' is a zero-value tensor
 
-        return result
+            losses[name] = loss = self.loss(projected, target)
+            self.log(f'valid_loss_{name}_step', loss)
 
-    def validation_epoch_end(self, val_step_outputs: List[pl.EvalResult]):
-        avg = val_step_outputs['valid_loss_step'].mean()
-
-        result = pl.EvalResult(early_stop_on=avg, checkpoint_on=avg)
-        result.log('valid_loss_epoch', avg)
-
-        return result
+        log.error(f'{tuple(losses.values())=}')
+        return torch.cat(tuple(losses.values())).mean()
 
     # ---
 
