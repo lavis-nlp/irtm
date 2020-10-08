@@ -528,6 +528,7 @@ class Dataset:
     dataset: str
     database: str
 
+    ratio: int
     max_sentence_count: int
     max_token_count: int
 
@@ -598,6 +599,8 @@ class Dataset:
         inductive, test = inductive.split_by_entity(ratio=ratio)
 
         self = Dataset(
+            ratio=ratio,
+
             # update
             created=datetime.now().isoformat(),
             git_hash=helper.git_hash(),
