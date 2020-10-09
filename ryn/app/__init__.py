@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 
 
+from ryn.cli import main
 from ryn.common import logging
 
 import sys
@@ -42,14 +43,7 @@ class Context:
         raise NotImplementedError()
 
 
-# --- ryn interface
-
-
-desc = 'handle streamlit instances'
-
-
-def args(parser):
-    pass
+# --- cli interface
 
 
 # streamlit internally relies on click contexts
@@ -59,7 +53,11 @@ def ryn():
     streamlit_cli._main_run(app.__file__)
 
 
-def main(args):
+@main.command()
+def streamlit():
+    """
+    Run a streamlit app instance
+    """
     log.info('running streamlit')
 
     # clear argv to obtain a clean click state

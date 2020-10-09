@@ -1153,29 +1153,3 @@ class Graph:
             f'{self.source.ents[h]} | '
             f'{self.source.ents[t]} | '
             f'{self.source.rels[r]}')
-
-
-# ---
-
-
-def _cli(args):
-    from ryn.graphs import loader
-    import IPython
-
-    print()
-    graphs = loader.load_graphs_from_args(args)
-    for name in graphs:
-        print(f'loaded graph: {name}')
-
-    banner = '\n'.join((
-        '',
-        '-' * 20,
-        ' RYN GRAPH CLIENT',
-        '-' * 20,
-        '',
-        'variables in scope:',
-        '    graphs: Dict[str, ryn.graph.Graph]',
-        '',
-    ))
-
-    IPython.embed(banner1=banner)

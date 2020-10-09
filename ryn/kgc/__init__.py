@@ -1,46 +1,49 @@
 # -*- coding: utf-8 -*-
 
-from ryn.common import config
+
+from ryn.cli import main
+from ryn.kgc import keen
 from ryn.common import logging
 
-from ryn.kgc import keen
+import click
 
 
 log = logging.get('kgc')
 
 
-# --- ryn interface
+@main.group(name='kgc')
+def click_kgc():
+    """
+    Knowledge graph completion models
+    """
+    log.info('kgc called')
 
 
-desc = 'work with knowledge graph embeddings'
+@click_kgc.command(name='cli')
+@click.option(
+    '--path', type=str, required=True,
+    help='path to a kgc.keen.Model directory')
+def kgc_cli(path: str = None):
+
+    m = keen.Model.from_path(path)
+    print(f'\n{m}')
+
+    banner = '\n'.join((
+        '',
+        '-' * 20,
+        ' RYN KEEN CLIENT',
+        '-' * 20,
+        '',
+        'variables in scope:',
+        '    m: Model',
+        '',
+    ))
+
+    import IPython
+    IPython.embed(banner1=banner)
 
 
-CMDS = {
-    'keen': {
-        'train': keen.train_from_args,
-        'cli': keen._cli,
-    }
-}
-
-
-def args(parser):
-    config.add_conf_arguments(parser)
-
-    parser.add_argument(
-        'cmd', type=str,
-        help=f'one of {", ".join(CMDS)}')
-
-    parser.add_argument(
-        'subcmd', type=str,
-        help=(
-            f'keen:  ({", ".join(CMDS["keen"])}),'
-        ))
-
-    parser.add_argument(
-        '--path', type=str,
-        help='path to file or directory')
-
-
-def main(args):
-    log.info('running kgc')
-    CMDS[args.cmd][args.subcmd](args)
+@click_kgc.command(name='train')
+def click_train():
+    log.info('train called')
+    keen.run()

@@ -309,23 +309,6 @@ def transform(
         ])
 
 
-def _transform_from_args(args):
-    assert args.dataset, 'provide --dataset'
-    assert args.database, 'provide --database'
-    assert args.sentences, 'provide --sentences'
-    assert args.tokens, 'provide --tokens'
-    assert args.model, 'provide --model'
-
-    dataset = split.Dataset.load(path=args.dataset)
-    transform(
-        dataset=dataset,
-        database=args.database,
-        sentences=args.sentences,
-        tokens=args.tokens,
-        model=args.model,
-        suffix=args.suffix, )
-
-
 @dataclass
 class Part:
     """
@@ -623,27 +606,3 @@ class Dataset:
 
         log.info(f'loaded {self.name}')
         return self
-
-
-def _cli(args):
-    import IPython
-
-    print()
-    if not args.dataset:
-        raise ryn.RynError('please provide a --dataset')
-
-    ds = Dataset.load(path=args.dataset)
-    print(f'{ds}')
-
-    banner = '\n'.join((
-        '',
-        '-' * 20,
-        ' RYN KEEN CLIENT',
-        '-' * 20,
-        '',
-        'variables in scope:',
-        '    ds: Dataset',
-        '',
-    ))
-
-    IPython.embed(banner1=banner)

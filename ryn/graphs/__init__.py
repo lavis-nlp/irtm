@@ -1,55 +1,134 @@
 # -*- coding: utf-8 -*-
 
-from ryn.graphs import graph
-from ryn.graphs import split
-from ryn.graphs import loader
+from ryn.cli import main
 from ryn.common import logging
+from ryn.graphs import split as split
+from ryn.graphs import loader as loader
+
+import click
 
 
 log = logging.get('graphs')
 
 
-# --- ryn interface
+# --- cli interface
 
 
-desc = 'analyse paths through the networks'
+@main.group(name='graphs')
+def click_graphs():
+    """
+    Working with graphs
+    """
+    pass
 
 
-CMDS = {
-    'graph': {
-        'cli': graph._cli,
-    },
-    'split': {
-        'create': split.create_from_args,
-        'cli': split._cli,
-    }
-}
+@click_graphs.group(name='graph')
+def click_graph():
+    """
+    Networkx graph abstractions
+    """
+    pass
 
 
-def args(parser):
-    parser.add_argument(
-        'cmd', type=str,
-        help=f'one of {", ".join(CMDS)}', )
+@click_graph.command(name='cli')
+@click.option(
+    '--config', type=str,
+    help='config file (conf/*.conf)')
+@click.option(
+    '--spec', type=str,
+    help='config specification file (conf/*.spec.conf)')
+@click.option(
+    '--graphs', type=str, multiple=True,
+    help='selection of graphs (names defined in --config)')
+@click.option(
+    '--uri', type=str, multiple=True,
+    help=(
+        'instead of -config -spec -graphs combination;'
+        ' {provider}.{dataset} (e.g. oke.fb15k237-train)'))
+def graph_cli(uri: str = None, single: bool = False, **kwargs):
+    """
 
-    parser.add_argument(
-        'subcmd', type=str,
-        help=f'graph:  ({", ".join(CMDS["graph"])}),', )
+    Load graphs and drop into an interactive shell
 
-    parser.add_argument(
-        '--seeds', type=int, nargs='+',
-        help='random seeds', )
+    Provide either a --config --spec and --graphs
+    or simply an --uri.
 
-    parser.add_argument(
-        '--ratios', type=int, nargs='+',
-        help='ratio thresholds (cut at n-th relation for concepts)', )
+    """
 
-    parser.add_argument(
-        '--path', type=str,
-        help='path to file or directory')
+    if uri:
+        graphs = loader.load_graphs_from_uri(*uri)
+    else:
+        graphs = loader.load_graphs_from_conf(**kwargs)
 
-    loader.add_graph_arguments(parser)
+    print()
+    for name in graphs:
+        print(f'loaded graph: {name}')
+
+    banner = '\n'.join((
+        '',
+        '-' * 20,
+        ' RYN GRAPH CLIENT',
+        '-' * 20,
+        '',
+        'variables in scope:',
+        '    graphs',
+        '',
+    ))
+
+    import IPython
+    IPython.embed(banner1=banner)
 
 
-def main(args):
-    log.info('running graphs')
-    CMDS[args.cmd][args.subcmd](args)
+# ---
+
+
+@click_graphs.group(name='split')
+def click_split():
+    """
+    Create open world triple splits
+    """
+    pass
+
+
+@click_split.command()
+@click.option(
+    '--seed', type=int, multiple=True, required=True,
+    help='random seeds')
+@click.option(
+    '--ratio', type=int, multiple=True, required=True,
+    help='ratio thresholds (cut at n-th relation for concepts)')
+def create(**kwargs):
+    """
+    Create a graphs.split.Dataset from a graphs.graph.Graph
+
+    It uses all combinations of seeds and ratios.
+
+    """
+    split.create_from_conf(**kwargs)
+
+
+@click_split.command(name='cli')
+@click.option(
+    '--path', type=str, required=True,
+    help='path to a graphs.split.Dataset directory')
+def split_cli(path: str = None):
+    """
+    Load a split dataset
+    """
+
+    ds = split.Dataset.load(path=path)
+    print(f'{ds}')
+
+    banner = '\n'.join((
+        '',
+        '-' * 20,
+        ' RYN DATASET CLIENT',
+        '-' * 20,
+        '',
+        'variables in scope:',
+        '    ds: Dataset',
+        '',
+    ))
+
+    import IPython
+    IPython.embed(banner1=banner)

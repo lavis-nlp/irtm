@@ -17,7 +17,6 @@ import random
 import pathlib
 import textwrap
 import operator
-import argparse
 
 from datetime import datetime
 from functools import partial
@@ -611,59 +610,33 @@ def create(g: graph.Graph, cfg: Config):
     Splitter(g=g, cfg=cfg, name=name).create()
 
 
-def create_from_args(args: argparse.Namespace):
-    assert args.uri, 'provide a graph uri'
-    assert len(args.uri) == 1, 'provide a single graph uri'
-    assert args.seeds, 'provide seeds'
-    assert args.ratios, 'provide ratio thresholds'
+@helper.notnone
+def create_from_conf(
+        *,
+        uri: List[str] = None,
+        ratio: List[int] = None,
+        seed: List[int] = None):
 
-    g = loader.load_graphs_from_uri(args.uri[0])[0]
-    log.info(f'loaded {g.name}, analysing relations')
+    for g in loader.load_graphs_from_uri(**uri):
+        log.info(f'loaded {g.name}, analysing relations')
 
-    rels = Relation.from_graph(g)
-    rels.sort(key=lambda rel: rel.ratio)
-    log.info(f'retrieved {len(rels)} relations')
+        rels = Relation.from_graph(g)
+        rels.sort(key=lambda rel: rel.ratio)
+        log.info(f'retrieved {len(rels)} relations')
 
-    # if ow_split and train_split also become
-    # parameters use itertools permutations
+        # if ow_split and train_split also become
+        # parameters use itertools permutations
 
-    print('')
-    bar = tqdm(total=len(args.ratios) * len(args.seeds))
+        print('')
+        bar = tqdm(total=len(ratio) * len(seed))
 
-    K = partial(Config, ow_split=0.5, train_split=0.7)
-    for threshold in args.ratios:
-        log.info(f'! {threshold=}')
+        K = partial(Config, ow_split=0.5, train_split=0.7)
+        for threshold in ratio:
+            log.info(f'! {threshold=}')
 
-        for seed in args.seeds:
-            log.info(f'! {seed=}')
+            for seed in seed:
+                log.info(f'! {seed=}')
 
-            cfg = K(seed=seed, threshold=threshold)
-            create(g, cfg)
-            bar.update(1)
-
-
-# ---
-
-
-def _cli(args):
-    import IPython
-
-    print()
-    if not args.path:
-        raise ryn.RynError('please provide a --path')
-
-    ds = Dataset.load(path=args.path)
-    print(f'{ds}')
-
-    banner = '\n'.join((
-        '',
-        '-' * 20,
-        ' RYN DATASET CLIENT',
-        '-' * 20,
-        '',
-        'variables in scope:',
-        '    ds: Dataset',
-        '',
-    ))
-
-    IPython.embed(banner1=banner)
+                cfg = K(seed=seed, threshold=threshold)
+                create(g, cfg)
+                bar.update(1)

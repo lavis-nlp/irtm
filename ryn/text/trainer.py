@@ -14,7 +14,6 @@ import pytorch_lightning as pl
 from pytorch_lightning.callbacks.base import Callback
 
 import gc
-import argparse
 import dataclasses
 
 from itertools import chain
@@ -198,10 +197,10 @@ def train(*, config: mapper.MapperConfig = None):
     log.info('done')
 
 
-def train_from_args(args: argparse.Namespace):
+# TODO replae with config management (await hpo with wandb)
+def train_from_cli(debug: bool = False):
 
-    DEBUG = args.debug
-    if DEBUG:
+    if debug:
         log.warning('phony debug run!')
 
     DATEFMT = '%Y.%m.%d.%H%M%S'
@@ -228,7 +227,7 @@ def train_from_args(args: argparse.Namespace):
     logger = pl.loggers.wandb.WandbLogger(
         name=name,
         save_dir=str(out),
-        offline=DEBUG,
+        offline=debug,
         project='ryn',
         log_model=False,
     )
@@ -249,7 +248,7 @@ def train_from_args(args: argparse.Namespace):
             logger=logger,
             weights_save_path=out / 'weights',
             # auto_lr_find=True,
-            fast_dev_run=DEBUG,
+            fast_dev_run=debug,
         ),
 
         # torch dataloader

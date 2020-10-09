@@ -1,8 +1,10 @@
 # -*- coding: utf-8 -*-
 
 import ryn
+from ryn.cli import main
 from ryn.common import logging
 
+import click
 import inotify.adapters
 
 import re
@@ -14,7 +16,7 @@ from datetime import datetime
 log = logging.get('test')
 
 
-def run(name: str = None):
+def _run(name: str = None):
     runner = unittest.TextTestRunner()
     loader = unittest.TestLoader()
     tests = loader.discover(ryn.ENV.TEST_DIR, '*.py')
@@ -26,59 +28,54 @@ def run(name: str = None):
     runner.run(tests)
 
 
-# the unittest runner is not reloading modules
-# so this is a work-around by forking
-def _spawn():
-    p = mp.Process(target=run, )
-    p.start()
-    p.join()
+# --- cli interface
 
 
-def main(args):
-    if args.cmd == 'run':
-        log.info(f'running tests: {args.name or "all"}')
-        run(args.name)
-        return
-
-    if args.cmd == 'watch':
-        print('\nover the mountain watching the watcher\n')
-        ify = inotify.adapters.Inotify()
-
-        ify.add_watch('.')
-        ify.add_watch('../conf/')
-        ify.add_watch('../ryn/')
-
-        for evt in ify.event_gen(yield_nones=False):
-            _, types, path, fname = evt
-
-            if any((
-                    not re.match(r'^[a-zA-Z]', fname),
-                    'IN_CLOSE_WRITE' not in types)):
-                continue
-
-            ts = datetime.now()
-            print(f'[{ts}]', types, path, fname)
-
-            _spawn()
-            ts = datetime.now()
-            print(f'\n[{ts}] waiting for file changes')
-
-        return
-
-    raise ryn.RynError('unknown command: {args.cmd}')
+@main.group(name='tests')
+def click_tests():
+    """
+    Run unit tests
+    """
+    pass
 
 
-# --- ryn interface
+@click_tests.command()
+@click.option(
+    '--name', type=str,
+    help='test case(s) to run')
+def run(name: str = None):
+    log.info(f'running tests: {name or "all"}')
+    _run(name=name)
 
 
-desc = 'run some tests'
+@click_tests.command()
+def watch():
+    raise ryn.RynError('disabled for the moment')
 
+    # the unittest runner is not reloading modules
+    # so this is a work-around by forking
+    def _spawn():
+        p = mp.Process(target=_run, )
+        p.start()
+        p.join()
 
-def args(parser):
-    parser.add_argument(
-        'cmd', type=str, help='one of {run, watch}'
-    )
+    print('\nover the mountain watching the watcher\n')
+    ify = inotify.adapters.Inotify()
 
-    parser.add_argument(
-        '--name', type=str, help='test case(s) to run'
-    )
+    ify.add_watch(str(ryn.ENV.SRC_DIR))
+    ify.add_watch(str(ryn.ENV.CONF_DIR))
+
+    for evt in ify.event_gen(yield_nones=False):
+        _, types, path, fname = evt
+
+        if any((
+                not re.match(r'^[a-zA-Z]', fname),
+                'IN_CLOSE_WRITE' not in types)):
+            continue
+
+        ts = datetime.now()
+        print(f'[{ts}]', types, path, fname)
+
+        _spawn()
+        ts = datetime.now()
+        print(f'\n[{ts}] waiting for file changes')

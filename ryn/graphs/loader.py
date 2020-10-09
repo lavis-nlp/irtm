@@ -7,7 +7,6 @@ from ryn.common import config
 from ryn.common import logging
 
 import pathlib
-import argparse
 from dataclasses import dataclass
 
 from typing import Any
@@ -227,17 +226,6 @@ def load_graphs_from_conf(
     return graph_dict if not single else graph_dict[list(selection)[0]]
 
 
-def load_graphs_from_args(args: argparse.Namespace, single: bool = False):
-    if args.uri:
-        return load_graphs_from_uri(*args.uri)
-    else:
-        return load_graphs_from_conf(
-            conf=args.config,
-            spec=args.spec,
-            graphs=args.graphs,
-            single=single)
-
-
 def load_graphs_from_uri(*uris: str):
     """
     uri format: {provider}.{dataset}
@@ -296,42 +284,3 @@ class LazyGraphLoader:
             graphs[name] = cache[name]
 
         return graphs
-
-    @staticmethod
-    def from_args(
-            args: argparse.Namespace,
-            selection: Tuple[str] = None) -> 'LazyGraphLoader':
-
-        return LazyGraphLoader(
-            config=args.config,
-            spec=args.spec,
-            graphs=selection)
-
-
-def add_graph_arguments(parser: argparse.ArgumentParser):
-
-    # either
-
-    parser.add_argument(
-        '-c', '--config', type=str,
-        help='config file (conf/*.conf)',
-    )
-
-    parser.add_argument(
-        '-s', '--spec', type=str,
-        help='config specification file (conf/*.spec.conf)',
-    )
-
-    parser.add_argument(
-        '-g', '--graphs', type=str, nargs='+',
-        help='selection of graphs (names defined in --config)'
-    )
-
-    # or
-
-    parser.add_argument(
-        '--uri', type=str, nargs='+',
-        help=(
-            'instead of -c -s -g combination;'
-            ' {provider}.{dataset} (e.g. oke.fb15k237-train)')
-    )
