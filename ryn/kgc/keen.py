@@ -312,7 +312,7 @@ class Model:
 
     Trained model
 
-    Use Model.from_path(...) to load all data from disk.
+    Use Model.load(...) to load all data from disk.
     The triple factories used are saved within the torch instance.
 
     """
@@ -616,7 +616,7 @@ class Model:
     # ---
 
     @classmethod
-    def from_path(K, path: Union[str, pathlib.Path]):
+    def load(K, path: Union[str, pathlib.Path]):
         log.info(f'loading keen model from {path}')
         path = pathlib.Path(path)
 

@@ -399,7 +399,7 @@ class Mapper(pl.LightningModule):
             config: MapperConfig = None,
             text_encoder_name: str = None):
 
-        kgc_model = keen.Model.from_path(config.kgc_model)
+        kgc_model = keen.Model.load(config.kgc_model)
 
         text_encoder = tf.BertModel.from_pretrained(
             text_encoder_name,

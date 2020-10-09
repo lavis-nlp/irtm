@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 
 from ryn import RynError
+from ryn.common import helper
 from ryn.common import logging
 
 import argparse
@@ -35,7 +36,12 @@ class Config:
     file_spec: str
 
     @staticmethod
-    def create(fconf: str, fspec: str) -> Generator['Config', None, None]:
+    @helper.notnone
+    def create(
+            *,
+            fconf: str = None,
+            fspec: str = None) -> Generator['Config', None, None]:
+
         log.info(f'creating configuration generator from {fconf}')
 
         parser = configobj.ConfigObj(fconf)
@@ -67,16 +73,14 @@ class Config:
                 file_spec=fspec, )
 
     @staticmethod
+    @helper.notnone
     def execute(
+            *,
             fconf: str = None,
             fspec: str = None,
             callback: Callable[['Config'], None] = None):
 
-        if not fconf:
-            msg = 'please provide a config file'
-            raise RynError(msg)
-
-        for cfg in Config.create(fconf, fspec):
+        for cfg in Config.create(fconf=fconf, fspec=fspec):
             try:
                 log.info(f'invoking callback for {cfg.name}')
                 callback(cfg)

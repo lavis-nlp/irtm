@@ -191,7 +191,7 @@ def load_graphs_from_conf(
     log.info(f'selecting config: {conf}')
     log.info(f'loading {graphs or "all"} from conf')
 
-    gen = config.Config.create(conf, spec)
+    gen = config.Config.create(fconf=conf, fspec=spec)
     confs = {c.name: c for c in gen}
     graphs = set(graphs) if graphs else set(confs.keys())
     selection = graphs & set(confs.keys())

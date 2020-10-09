@@ -79,18 +79,16 @@ class Config:
 
     # ---
 
-    def save(self, f_name: Union[str, pathlib.Path]):
-        path = pathlib.Path(f_name)
-        # _relative = path.relative_to(ryn.ENV.ROOT_DIR)
-        # log.info(f'saving config to {_relative}')
+    def save(self, path: Union[str, pathlib.Path]):
+        path = pathlib.Path(path)
         log.info(f'saving config to {path}')
 
         with path.open(mode='wb') as fd:
             pickle.dump(self, fd)
 
     @staticmethod
-    def load(f_name: Union[str, pathlib.Path]) -> 'Config':
-        path = pathlib.Path(f_name)
+    def load(path: Union[str, pathlib.Path]) -> 'Config':
+        path = pathlib.Path(path)
         log.info(f'loading config from {path}')
 
         with path.open(mode='rb') as fd:

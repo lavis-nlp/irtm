@@ -83,7 +83,7 @@ class KGCWidgets(app.Widgets):
 @st.cache(allow_output_mutation=True)
 def load_keen(path) -> keen.Model:
     log.error('load_keen cache miss')
-    return keen.Model.from_path(path)
+    return keen.Model.load(path)
 
 
 def keen_to_row(model: keen.Model):

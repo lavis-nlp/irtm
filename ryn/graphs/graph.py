@@ -21,12 +21,12 @@ from dataclasses import FrozenInstanceError
 from collections import Counter
 from collections import defaultdict
 
-
 from typing import Any
 from typing import Set
 from typing import Dict
 from typing import List
 from typing import Tuple
+from typing import Union
 from typing import NewType
 
 
@@ -1088,7 +1088,7 @@ class Graph:
         self._rnx = self.nx.reverse()
         return self
 
-    def save(self, f_name: str) -> 'Graph':
+    def save(self, path: Union[str, pathlib.Path]) -> 'Graph':
         """
 
         Persist graph to file.
@@ -1096,15 +1096,11 @@ class Graph:
         Parameters
         ----------
 
-        f_name : str
+        path : Union[str, pathlib.Path]
           File to save the graph to
 
         """
-        path = pathlib.Path(f_name)
-
-        # TODO: catch error case
-        # _relative = path.relative_to(ryn.ENV.ROOT_DIR)
-        # log.info(f'saving graph {self.name} to {_relative}')
+        path = pathlib.Path(path)
 
         with path.open(mode='wb') as fd:
             pickle.dump(self, fd)
@@ -1112,7 +1108,7 @@ class Graph:
         return self
 
     @staticmethod
-    def load(f_name: str) -> 'Graph':
+    def load(path: Union[str, pathlib.Path]) -> 'Graph':
         """
 
         Load graph from file
@@ -1120,11 +1116,11 @@ class Graph:
         Parameters
         ----------
 
-        f_name : str
+        path : Union[str, pathlib.Path]
           File to load graph from
 
         """
-        path = pathlib.Path(f_name)
+        path = pathlib.Path(path)
         log.info(f'loading graph from {path}')
 
         with path.open(mode='rb') as fd:

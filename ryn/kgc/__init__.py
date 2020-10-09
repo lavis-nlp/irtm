@@ -25,7 +25,7 @@ def click_kgc():
     help='path to a kgc.keen.Model directory')
 def kgc_cli(path: str = None):
 
-    m = keen.Model.from_path(path)
+    m = keen.Model.load(path)
     print(f'\n{m}')
 
     banner = '\n'.join((
