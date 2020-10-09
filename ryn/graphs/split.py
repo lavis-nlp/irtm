@@ -267,7 +267,7 @@ class Dataset:
             'entities in ow test leaked)')
 
     @classmethod
-    @helper.cached('.cached.dataset.pkl')
+    @helper.cached('.cached.split.dataset.pkl')
     def load(K, path: Union[str, pathlib.Path]) -> 'Dataset':
         """
 
