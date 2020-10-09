@@ -3,6 +3,7 @@
 
 from ryn.cli import main
 from ryn.kgc import keen
+from ryn.kgc import trainer
 from ryn.common import logging
 
 import click
@@ -44,6 +45,12 @@ def kgc_cli(path: str = None):
 
 
 @click_kgc.command(name='train')
-def click_train():
+@click.option(
+    '--model', type=str, required=True,
+    help='model name (as registered with pykeen)')
+@click.option(
+    '--debug', is_flag=True,
+    help='only for debugging, do not log')
+def click_train(**kwargs):
     log.info('train called')
-    keen.run()
+    trainer.train_from_cli(**kwargs)

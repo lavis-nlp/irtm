@@ -15,7 +15,6 @@ from ryn.common import helper
 from ryn.common import logging
 
 import json
-import copy
 import pickle
 import pathlib
 import textwrap
@@ -29,10 +28,10 @@ import torch
 import numpy as np
 import pandas as pd
 
-# from pykeen import pipeline
-from pykeen.hpo import hpo_pipeline
 from pykeen import triples as keen_triples
-from pykeen.models import base as keen_base
+from pykeen import datasets as keen_datasets
+from pykeen.models import base as keen_models_base
+from pykeen.datasets import base as keen_datasets_base
 
 from typing import Any
 from typing import Set
@@ -44,7 +43,7 @@ from typing import Collection
 
 
 log = logging.get('kgc.keen')
-DATEFMT = '%Y.%m.%d.%H%M%S.%f'
+DATEFMT = '%Y.%m.%d.%H%M%S'
 
 
 # ---
@@ -210,8 +209,7 @@ def triples_to_ndarray(g: graph.Graph, triples: Collection[Tuple[int]]):
 # ---
 
 
-@dataclass
-class TripleFactories:
+class Dataset(keen_datasets_base.DataSet):
     """
 
     Dataset as required by pykeen
@@ -221,25 +219,50 @@ class TripleFactories:
 
     """
 
-    dataset: split.Dataset
+    NAME = 'ryn'
 
-    train: keen_triples.TriplesFactory
-    valid: keen_triples.TriplesFactory
-    test: keen_triples.TriplesFactory
+    @property
+    def split_dataset(self):
+        return self._split_dataset
+
+    @property
+    def kwargs(self):
+        return dict(
+            split_dataset=self.split_dataset,
+            training=self.training,
+            validation=self.validation,
+            testing=self.testing,
+        )
+
+    @helper.notnone
+    def __init__(
+            self, *,
+            # if this changes, also change Dataset.kwargs
+            split_dataset: split.Dataset = None,
+            training: keen_triples.TriplesFactory = None,
+            validation: keen_triples.TriplesFactory = None,
+            testing: keen_triples.TriplesFactory = None):
+
+        self._split_dataset = split_dataset
+
+        # see keen_datasets_base.DataSet
+        self.training = training
+        self.validation = validation
+        self.testing = testing
 
     def check(self):
-        ds = self.dataset
+        ds = self.split_dataset
         log.info(f'! running self-check for {ds.path.name} TripleFactories')
 
-        assert self.valid.num_entities <= self.train.num_entities, (
-            f'{self.valid.num_entities=} > {self.train.num_entities=}')
-        assert self.test.num_entities <= self.valid.num_entities, (
-            f'{self.test.num_entities=} > {self.valid.num_entities=}')
+        assert self.validation.num_entities <= self.training.num_entities, (
+            f'{self.validation.num_entities=} > {self.training.num_entities=}')
+        assert self.testing.num_entities <= self.validation.num_entities, (
+            f'{self.testing.num_entities=} > {self.validation.num_entities=}')
 
         # all entities must be known at training time
         # (this implicitly checks if there are entities with the same name)
-        n_train = self.train.num_entities
-        n_dataset = len(self.dataset.cw_train.entities)
+        n_train = self.training.num_entities
+        n_dataset = len(self.split_dataset.cw_train.entities)
         assert n_train == n_dataset, f'{n_train=} != {n_dataset=}'
 
         # all known entities and relations are contained in the mappings
@@ -252,7 +275,7 @@ class TripleFactories:
             arr = triples_to_ndarray(ds.g, triples)
             return set(arr[:, indexes].flatten())
 
-        for factory in (self.train, self.valid, self.test):
+        for factory in (self.training, self.validation, self.testing):
 
             _mapped = _triples_to_set(ds.cw_train.triples, entities)
             assert len(factory.entity_to_id.keys() - _mapped) == 0, (
@@ -271,39 +294,51 @@ class TripleFactories:
                 f'{_mapped.issubset(factory.relation_to_id.keys())=}')
 
     @classmethod
-    @helper.cached('.cached.keen.factories.pkl')
+    @helper.cached('.cached.keen.dataset.pkl')
     def create(
             K, *,
+            # path is needed for helper.cached
+            # (you may want to use dataset.path)
             path: pathlib.Path = None,
-            dataset: split.Dataset = None) -> 'TripleFactories':
+            split_dataset: split.Dataset = None) -> 'Dataset':
 
         log.info(f'creating triple factories {path}')
 
-        helper.seed(dataset.cfg.seed)
+        helper.seed(split_dataset.cfg.seed)
 
-        to_a = partial(triples_to_ndarray, dataset.g)
+        to_a = partial(triples_to_ndarray, split_dataset.g)
 
         # keen uses its own internal indexing
         # so strip own indexes and create "translated" triple matrix
         train = keen_triples.TriplesFactory(
-            triples=to_a(dataset.cw_train.triples), )
+            triples=to_a(split_dataset.cw_train.triples), )
 
         # default split is 80/20
-        train, valid = train.split(
-            dataset.cfg.train_split,
-            random_state=dataset.cfg.seed, )
+        training, validation = train.split(
+            split_dataset.cfg.train_split,
+            random_state=split_dataset.cfg.seed, )
 
         # re-use existing entity/relation mappings
-        test = keen_triples.TriplesFactory(
-            triples=to_a(dataset.cw_valid.triples),
+        testing = keen_triples.TriplesFactory(
+            triples=to_a(split_dataset.cw_valid.triples),
             entity_to_id=train.entity_to_id,
             relation_to_id=train.relation_to_id, )
 
         # ---
 
-        self = K(dataset=dataset, train=train, valid=valid, test=test)
+        self = K(
+            split_dataset=split_dataset,
+            training=training,
+            validation=validation,
+            testing=testing)
         self.check()
         return self
+
+
+# need to ninja-register this dataset with a string
+# as otherwise wandb param updates do not work as types (.__class__)
+# are not json serializable
+keen_datasets.datasets[Dataset.NAME] = Dataset
 
 
 @dataclass
@@ -321,14 +356,14 @@ class Model:
     timestamp: datetime
 
     # is attempted to be loaded but may fail
-    dataset: Union[split.Dataset, None]
+    split_dataset: Union[split.Dataset, None]
 
     results: Dict[str, Any]
     parameters: Dict[str, Any]
     metadata: Dict[str, Any]
 
-    keen: keen_base.Model  # which is a torch.nn.Module
-    triple_factories: TripleFactories
+    keen: keen_models_base.Model  # which is a torch.nn.Module
+    keen_dataset: Dataset
 
     @property
     def name(self) -> str:
@@ -337,7 +372,7 @@ class Model:
     @property
     def uri(self) -> str:
         return (
-            f'{self.dataset.name}_'
+            f'{self.split_dataset.name}_'
             f'{self.name}_'
             f'{self.timestamp.strftime(DATEFMT)}')
 
@@ -365,12 +400,6 @@ class Model:
 
     # ---
 
-    @property
-    def ds(self) -> split.Dataset:
-        return self.dataset
-
-    # ---
-
     def __str__(self) -> str:
         title = f'\nKGC Model {self.name}-{self.dimensions}\n'
 
@@ -389,10 +418,10 @@ class Model:
     # translate ryn graph ids to pykeen ids
 
     def e2s(self, e: int) -> str:
-        return e2s(self.dataset.g, e)
+        return e2s(self.split_dataset.g, e)
 
     def r2s(self, r: int) -> str:
-        return r2s(self.dataset.g, r)
+        return r2s(self.split_dataset.g, r)
 
     def e2id(self, e: int) -> int:
         try:
@@ -408,9 +437,9 @@ class Model:
     def triple2id(self, htr: Tuple[int]) -> Tuple[int]:
         h, t, r = htr
 
-        assert h in self.dataset.g.source.ents
-        assert t in self.dataset.g.source.ents
-        assert r in self.dataset.g.source.rels
+        assert h in self.split_dataset.g.source.ents
+        assert t in self.split_dataset.g.source.ents
+        assert r in self.split_dataset.g.source.rels
 
         return self.e2id(h), self.r2id(r), self.e2id(t)
 
@@ -463,9 +492,9 @@ class Model:
         Scores in the order of the associated triples
 
         """
-        assert self.dataset, 'no dataset loaded'
+        assert self.split_dataset, 'no dataset loaded'
 
-        array = triples_to_ndarray(self.dataset.g, triples)
+        array = triples_to_ndarray(self.split_dataset.g, triples)
         batch = self.keen.triples_factory.map_triples_to_id(array)
         batch = batch.to(device=self.keen.device)
         scores = self.keen.predict_scores(batch)
@@ -491,7 +520,7 @@ class Model:
           relation id (using graph.Graph indexes)
 
         """
-        tstr, rstr = e2s(self.dataset.g, t), r2s(self.dataset.g, r)
+        tstr, rstr = e2s(self.split_dataset.g, t), r2s(self.split_dataset.g, r)
         return self.keen.predict_heads(rstr, tstr, **kwargs)
 
     def predict_tails(
@@ -513,7 +542,7 @@ class Model:
           relation id (using graph.Graph indexes)
 
         """
-        hstr, rstr = e2s(self.dataset.g, h), r2s(self.dataset.g, r)
+        hstr, rstr = e2s(self.split_dataset.g, h), r2s(self.split_dataset.g, r)
         return self.keen.predict_tails(hstr, rstr, **kwargs)
 
     # @_cached_predictions
@@ -567,10 +596,13 @@ class Model:
         in_valid = _is_in(self.mapped_valid_triples)
         in_test = _is_in(self.mapped_test_triples)
 
-        in_cw = _is_in(set(self.triples2id(
-            self.dataset.cw_train.triples | self.dataset.cw_valid.triples)))
-        in_ow = _is_in(set(self.triples2id(
-            self.dataset.ow_valid.triples | self.dataset.ow_test.triples)))
+        ds = self.split_dataset
+
+        cw = ds.cw_train.triples | ds.cw_valid.triples
+        in_cw = _is_in(set(self.triples2id(cw)))
+
+        ow = ds.ow_valid.triples | ds.ow_test.triples
+        in_ow = _is_in(set(self.triples2id(ow)))
 
         print('df construction')
 
@@ -640,17 +672,17 @@ class Model:
             results = json.load(fd)
 
         ds_path = ryn.ENV.ROOT_DIR / metadata['dataset_path']
-        dataset = split.Dataset.load(path=ds_path)
+        split_dataset = split.Dataset.load(path=ds_path)
 
         keen_path = str(path / 'trained_model.pkl')
         keen_model = torch.load(keen_path)
 
-        log.info('reconstructing triple factories')
-        triple_factories = TripleFactories.create(
-            path=dataset.path,
-            dataset=dataset)
+        log.info('reconstructing keen dataset')
+        keen_dataset = Dataset.create(
+            path=split_dataset.path,
+            dataset=split_dataset)
 
-        assert triple_factories.train.mapped_triples.equal(
+        assert keen_dataset.training.mapped_triples.equal(
             keen_model.triples_factory.mapped_triples), (
                 'cannot reproduce triple split')
 
@@ -660,94 +692,7 @@ class Model:
             results=results,
             parameters=parameters,
             metadata=metadata,
-            dataset=dataset,
+            split_dataset=split_dataset,
             keen=keen_model,
-            triple_factories=triple_factories,
+            keen_dataset=keen_dataset,
         )
-
-
-# ---
-
-
-def train(tfs: TripleFactories, **kwargs):
-
-    kwargs = {**dict(
-        random_seed=tfs.dataset.cfg.seed,
-    ), **kwargs}
-
-    return hpo_pipeline(
-
-        training_triples_factory=tfs.train,
-        validation_triples_factory=tfs.valid,
-        testing_triples_factory=tfs.test,
-
-        metadata=dict(
-            metadata=dict(
-                dataset_name=tfs.dataset.path.name,
-                dataset_path=str(tfs.dataset.path),
-                graph_name=tfs.dataset.g.name,
-            ),
-            pipeline=copy.deepcopy(kwargs),
-        ),
-
-        **kwargs)
-
-
-@dataclass
-class Config:
-
-    emb_dim: int
-    model: str
-
-
-# def run(exp: config.Config):
-def run():
-    log.info('✝ running kgc.keen')
-
-    path = ryn.ENV.SPLIT_DIR / 'oke.fb15k237_30061990_50/'
-
-    # epochs = 3000
-    configs = [
-        Config(model='DistMult', emb_dim=256)
-    ]
-
-    ds = split.Dataset.load(path=path)
-    tfs = TripleFactories.create(ds)
-
-    for config in configs:
-        print(f'\nrunning {config.model}-{config.emb_dim} {ds.path.name}\n')
-
-        kwargs = dict(
-            n_trials=30,
-            model=config.model,
-            # model_kwargs=dict(embedding_dim=config.emb_dim),
-
-            # optimizer='Adagrad',
-            # optimizer_kwargs=dict(lr=0.01),
-
-            # loss='CrossEntropyLoss',
-
-            # training_kwargs=dict(
-            #     num_epochs=epochs,
-            #     batch_size=256,
-            # ),
-            # evaluation_kwargs=dict(
-            #     batch_size=256,
-            # ),
-
-            stopper='early',
-            stopper_kwargs=dict(
-                frequency=50, patience=10, delta=0.002),
-        )
-
-        res = train(tfs=tfs, **kwargs)
-
-        fname = '-'.join((
-            config.model,
-            str(config.emb_dim),
-            str(datetime.now().strftime(DATEFMT)), ))
-
-        path = ryn.ENV.KGC_DIR / 'hpo' / ds.path.name / fname
-        log.info(f'writing results to {path}')
-
-        res.save_to_directory(str(path))
