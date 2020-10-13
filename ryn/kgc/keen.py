@@ -222,6 +222,10 @@ class Dataset(keen_datasets_base.DataSet):
     NAME = 'ryn'
 
     @property
+    def name(self):
+        return self._name
+
+    @property
     def split_dataset(self):
         return self._split_dataset
 
@@ -237,18 +241,38 @@ class Dataset(keen_datasets_base.DataSet):
     @helper.notnone
     def __init__(
             self, *,
+            name: str = None,
             # if this changes, also change Dataset.kwargs
             split_dataset: split.Dataset = None,
             training: keen_triples.TriplesFactory = None,
             validation: keen_triples.TriplesFactory = None,
             testing: keen_triples.TriplesFactory = None):
 
+        self._name = name
         self._split_dataset = split_dataset
 
         # see keen_datasets_base.DataSet
         self.training = training
         self.validation = validation
         self.testing = testing
+
+    def __str__(self):
+        s = 'ryn pykeen dataset\n'
+        s += f'{self.name}'
+
+        for name, factory in zip(
+                ('training', 'validation', 'testing'),
+                (self.training, self.validation, self.testing), ):
+
+            content = textwrap.indent(
+                f'entities: {factory.num_entities}\n'
+                f'relations: {factory.num_relations}\n'
+                f'triples: {factory.num_triples}\n'
+                '', '  ')
+
+            s += textwrap.indent(f'\n{name}:\n{content}', '  ')
+
+        return s
 
     def check(self):
         ds = self.split_dataset
@@ -297,6 +321,8 @@ class Dataset(keen_datasets_base.DataSet):
     @helper.cached('.cached.keen.dataset.pkl')
     def create(
             K, *,
+            # name is required for my version of the hpo pipeline
+            name: str = None,
             # path is needed for helper.cached
             # (you may want to use dataset.path)
             path: pathlib.Path = None,
@@ -327,6 +353,7 @@ class Dataset(keen_datasets_base.DataSet):
         # ---
 
         self = K(
+            name=name,
             split_dataset=split_dataset,
             training=training,
             validation=validation,

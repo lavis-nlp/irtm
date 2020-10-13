@@ -2,6 +2,7 @@
 
 import ryn
 from ryn.kgc import keen
+from ryn.kgc import pipeline
 from ryn.graphs import split
 from ryn.common import helper
 from ryn.common import logging
@@ -10,9 +11,6 @@ import copy
 import json
 from datetime import datetime
 from dataclasses import dataclass
-
-from pykeen.hpo import hpo_pipeline
-
 
 log = logging.get('kgc.trainer')
 
@@ -50,10 +48,6 @@ def train(
         'config': config.__dict__
     }
 
-    # result_tracker.log_params(metadata)
-
-    # train
-
     # You need to provide the data type to the
     # model_kwargs_ranges. They are not json
     # serializable. As such - they need to be set afterwards.
@@ -68,15 +62,8 @@ def train(
             kwargs[key][optkey]['type'] = int
 
     # execute hpo pipeline
-    res = hpo_pipeline(
-
-        # unfortunately, it is not allowed to provide
-        # instances of datasets nor triple factories to
-        # the hpo pipeline - as such, pykeen instanciates
-        # its own copy again...
-        dataset=keen.Dataset.NAME,
-        dataset_kwargs=keen_dataset.kwargs,
-
+    res = pipeline.hpo_pipeline(
+        dataset=keen_dataset,
         **kwargs)
 
     # persist
@@ -118,16 +105,25 @@ def train_from_cli(
         graph_name=split_dataset.g.name)
 
     print(f'\nrunning {config.name} {split_dataset.path.name}\n')
+    print(f'{keen_dataset}')
 
     kwargs = dict(
 
         # GENERAL
 
         model=config.model,
+
         result_tracker='wandb',
         result_tracker_kwargs=dict(
             project='ryn-keen',
-            experiment=config.name),
+            experiment=config.name,
+            reinit=True),
+
+        stopper='early',
+        stopper_kwargs=dict(
+            frequency=50,
+            patience=10,
+            relative_delta=0.002),
 
         # HPO
 
