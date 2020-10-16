@@ -1063,6 +1063,22 @@ class Graph:
         return g
 
     #
+    # --- | GRAPH-LEVEL OPERATIONS (in-place)
+    #
+
+    def __or__(self, other: 'Graph') -> 'Graph':
+
+        a, b = self.source, other.source
+
+        return Graph(
+            name=f'{self.name}|{other.name}',
+            source=GraphImport(
+                triples=a.triples | b.triples,
+                rels={**a.rels, **b.rels},
+                ents={**a.ents, **b.ents},
+            ))
+
+    #
     # --- | EXTERNAL SOURCES
     #
 
