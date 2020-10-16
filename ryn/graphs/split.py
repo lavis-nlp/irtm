@@ -38,6 +38,9 @@ tqdm = partial(_tqdm, ncols=80)
 
 
 def _ents_from_triples(triples):
+    if not triples:
+        return set()
+
     hs, ts, _ = zip(*triples)
     return set(hs) | set(ts)
 
@@ -116,11 +119,17 @@ class Part:
     @property
     @lru_cache
     def heads(self) -> Set[int]:
+        if not self.triples:
+            return set()
+
         return set(tuple(zip(*self.triples))[0])
 
     @property
     @lru_cache
     def tails(self) -> Set[int]:
+        if not self.triples:
+            return set()
+
         return set(tuple(zip(*self.triples))[1])
 
     @property
@@ -252,6 +261,8 @@ class Dataset:
         # and no ow entities must occur in cw.valid
         # (use .entities property which gets this information directly
         # directly from the triple sets)
+
+        print(self.cw_valid.owe)
 
         assert self.cw_train.owe == self.cw_train.entities, (
             'cw.train owe != cw.train entities')
@@ -566,9 +577,15 @@ class Splitter:
         log.info(f'{len(cw.train)=} {len(cw.valid)=}')
 
         log.info('writing')
-        self.write(concepts, ow, cw)
+        self.write(concepts=concepts, ow=ow, cw=cw)
 
-    def write(self, concepts: Set[int], ow: Split, cw: Split):
+    @helper.notnone
+    def write(
+            self, *,
+            concepts: Set[int] = None,
+            ow: Split = None,
+            cw: Split = None):
+
         def _write(name, tups):
             with (self.path / name).open(mode='w') as fd:
                 fd.write(f'{len(tups)}\n')
