@@ -335,6 +335,12 @@ class Dataset(keen_datasets_base.DataSet):
         pykeen triple factories are created and some constraints
         are checked (see Dataset.check).
 
+        The following triple mapping is applied:
+
+          training: random split of split_dataset.cw_train
+          validation: random split of split_dataset.cw_train
+          testing: split_dataset.cw_valid
+
         Parameters
         ----------
 
@@ -342,7 +348,7 @@ class Dataset(keen_datasets_base.DataSet):
           human readable name referenced by pykeen hpo and wandb
 
         path: str
-          path to store the cache file to (you can use dataset.path)
+          path to store the cache file to (you can use split_dataset.path)
 
         split_dataset: graphs.split.Dataset
           the graph split used for training
@@ -384,6 +390,78 @@ class Dataset(keen_datasets_base.DataSet):
             training=training,
             validation=validation,
             testing=testing)
+
+        self.check()
+        return self
+
+    @classmethod
+    @helper.cached('.cached.keen.dataset.pkl')
+    def load(
+            K, *,
+            # name is required for my version of the hpo pipeline
+            name: str = None,
+            # path is needed for helper.cached
+            # (you may want to use dataset.path)
+            path: pathlib.Path = None,
+            split_dataset: split.Dataset = None) -> 'Dataset':
+        """
+        Load a pykeen dataset from ryn
+
+        A graphs.split.Dataset instance is required.
+        The following triples mapping is applied:
+
+          training: split_dataset.cw_train
+          validation: split_dataset.cw_valid
+          testing: split_dataset.ow_valid
+
+        Parameters
+        ----------
+
+        name: str
+          human readable name referenced by pykeen hpo and wandb
+
+        path: str
+          path to store the cache file to (you can use split_dataset.path)
+
+        split_dataset: graphs.split.Dataset
+          the graph split used for training
+
+        Returns
+        -------
+
+          An instance ready for training with pykeen
+
+        """
+        log.info(f'creating triple factories {path}')
+
+        to_a = partial(triples_to_ndarray, split_dataset.g)
+
+        training = keen_triples.TriplesFactory(
+            triples=to_a(split_dataset.cw_train.triples)
+        )
+
+        # re-use existing entity/relation mappings
+
+        validation = keen_triples.TriplesFactory(
+            triples=to_a(split_dataset.cw_valid.triples),
+            entity_to_id=training.entity_to_id,
+            relation_to_id=training.relation_id,
+        )
+
+        testing = keen_triples.TriplesFactory(
+            triples=to_a(split_dataset.ow_valid.triples),
+            entity_to_id=training.entity_to_id,
+            relation_to_id=training.relation_id,
+        )
+
+        self = K(
+            name=name,
+            split_dataset=split_dataset,
+            training=training,
+            validation=validation,
+            testing=testing,
+        )
+
         self.check()
         return self
 
