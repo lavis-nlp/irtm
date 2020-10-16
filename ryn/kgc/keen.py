@@ -281,7 +281,7 @@ class Dataset(keen_datasets_base.DataSet):
 
         assert self.validation.num_entities <= self.training.num_entities, (
             f'{self.validation.num_entities=} > {self.training.num_entities=}')
-        assert self.testing.num_entities <= self.validation.num_entities, (
+        assert self.testing.num_entities <= self.training.num_entities, (
             f'{self.testing.num_entities=} > {self.validation.num_entities=}')
 
         # all entities must be known at training time
@@ -445,13 +445,13 @@ class Dataset(keen_datasets_base.DataSet):
         validation = keen_triples.TriplesFactory(
             triples=to_a(split_dataset.cw_valid.triples),
             entity_to_id=training.entity_to_id,
-            relation_to_id=training.relation_id,
+            relation_to_id=training.relation_to_id,
         )
 
         testing = keen_triples.TriplesFactory(
             triples=to_a(split_dataset.ow_valid.triples),
             entity_to_id=training.entity_to_id,
-            relation_to_id=training.relation_id,
+            relation_to_id=training.relation_to_id,
         )
 
         self = K(
