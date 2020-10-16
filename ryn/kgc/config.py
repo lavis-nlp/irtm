@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+
 from pykeen import models as pk_models
 from pykeen import losses as pk_losses
 from pykeen import sampling as pk_sampling
@@ -7,13 +9,29 @@ from pykeen import trackers as pk_trackers
 from pykeen import evaluation as pk_evaluation
 from pykeen import optimizers as pk_optimizers
 
-
+import pathlib
 import dataclasses
 from dataclasses import dataclass
 
+from typing import Union
+
+
+# ---
+# RYN RELATED
+
 
 @dataclass
-class BaseOption:
+class Data:
+
+    dataset: Union[str, pathlib.Path]
+
+
+# ---
+# PYKEEN RELATED
+
+
+@dataclass
+class Base:
 
     @property
     def constructor(self):
@@ -29,7 +47,7 @@ class BaseOption:
 
 
 @dataclass
-class TrackerOption(BaseOption):
+class Tracker(Base):
     @property
     def constructor(self):
         return pk_trackers.get_result_tracker_cls
@@ -40,14 +58,14 @@ class TrackerOption(BaseOption):
 
 
 @dataclass
-class LossOption(BaseOption):
+class Loss(Base):
     @property
     def constructor(self):
         return pk_losses.get_loss_cls
 
 
 @dataclass
-class ModelOption(BaseOption):
+class Model(Base):
     @property
     def constructor(self):
         return pk_models.get_model_cls
@@ -58,7 +76,7 @@ class ModelOption(BaseOption):
 
 
 @dataclass
-class OptimizerOption(BaseOption):
+class Optimizer(Base):
     @property
     def constructor(self):
         return pk_optimizers.get_optimizer_cls
@@ -67,7 +85,7 @@ class OptimizerOption(BaseOption):
 
 
 @dataclass
-class EvaluatorOption(BaseOption):
+class Evaluator(Base):
     @property
     def constructor(self):
         return pk_evaluation.get_evaluator_cls
@@ -76,7 +94,7 @@ class EvaluatorOption(BaseOption):
 
 
 @dataclass
-class StopperOption(BaseOption):
+class Stopper(Base):
     @property
     def constructor(self):
         return pk_stoppers.get_stopper_cls
@@ -87,7 +105,7 @@ class StopperOption(BaseOption):
 
 
 @dataclass
-class SamplerOption(BaseOption):
+class Sampler(Base):
     @property
     def constructor(self):
         return pk_sampling.get_negative_sampler_cls
@@ -96,14 +114,14 @@ class SamplerOption(BaseOption):
 
 
 @dataclass
-class TrainingLoopOption(BaseOption):
+class TrainingLoop(Base):
     @property
     def constructor(self):
         return pk_training.get_training_loop_cls
 
 
 @dataclass
-class TrainingOption:
+class Training:
     num_epochs: int
     batch_size: int
 
@@ -111,15 +129,21 @@ class TrainingOption:
 @dataclass
 class Config:
 
-    tracker: TrackerOption
-    loss: LossOption
-    model: ModelOption
-    optimizer: OptimizerOption
-    evaluator: EvaluatorOption
-    stopper: StopperOption
-    sampler: SamplerOption
-    training_loop: TrainingLoopOption
-    training: TrainingOption
+    # ryn
+
+    data: Data
+
+    # pykeen
+
+    tracker: Tracker
+    loss: Loss
+    model: Model
+    optimizer: Optimizer
+    evaluator: Evaluator
+    stopper: Stopper
+    sampler: Sampler
+    training_loop: TrainingLoop
+    training: Training
 
     def resolve(self, option, **kwargs):
         return option.constructor(option.cls)(**{**option.kwargs, **kwargs})
