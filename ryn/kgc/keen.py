@@ -231,6 +231,7 @@ class Dataset(keen_datasets_base.DataSet):
 
     @property
     def kwargs(self):
+        # helper function for pykeen pipelines
         return dict(
             split_dataset=self.split_dataset,
             training=self.training,
@@ -258,7 +259,7 @@ class Dataset(keen_datasets_base.DataSet):
 
     def __str__(self):
         s = 'ryn pykeen dataset\n'
-        s += f'{self.name}'
+        s += f'{self.name}\n'
 
         for name, factory in zip(
                 ('training', 'validation', 'testing'),
@@ -327,6 +328,31 @@ class Dataset(keen_datasets_base.DataSet):
             # (you may want to use dataset.path)
             path: pathlib.Path = None,
             split_dataset: split.Dataset = None) -> 'Dataset':
+        """
+        Create a new pykeen dataset
+
+        A graphs.split.Dataset instance is required. The necessary
+        pykeen triple factories are created and some constraints
+        are checked (see Dataset.check).
+
+        Parameters
+        ----------
+
+        name: str
+          human readable name referenced by pykeen hpo and wandb
+
+        path: str
+          path to store the cache file to (you can use dataset.path)
+
+        split_dataset: graphs.split.Dataset
+          the graph split used for training
+
+        Returns
+        -------
+
+        An instance ready for training with pykeen
+
+        """
 
         log.info(f'creating triple factories {path}')
 
