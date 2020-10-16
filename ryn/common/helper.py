@@ -19,6 +19,7 @@ from functools import wraps
 from functools import partial
 
 from typing import Union
+from typing import Callable
 
 
 log = logging.get('common.helper')
@@ -78,33 +79,61 @@ def timed(fn, name='unknown'):
     return _proxy
 
 
+class Cache:
+
+    @property
+    def fn(self) -> Callable:
+        return self._fn
+
+    @property
+    def filename(self) -> str:
+        return self._filename
+
+    @property
+    def invalid(self) -> bool:
+        return self._invalid
+
+    def invalidate(self) -> None:
+        self._invalid = True
+
+    @notnone
+    def __init__(
+            self,
+            filename: str = None,
+            fn: Callable = None):
+
+        self._fn = fn
+        self._filename = filename
+        self._invalid = False
+
+    def __call__(self, *args, path: Union[str, pathlib.Path], **kwargs):
+        cache = pathlib.Path(path) / self.filename
+        name = f'{path.name}/{self.filename}'
+
+        if not self.invalid and cache.is_file():
+            log.info(f'loading from cache: {cache}')
+            with cache.open(mode='rb') as fd:
+                return pickle.load(fd)
+
+        if self.invalid:
+            log.info(f'! invalidating {name}')
+
+        # ---
+
+        log.info(f'cache miss for {name}')
+        obj = self.fn(*args, path=path, **kwargs)
+
+        # ---
+
+        with cache.open(mode='wb') as fd:
+            log.info(f'writing cache file: {cache}')
+            pickle.dump(obj, fd)
+
+        return obj
+
+
 def cached(filename: str):
-
-    def _cached(fn):
-        @wraps(cached)
-        def _proxy(*args, path: Union[str, pathlib.Path], **kwargs):
-
-            cache = pathlib.Path(path) / filename
-            if cache.is_file():
-                log.info(f'loading from cache: {cache}')
-                with cache.open(mode='rb') as fd:
-                    return pickle.load(fd)
-
-            # ---
-
-            log.info(f'cache miss for {path.name}/{filename}')
-            obj = fn(*args, path=path, **kwargs)
-
-            # ---
-
-            with cache.open(mode='wb') as fd:
-                log.info(f'writing cache file: {cache}')
-                pickle.dump(obj, fd)
-
-            return obj
-        return _proxy
-
-    return _cached
+    return lambda fn: Cache(filename=filename, fn=fn)
 
 
 # --- UTILITY
