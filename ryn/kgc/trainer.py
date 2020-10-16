@@ -109,6 +109,8 @@ def train_from_cli(
 
     kwargs = dict(
 
+        training_kwargs=dict(num_epochs=2000),
+
         # GENERAL
 
         model=config.model,
