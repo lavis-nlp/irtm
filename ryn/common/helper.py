@@ -10,6 +10,7 @@ import pathlib
 import inspect
 
 import git
+import torch
 import numpy as np
 import numpy.random
 from tqdm import tqdm as _tqdm
@@ -52,7 +53,7 @@ def notnone(fn):
     except TypeError:
         kwarg_names = spec.kwonlyargs
 
-    @wraps(notnone)
+    @wraps(fn)
     def _proxy(*args, **kwargs):
         for argname in kwarg_names:
             if kwargs.get(argname) is None:
@@ -142,6 +143,8 @@ def cached(filename: str):
 def seed(seed: int) -> np.random.Generator:
     log.info(f'! setting seed to {seed}')
     random.seed(seed)
+    np.random.seed(seed=seed)
+    torch.manual_seed(seed=seed)
     return np.random.default_rng(seed)
 
 
