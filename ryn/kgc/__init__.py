@@ -49,6 +49,9 @@ def kgc_cli(path: str = None):
     '--model', type=str, required=True,
     help='model name (as registered with pykeen)')
 @click.option(
+    '--split-dataset', type=str, required=True,
+    help='path to ryn.graphs.split.Dataset folder')
+@click.option(
     '--debug', is_flag=True,
     help='only for debugging, do not log')
 def click_train(**kwargs):
