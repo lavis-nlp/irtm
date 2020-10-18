@@ -108,8 +108,9 @@ class Cache:
         self._invalid = False
 
     def __call__(self, *args, path: Union[str, pathlib.Path], **kwargs):
-        cache = pathlib.Path(path) / self.filename
-        name = f'{path.name}/{self.filename}'
+        path = pathlib.Path(path)
+        cache = path / self.filename
+        name = f'{path.name}/{cache.name}'
 
         if not self.invalid and cache.is_file():
             log.info(f'loading from cache: {cache}')
