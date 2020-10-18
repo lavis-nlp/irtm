@@ -8,12 +8,10 @@ from pykeen import stoppers as pk_stoppers
 from pykeen import trackers as pk_trackers
 from pykeen import evaluation as pk_evaluation
 from pykeen import optimizers as pk_optimizers
+from pykeen import regularizers as pk_regularizers
 
-import pathlib
 import dataclasses
 from dataclasses import dataclass
-
-from typing import Union
 
 
 # ---
@@ -21,9 +19,10 @@ from typing import Union
 
 
 @dataclass
-class Data:
+class General:
 
-    dataset: Union[str, pathlib.Path]
+    dataset: str
+    seed: int = None
 
 
 # ---
@@ -34,8 +33,18 @@ class Data:
 class Base:
 
     @property
-    def constructor(self):
+    def getter(self):
+        """
+        Returns the function that allows the getter lookup
+        """
         raise NotImplementedError()
+
+    @property
+    def constructor(self):
+        """
+        Returns the class defined by self.cls
+        """
+        return self.getter(self.cls)
 
     @property
     def kwargs(self):
@@ -49,7 +58,7 @@ class Base:
 @dataclass
 class Tracker(Base):
     @property
-    def constructor(self):
+    def getter(self):
         return pk_trackers.get_result_tracker_cls
 
     project: str
@@ -57,37 +66,57 @@ class Tracker(Base):
     reinit: bool
 
 
-@dataclass
-class Loss(Base):
-    @property
-    def constructor(self):
-        return pk_losses.get_loss_cls
+# model
 
 
 @dataclass
 class Model(Base):
     @property
-    def constructor(self):
+    def getter(self):
         return pk_models.get_model_cls
 
     embedding_dim: int
-    preferred_device: str
+    preferred_device: str = 'cuda'  # or cpu
     automatic_memory_optimization: bool = True
 
 
 @dataclass
 class Optimizer(Base):
     @property
-    def constructor(self):
+    def getter(self):
         return pk_optimizers.get_optimizer_cls
 
     lr: int
 
 
 @dataclass
+class Regularizer(Base):
+    @property
+    def getter(self):
+        return pk_regularizers.get_regularizer_cls
+
+    p: float
+    weight: float
+    normalize: bool
+
+
+# training
+
+
+@dataclass
+class Loss(Base):
+    @property
+    def getter(self):
+        return pk_losses.get_loss_cls
+
+    margin: float
+    reduction: str
+
+
+@dataclass
 class Evaluator(Base):
     @property
-    def constructor(self):
+    def getter(self):
         return pk_evaluation.get_evaluator_cls
 
     batch_size: int
@@ -96,7 +125,7 @@ class Evaluator(Base):
 @dataclass
 class Stopper(Base):
     @property
-    def constructor(self):
+    def getter(self):
         return pk_stoppers.get_stopper_cls
 
     frequency: int
@@ -107,7 +136,7 @@ class Stopper(Base):
 @dataclass
 class Sampler(Base):
     @property
-    def constructor(self):
+    def getter(self):
         return pk_sampling.get_negative_sampler_cls
 
     num_negs_per_pos: int
@@ -116,7 +145,7 @@ class Sampler(Base):
 @dataclass
 class TrainingLoop(Base):
     @property
-    def constructor(self):
+    def getter(self):
         return pk_training.get_training_loop_cls
 
 
@@ -126,24 +155,30 @@ class Training:
     batch_size: int
 
 
+# wiring
+
+
 @dataclass
 class Config:
 
     # ryn
 
-    data: Data
+    general: General
 
     # pykeen
 
     tracker: Tracker
-    loss: Loss
+
     model: Model
     optimizer: Optimizer
     evaluator: Evaluator
+    regularizer: Regularizer
+
+    loss: Loss
     stopper: Stopper
     sampler: Sampler
     training_loop: TrainingLoop
     training: Training
 
     def resolve(self, option, **kwargs):
-        return option.constructor(option.cls)(**{**option.kwargs, **kwargs})
+        return option.getter(option.cls)(**{**option.kwargs, **kwargs})
