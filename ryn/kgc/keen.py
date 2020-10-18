@@ -271,7 +271,7 @@ class Dataset(keen_datasets_base.DataSet):
                 f'triples: {factory.num_triples}\n'
                 '', '  ')
 
-            s += textwrap.indent(f'\n{name}:\n{content}', '  ')
+            s += textwrap.indent(f'\n{name} triples factory:\n{content}', '  ')
 
         return s
 
