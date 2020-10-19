@@ -143,9 +143,8 @@ class Part:
         g = graph.Graph(source=graph.GraphImport(triples=self.triples))
         return g.find(heads=self.concepts, tails=self.concepts)
 
-    # ---
-
-    def __str__(self) -> str:
+    @property
+    def str_stats(self) -> str:
         return (
             f'owe: {len(self.owe)}\n'
             f'triples: {len(self.triples)}\n'
@@ -153,6 +152,11 @@ class Part:
             f'heads: {len(self.heads)}\n'
             f'tails: {len(self.tails)}'
         )
+
+    # ---
+
+    def __str__(self) -> str:
+        return f'{self.name}={len(self.triples)}'
 
     def __or__(self, other: 'Part') -> 'Part':
         return Part(
@@ -192,9 +196,8 @@ class Dataset:
     def name(self):
         return self.path.name
 
-    # ---
-
-    def __str__(self) -> str:
+    @property
+    def str_stats(self) -> str:
         s = (
             'RYN.SPLIT DATASET\n'
             f'-----------------\n'
@@ -208,12 +211,20 @@ class Dataset:
         def _indent(s):
             return textwrap.indent(s, '  ')
 
-        s += f'\nClosed World - TRAIN:\n{_indent(str(self.cw_train))}'
-        s += f'\nClosed World - VALID:\n{_indent(str(self.cw_valid))}'
-        s += f'\nOpen World - VALID:\n{_indent(str(self.ow_valid))}'
-        s += f'\nOpen World - TEST:\n{_indent(str(self.ow_test))}'
+        s += f'\nClosed World - TRAIN:\n{_indent(self.cw_train.str_stats)}'
+        s += f'\nClosed World - VALID:\n{_indent(self.cw_valid.str_stats)}'
+        s += f'\nOpen World - VALID:\n{_indent(self.ow_valid.str_stats)}'
+        s += f'\nOpen World - TEST:\n{_indent(self.ow_test.str_stats)}'
 
         return s
+
+    # ---
+
+    def __str__(self) -> str:
+        return f'split [{self.name}]: ' + (
+            ' | '.join(f'{part}' for part in (
+                self.cw_train, self.cw_valid,
+                self.ow_valid, self.ow_test)))
 
     def __getitem__(self, key: str):
         return {

@@ -10,7 +10,16 @@ from ryn.common import logging
 import torch
 import numpy as np
 
+import json
+import pathlib
 import dataclasses
+from dataclasses import dataclass
+from datetime import datetime
+
+from typing import Any
+from typing import List
+from typing import Union
+
 
 log = logging.get('kgc.pipeline')
 
@@ -30,15 +39,91 @@ def resolve_device(*, device_name: str = None):
     return device
 
 
+@dataclass
+class Time:
+
+    start: datetime
+    end: datetime
+
+
+@dataclass
+class Result:
+
+    created: datetime
+    git_hash: str
+    config: config.Config
+
+    # metrics
+    training_time: Time
+    evaluation_time: Time
+    losses: List[float]
+
+    # instances (may be None when recreating from disk)
+    # being lazy: not annotating with all the pykeen classes
+    model: Any
+    stopper: Any = None
+    result_tracker: Any = None
+
+    @property
+    def str_stats(self):
+        # TODO produce short report summarizing the training
+        return 'TODO'
+
+    def _save_results(self, path):
+        _path_abbrv = f'{path.parent.name}/{path.name}'
+        fname = 'result.json'
+        log.info(f'saving results to {_path_abbrv}/{fname}')
+        with (path / fname).open(mode='w') as fd:
+            json.dump(dict(
+                created=self.created,
+                git_hash=self.git_hash,
+                training_time=dataclasses.asdict(self.training_time),
+                evaluation_time=dataclasses.asdict(self.evaluation_time),
+                losses=self.losses,
+                stopper=self.stopper.get_summary_dict(),
+            ), fd, default=str, indent=2)
+
+    def _save_model(self, path):
+        _path_abbrv = f'{path.parent.name}/{path.name}'
+        fname = 'model.ckpt'
+        log.info(f'saving results to {_path_abbrv}/{fname}')
+        torch.save(self.model, str(path / fname))
+
+    def save(self, path: Union[str, pathlib.Path]):
+        # TODO wandb name?
+
+        path = pathlib.Path(path)
+        path.mkdir(parents=True, exist_ok=True)
+
+        self.config.save(path)
+        self._save_results(path)
+        self._save_model(path)
+
+        with (path / 'summary.txt').open(mode='w') as fd:
+            fd.write(self.str_stats)
+
+    @staticmethod
+    def load(self):
+        raise NotImplementedError
+
+
+def multi() -> None:
+
+    # Optuna lingo:
+    #   Trial: A single call of the objective function
+    #   Study: An optimization session, which is a set of trials
+    #   Parameter: A variable whose value is to be optimized
+
+    pass
+
+
 @helper.notnone
 def single(
         *,
         config: config.Config = None,
         split_dataset: split.Dataset = None,
         keen_dataset: keen.Dataset = None,
-) -> None:
-    # TODO return value
-    # TODO introduce regularizers
+) -> Result:
 
     # preparation
 
@@ -97,13 +182,35 @@ def single(
 
     # kindling
 
+    ts = datetime.now()
+
     # losses = training_loop(...
-    training_loop.train(**{
+    losses = training_loop.train(**{
         **dataclasses.asdict(config.training),
         **dict(
             stopper=stopper,
             result_tracker=result_tracker,
-            # TODO work out how to resume from checkpoint
             clear_optimizer=False,
         )
     })
+
+    training_time = Time(start=ts, end=datetime.now())
+    ts = datetime.now()
+
+    # TODO evaluator -> metric_results
+
+    evaluation_time = Time(start=ts, end=datetime.now())
+
+    return Result(
+        created=datetime.now(),
+        git_hash=helper.git_hash(),
+        config=config,
+        # metrics
+        training_time=training_time,
+        evaluation_time=evaluation_time,
+        losses=losses,
+        # instances
+        model=model,
+        stopper=stopper,
+        result_tracker=result_tracker,
+    )

@@ -257,7 +257,16 @@ class Dataset(keen_datasets_base.DataSet):
         self.validation = validation
         self.testing = testing
 
-    def __str__(self):
+    def __str__(self) -> str:
+        return f'keen: [{self.name}]: ' + (
+            ' | '.join(
+                f'{name}={factory.num_triples}' for name, factory
+                in zip(
+                    ('training', 'validation', 'testing'),
+                    (self.training, self.validation, self.testing), )))
+
+    @property
+    def str_stats(self) -> str:
         s = 'ryn pykeen dataset\n'
         s += f'{self.name}\n'
 

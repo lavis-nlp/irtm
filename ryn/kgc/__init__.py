@@ -52,8 +52,8 @@ def kgc_cli(path: str = None):
     '--split-dataset', type=str, required=True,
     help='path to ryn.graphs.split.Dataset folder')
 @click.option(
-    '--debug', is_flag=True,
-    help='only for debugging, do not log')
+    '--offline', is_flag=True,
+    help='do not sync wandb')
 def click_train(**kwargs):
     log.info('train called')
     trainer.train_from_cli(**kwargs)

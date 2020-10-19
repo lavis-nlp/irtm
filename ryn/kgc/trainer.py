@@ -17,12 +17,9 @@ def train(
         *,
         model: str = None,
         split_dataset: split.Dataset = None,
-        keen_dataset: keen.Dataset = None
+        keen_dataset: keen.Dataset = None,
+        offline: bool = False,
 ) -> None:
-
-    # TODO config management
-    # TODO persistence
-    # TODO return value
 
     conf = config.Config(
         general=config.General(
@@ -33,6 +30,7 @@ def train(
             project='ryn-keen-proto',
             experiment=f'{keen_dataset.name}-{model}',
             reinit=True,
+            offline=offline,
         ),
         model=config.Model(
             cls=model,
@@ -61,7 +59,7 @@ def train(
         ),
         stopper=config.Stopper(
             cls='EarlyStopper',
-            frequency=10,
+            frequency=1,
             patience=10,
             relative_delta=0.0001,
         ),
@@ -73,39 +71,38 @@ def train(
             num_negs_per_pos=5,
         ),
         training=config.Training(
-            num_epochs=1000,
+            num_epochs=2,
             batch_size=128,
         ),
     )
 
-    pipeline.single(
+    result = pipeline.single(
         config=conf,
         split_dataset=split_dataset,
         keen_dataset=keen_dataset)
+
+    time = str(result.training_time.start).replace(' ', '_')
+    result.save(ryn.ENV.KGC_DIR / split_dataset.name / f'{model}-{time}')
 
 
 def train_from_cli(
         model: str = None,
         split_dataset: str = None,
-        debug: bool = False):
+        offline: bool = False):
 
-    if debug:
-        # TODO patch pykeen WANDBResultTracker to allow offline runs
-        raise ryn.RynError('currently disabled')
-        log.warning('phony debug run!')
+    if offline:
+        log.warning('offline run!')
 
     split_dataset = split.Dataset.load(path=split_dataset)
-    print('\nusing split.Dataset:')
-    print(f'{split_dataset}')
-
     keen_dataset = keen.Dataset.create(
         name=split_dataset.name,
         path=split_dataset.path,
         split_dataset=split_dataset)
-    print('\nusing keen.Dataset:')
-    print(f'{keen_dataset}')
+
+    print(f'\n{split_dataset}\n{keen_dataset}\n')
 
     train(
         model=model,
         split_dataset=split_dataset,
-        keen_dataset=keen_dataset)
+        keen_dataset=keen_dataset,
+        offline=offline)

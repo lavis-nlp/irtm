@@ -1,5 +1,8 @@
 # -*- coding: utf-8 -*-
 
+from ryn.common import helper
+from ryn.common import logging
+
 from pykeen import models as pk_models
 from pykeen import losses as pk_losses
 from pykeen import sampling as pk_sampling
@@ -10,8 +13,18 @@ from pykeen import evaluation as pk_evaluation
 from pykeen import optimizers as pk_optimizers
 from pykeen import regularizers as pk_regularizers
 
+import json
+import pathlib
+import datetime
 import dataclasses
 from dataclasses import dataclass
+
+from typing import Any
+from typing import Dict
+from typing import Union
+
+
+log = logging.get('kgc.config')
 
 
 # ---
@@ -63,7 +76,9 @@ class Tracker(Base):
 
     project: str
     experiment: str
-    reinit: bool
+
+    reinit: bool = False
+    offline: bool = False
 
 
 # model
@@ -177,8 +192,22 @@ class Config:
     loss: Loss
     stopper: Stopper
     sampler: Sampler
-    training_loop: TrainingLoop
     training: Training
+    training_loop: TrainingLoop
 
     def resolve(self, option, **kwargs):
         return option.getter(option.cls)(**{**option.kwargs, **kwargs})
+
+    def save(self, path: Union[str, pathlib.Path]):
+        path = pathlib.Path(path)
+        path.mkdir(parents=True, exist_ok=True)
+
+        _path_abbrv = f'{path.parent.name}/{path.name}'
+        fname = 'config.json'
+        log.info(f'saving config to {_path_abbrv}/{fname}')
+        with (path / fname).open(mode='w') as fd:
+            json.dump(dataclasses.asdict(self), fd, indent=2)
+
+    @staticmethod
+    def load(path: Union[str, pathlib.Path]) -> 'Config':
+        raise NotImplementedError()
