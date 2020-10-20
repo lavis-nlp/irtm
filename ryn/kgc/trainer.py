@@ -8,6 +8,8 @@ from ryn.graphs import split
 from ryn.common import helper
 from ryn.common import logging
 
+from datetime import datetime
+
 
 log = logging.get('kgc.trainer')
 
@@ -27,20 +29,20 @@ def train(
         ),
         tracker=config.Tracker(
             cls='wandb',
-            project='ryn-keen-proto',
+            project='ryn-keen',
             experiment=f'{keen_dataset.name}-{model}',
             reinit=True,
             offline=offline,
         ),
         model=config.Model(
             cls=model,
-            embedding_dim=300,
+            embedding_dim=config.IntSuggestion(low=50, high=500, step=50),
             preferred_device='cuda',
             automatic_memory_optimization=True,
         ),
         optimizer=config.Optimizer(
             cls='Adagrad',
-            lr=0.01,
+            lr=config.FloatSuggestion(low=10e-4, high=10e-1),
         ),
         regularizer=config.Regularizer(
             cls='LpRegularizer',
@@ -55,11 +57,11 @@ def train(
         ),
         evaluator=config.Evaluator(
             cls='RankBasedEvaluator',
-            batch_size=300,
+            # batch_size=300,
         ),
         stopper=config.Stopper(
             cls='EarlyStopper',
-            frequency=1,
+            frequency=20,
             patience=10,
             relative_delta=0.0001,
         ),
@@ -68,21 +70,22 @@ def train(
         ),
         sampler=config.Sampler(
             cls='BasicNegativeSampler',
-            num_negs_per_pos=5,
+            num_negs_per_pos=config.IntSuggestion(low=2, high=20, step=2),
         ),
         training=config.Training(
-            num_epochs=2,
-            batch_size=128,
+            num_epochs=2000,
+            batch_size=200,
         ),
     )
 
-    result = pipeline.single(
-        config=conf,
+    time = str(datetime.now()).replace(' ', '_')
+    out = ryn.ENV.KGC_DIR / split_dataset.name / f'{model}-{time}'
+
+    pipeline.multi(
+        base=conf,
+        out=out,
         split_dataset=split_dataset,
         keen_dataset=keen_dataset)
-
-    time = str(result.training_time.start).replace(' ', '_')
-    result.save(ryn.ENV.KGC_DIR / split_dataset.name / f'{model}-{time}')
 
 
 def train_from_cli(

@@ -8,13 +8,16 @@ from ryn.common import helper
 from ryn.common import logging
 
 import torch
+import optuna
 import numpy as np
 
 import json
 import pathlib
+import textwrap
 import dataclasses
-from dataclasses import dataclass
 from datetime import datetime
+from datetime import timedelta
+from dataclasses import dataclass
 
 from typing import Any
 from typing import List
@@ -42,6 +45,10 @@ def resolve_device(*, device_name: str = None):
 @dataclass
 class Time:
 
+    @property
+    def took(self) -> timedelta:
+        return self.end - self.start
+
     start: datetime
     end: datetime
 
@@ -66,22 +73,59 @@ class Result:
 
     @property
     def str_stats(self):
-        # TODO produce short report summarizing the training
-        return 'TODO'
+        # TODO add metric_results
+
+        s = f'training result for {self.model.name}\n'
+        s += textwrap.indent(
+            f'created: {self.created}\n'
+            f'git hash: {self.git_hash}\n',
+            f'training took: {self.training_time.took}\n'
+            f'evaluation took: {self.evaluation_time.took}\n'
+            f'dataset: {self.config.general.dataset}\n'
+            f'seed: {self.config.general.seed}\n'
+            ' ' * 2)
+
+        return s
+
+    @property
+    def result_dict(self):
+        dic = dict(
+            created=self.created,
+            git_hash=self.git_hash,
+            # metrics
+            training_time=dataclasses.asdict(self.training_time),
+            evaluation_time=dataclasses.asdict(self.evaluation_time),
+            losses=self.losses,
+            stopper=self.stopper.get_summary_dict(),
+        )
+
+        # tracking
+        wandb_run = self.result_tracker.run
+        dic['wandb'] = dict(
+            id=wandb_run.id,
+            dir=wandb_run.dir,
+            path=wandb_run.path,
+            name=wandb_run.name,
+            project=wandb_run.project,
+            offline=wandb_run.offline,
+            sweep_id=wandb_run.sweep_id,
+        )
+
+        if not wandb_run.offline:
+            dic['wandb'].update(dict(
+                project_url=wandb_run.get_project_url(),
+                sweep_url=wandb_run.get_sweep_url(),
+                url=wandb_run.get_url(),
+            ))
+
+        return dic
 
     def _save_results(self, path):
         _path_abbrv = f'{path.parent.name}/{path.name}'
         fname = 'result.json'
         log.info(f'saving results to {_path_abbrv}/{fname}')
         with (path / fname).open(mode='w') as fd:
-            json.dump(dict(
-                created=self.created,
-                git_hash=self.git_hash,
-                training_time=dataclasses.asdict(self.training_time),
-                evaluation_time=dataclasses.asdict(self.evaluation_time),
-                losses=self.losses,
-                stopper=self.stopper.get_summary_dict(),
-            ), fd, default=str, indent=2)
+            json.dump(self.result_dict, fd, default=str, indent=2)
 
     def _save_model(self, path):
         _path_abbrv = f'{path.parent.name}/{path.name}'
@@ -90,8 +134,6 @@ class Result:
         torch.save(self.model, str(path / fname))
 
     def save(self, path: Union[str, pathlib.Path]):
-        # TODO wandb name?
-
         path = pathlib.Path(path)
         path.mkdir(parents=True, exist_ok=True)
 
@@ -105,16 +147,6 @@ class Result:
     @staticmethod
     def load(self):
         raise NotImplementedError
-
-
-def multi() -> None:
-
-    # Optuna lingo:
-    #   Trial: A single call of the objective function
-    #   Study: An optimization session, which is a set of trials
-    #   Parameter: A variable whose value is to be optimized
-
-    pass
 
 
 @helper.notnone
@@ -144,11 +176,13 @@ def single(
 
     # target filtering for ranking losses is enabled by default
     loss = config.resolve(
-        config.loss)
+        config.loss,
+    )
 
     regularizer = config.resolve(
         config.regularizer,
-        device=device)
+        device=device,
+    )
 
     model = config.resolve(
         config.model,
@@ -156,29 +190,35 @@ def single(
         regularizer=regularizer,
         random_seed=config.general.seed,
         triples_factory=keen_dataset.training,
-        preferred_device=device,)
+        preferred_device=device,
+    )
 
     optimizer = config.resolve(
         config.optimizer,
-        params=model.get_grad_params())
+        params=model.get_grad_params(),
+    )
 
     evaluator = config.resolve(
-        config.evaluator)
+        config.evaluator,
+    )
 
+    log.error('setting evaluation batch size manually!')
     stopper = config.resolve(
         config.stopper,
         model=model,
         evaluator=evaluator,
         evaluation_triples_factory=keen_dataset.training,
         result_tracker=result_tracker,
-        evaluation_batch_size=config.evaluator.batch_size)
+        evaluation_batch_size=200,
+    )
 
     training_loop = config.resolve(
         config.training_loop,
         model=model,
         optimizer=optimizer,
         negative_sampler_cls=config.sampler.constructor,
-        negative_sampler_kwargs=config.sampler.kwargs)
+        negative_sampler_kwargs=config.sampler.kwargs,
+    )
 
     # kindling
 
@@ -214,3 +254,51 @@ def single(
         stopper=stopper,
         result_tracker=result_tracker,
     )
+
+
+@helper.notnone
+def multi(
+        *,
+        base: config.Config = None,
+        out: pathlib.Path = None,
+        **kwargs
+) -> None:
+
+    # Optuna lingo:
+    #   Trial: A single call of the objective function
+    #   Study: An optimization session, which is a set of trials
+    #   Parameter: A variable whose value is to be optimized
+    # Parameter spaces:
+    #      categorical -> List[Any]
+    #              int -> Tuple[lower: int, upper: int]
+    #          uniform -> Tuple[lower: float, upper: float]
+    #       loguniform -> Tuple[lower: float, upper: float]
+    # discrete_uniform -> Tuple[lower: float, upper: float, step: float]
+
+    # TODO optuna config
+    # TODO study db place
+    study = optuna.create_study(storage='sqlite:///data/study.db')
+
+    def _objective(trial):
+
+        # obtain optuna suggestions
+        config = base.from_trial(trial)
+        name = f'{config.tracker.experiment}-{trial.number}'
+
+        # update configuration
+        tracker = dataclasses.replace(config.tracker, experiment=name)
+        config = dataclasses.replace(config, tracker=tracker)
+
+        # run training
+        result = single(config=config, **kwargs)
+
+        best_metric = result.stopper.best_metric
+        log.info(f'! trial {trial.number} finished: '
+                 f'best metric = {best_metric}')
+
+        # min optimization
+        result.save(out / f'trial-{trial.number:04d}')
+        return -best_metric
+
+    study.optimize(_objective, n_trials=100)
+    log.info('finished study')

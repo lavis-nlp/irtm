@@ -3,6 +3,8 @@
 from ryn.common import helper
 from ryn.common import logging
 
+import optuna
+
 from pykeen import models as pk_models
 from pykeen import losses as pk_losses
 from pykeen import sampling as pk_sampling
@@ -15,12 +17,9 @@ from pykeen import regularizers as pk_regularizers
 
 import json
 import pathlib
-import datetime
 import dataclasses
 from dataclasses import dataclass
 
-from typing import Any
-from typing import Dict
 from typing import Union
 
 
@@ -45,19 +44,14 @@ class General:
 @dataclass
 class Base:
 
-    @property
-    def getter(self):
-        """
-        Returns the function that allows the getter lookup
-        """
-        raise NotImplementedError()
+    getter = None
 
     @property
     def constructor(self):
         """
         Returns the class defined by self.cls
         """
-        return self.getter(self.cls)
+        return self.__class__.getter(self.cls)
 
     @property
     def kwargs(self):
@@ -70,9 +64,8 @@ class Base:
 
 @dataclass
 class Tracker(Base):
-    @property
-    def getter(self):
-        return pk_trackers.get_result_tracker_cls
+
+    getter = pk_trackers.get_result_tracker_cls
 
     project: str
     experiment: str
@@ -86,9 +79,8 @@ class Tracker(Base):
 
 @dataclass
 class Model(Base):
-    @property
-    def getter(self):
-        return pk_models.get_model_cls
+
+    getter = pk_models.get_model_cls
 
     embedding_dim: int
     preferred_device: str = 'cuda'  # or cpu
@@ -97,18 +89,16 @@ class Model(Base):
 
 @dataclass
 class Optimizer(Base):
-    @property
-    def getter(self):
-        return pk_optimizers.get_optimizer_cls
+
+    getter = pk_optimizers.get_optimizer_cls
 
     lr: int
 
 
 @dataclass
 class Regularizer(Base):
-    @property
-    def getter(self):
-        return pk_regularizers.get_regularizer_cls
+
+    getter = pk_regularizers.get_regularizer_cls
 
     p: float
     weight: float
@@ -120,9 +110,8 @@ class Regularizer(Base):
 
 @dataclass
 class Loss(Base):
-    @property
-    def getter(self):
-        return pk_losses.get_loss_cls
+
+    getter = pk_losses.get_loss_cls
 
     margin: float
     reduction: str
@@ -130,18 +119,16 @@ class Loss(Base):
 
 @dataclass
 class Evaluator(Base):
-    @property
-    def getter(self):
-        return pk_evaluation.get_evaluator_cls
 
-    batch_size: int
+    getter = pk_evaluation.get_evaluator_cls
+
+    # batch_size: int
 
 
 @dataclass
 class Stopper(Base):
-    @property
-    def getter(self):
-        return pk_stoppers.get_stopper_cls
+
+    getter = pk_stoppers.get_stopper_cls
 
     frequency: int
     patience: int
@@ -150,24 +137,70 @@ class Stopper(Base):
 
 @dataclass
 class Sampler(Base):
-    @property
-    def getter(self):
-        return pk_sampling.get_negative_sampler_cls
+
+    getter = pk_sampling.get_negative_sampler_cls
 
     num_negs_per_pos: int
 
 
 @dataclass
 class TrainingLoop(Base):
-    @property
-    def getter(self):
-        return pk_training.get_training_loop_cls
+
+    getter = pk_training.get_training_loop_cls
 
 
 @dataclass
 class Training:
+
     num_epochs: int
     batch_size: int
+
+
+# ---
+# OPTUNA RELATED
+
+
+@dataclass
+class Suggestion:
+    pass
+
+
+@dataclass
+class FloatSuggestion(Suggestion):
+
+    low:  float
+    high: float
+    step: float = None
+    log:   bool = False
+
+    @helper.notnone
+    def suggest(
+            self, *,
+            name: str = None,
+            trial: optuna.trial.Trial = None,
+    ) -> float:
+        return trial.suggest_float(
+            name, self.low, self.high,
+            step=self.step, log=self.log)
+
+
+@dataclass
+class IntSuggestion(Suggestion):
+
+    low:  int
+    high: int
+    step: int = 1
+    log: bool = False
+
+    @helper.notnone
+    def suggest(
+            self, *,
+            name: str = None,
+            trial: optuna.trial.Trial = None,
+    ) -> int:
+        return trial.suggest_int(
+            name, self.low, self.high,
+            step=self.step, log=self.log)
 
 
 # wiring
@@ -196,7 +229,12 @@ class Config:
     training_loop: TrainingLoop
 
     def resolve(self, option, **kwargs):
-        return option.getter(option.cls)(**{**option.kwargs, **kwargs})
+        try:
+            getter = option.__class__.getter
+            return getter(option.cls)(**{**option.kwargs, **kwargs})
+        except TypeError as exc:
+            log.error(f'failed to resolve {option.cls} with {option.kwargs}')
+            raise exc
 
     def save(self, path: Union[str, pathlib.Path]):
         path = pathlib.Path(path)
@@ -211,3 +249,27 @@ class Config:
     @staticmethod
     def load(path: Union[str, pathlib.Path]) -> 'Config':
         raise NotImplementedError()
+
+    def from_trial(self, trial) -> 'Config':
+
+        replaced = {}
+        for name, option in self.__dict__.items():
+
+            _dic = {}
+            for key, val in option.__dict__.items():
+                if isinstance(val, Suggestion):
+                    _dic[key] = val
+
+            suggestions = {
+                k: v.suggest(name=f'{name}.{k}', trial=trial)
+                for k, v in _dic.items()
+            }
+
+            if suggestions:
+                log.info(f'obtained suggestions: {suggestions}')
+
+            # create a new dataclass instance with the respective
+            # fields replaced with the concrete optuna suggestion
+            replaced[name] = dataclasses.replace(option, **suggestions)
+
+        return dataclasses.replace(self, **replaced)
