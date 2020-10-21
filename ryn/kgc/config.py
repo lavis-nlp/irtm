@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 
+import ryn
 from ryn.common import helper
 from ryn.common import logging
 
@@ -153,11 +154,18 @@ class TrainingLoop(Base):
 class Training:
 
     num_epochs: int
-    batch_size: int
+    batch_size: int = None
 
 
 # ---
 # OPTUNA RELATED
+
+
+@dataclass
+class Optuna:
+
+    study_name: str
+    trials: int
 
 
 @dataclass
@@ -228,6 +236,9 @@ class Config:
     training: Training
     training_loop: TrainingLoop
 
+    # for pipeline.multi
+    optuna: Optuna = None
+
     def resolve(self, option, **kwargs):
         try:
             getter = option.__class__.getter
@@ -271,5 +282,8 @@ class Config:
             # create a new dataclass instance with the respective
             # fields replaced with the concrete optuna suggestion
             replaced[name] = dataclasses.replace(option, **suggestions)
+
+        if not replaced:
+            raise ryn.RynError('no parameters marked for optimization')
 
         return dataclasses.replace(self, **replaced)
