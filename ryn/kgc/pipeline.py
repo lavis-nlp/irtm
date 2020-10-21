@@ -11,6 +11,7 @@ import torch
 import optuna
 import numpy as np
 
+import gc
 import json
 import pathlib
 import textwrap
@@ -40,6 +41,14 @@ def resolve_device(*, device_name: str = None):
     log.info(f'resolved device, running on {device}')
 
     return device
+
+
+@helper.notnone
+def _save_model(*, path: pathlib.Path = None, model=None):
+    _path_abbrv = f'{path.parent.name}/{path.name}'
+    fname = 'model.ckpt'
+    log.info(f'saving results to {_path_abbrv}/{fname}')
+    torch.save(model, str(path / fname))
 
 
 @dataclass
@@ -75,7 +84,7 @@ class Result:
     def str_stats(self):
         # TODO add metric_results
 
-        s = f'training result for {self.model.name}\n'
+        s = 'training result for {self.config.model.cls}\n'
         s += textwrap.indent(
             f'created: {self.created}\n'
             f'git hash: {self.git_hash}\n',
@@ -127,19 +136,13 @@ class Result:
         with (path / fname).open(mode='w') as fd:
             json.dump(self.result_dict, fd, default=str, indent=2)
 
-    def _save_model(self, path):
-        _path_abbrv = f'{path.parent.name}/{path.name}'
-        fname = 'model.ckpt'
-        log.info(f'saving results to {_path_abbrv}/{fname}')
-        torch.save(self.model, str(path / fname))
-
     def save(self, path: Union[str, pathlib.Path]):
         path = pathlib.Path(path)
         path.mkdir(parents=True, exist_ok=True)
 
         self.config.save(path)
         self._save_results(path)
-        self._save_model(path)
+        _save_model(path=path, model=self.model)
 
         with (path / 'summary.txt').open(mode='w') as fd:
             fd.write(self.str_stats)
@@ -202,14 +205,12 @@ def single(
         config.evaluator,
     )
 
-    log.error('setting evaluation batch size manually!')
     stopper = config.resolve(
         config.stopper,
         model=model,
         evaluator=evaluator,
         evaluation_triples_factory=keen_dataset.training,
         result_tracker=result_tracker,
-        evaluation_batch_size=200,
     )
 
     training_loop = config.resolve(
@@ -224,15 +225,26 @@ def single(
 
     ts = datetime.now()
 
-    # losses = training_loop(...
-    losses = training_loop.train(**{
-        **dataclasses.asdict(config.training),
-        **dict(
-            stopper=stopper,
-            result_tracker=result_tracker,
-            clear_optimizer=False,
-        )
-    })
+    try:
+
+        losses = training_loop.train(**{
+            **dataclasses.asdict(config.training),
+            **dict(
+                stopper=stopper,
+                result_tracker=result_tracker,
+                clear_optimizer=False,
+            )
+        })
+
+    except RuntimeError as exc:
+        log.error(f'training error: "{exc}"')
+        log.error('sweeping training loop memory up under the rug')
+
+        gc.collect()
+        training_loop.optimizer.zero_grad()
+        training_loop._free_graph_and_cache()
+
+        raise exc
 
     training_time = Time(start=ts, end=datetime.now())
     ts = datetime.now()
@@ -275,30 +287,47 @@ def multi(
     #       loguniform -> Tuple[lower: float, upper: float]
     # discrete_uniform -> Tuple[lower: float, upper: float, step: float]
 
-    # TODO optuna config
-    # TODO study db place
-    study = optuna.create_study(storage='sqlite:///data/study.db')
+    assert base.optuna, 'no optuna config found'
 
-    def _objective(trial):
+    out.mkdir(parents=True, exist_ok=True)
+    db_path = out / 'optuna.db'
+    study = optuna.create_study(storage=f'sqlite:///{db_path}')
+
+    def objective(trial):
 
         # obtain optuna suggestions
         config = base.from_trial(trial)
         name = f'{config.tracker.experiment}-{trial.number}'
+        path = out / f'trial-{trial.number:04d}'
 
         # update configuration
         tracker = dataclasses.replace(config.tracker, experiment=name)
         config = dataclasses.replace(config, tracker=tracker)
 
         # run training
-        result = single(config=config, **kwargs)
+        try:
+            result = single(config=config, **kwargs)
+        except RuntimeError as exc:
+            msg = f'objective: got runtime error "{exc}"'
+            log.error(msg)
+
+            # post mortem (TODO last model checkpoint)
+            config.save(path)
+            raise ryn.RynError(msg)
 
         best_metric = result.stopper.best_metric
         log.info(f'! trial {trial.number} finished: '
                  f'best metric = {best_metric}')
 
         # min optimization
-        result.save(out / f'trial-{trial.number:04d}')
+        result.save(path)
         return -best_metric
 
-    study.optimize(_objective, n_trials=100)
+    study.optimize(
+        objective,
+        n_trials=base.optuna.trials,
+        gc_after_trial=True,
+        catch=(ryn.RynError, ),
+    )
+
     log.info('finished study')

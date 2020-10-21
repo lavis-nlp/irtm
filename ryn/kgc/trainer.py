@@ -27,6 +27,10 @@ def train(
         general=config.General(
             dataset=split_dataset.name,
         ),
+        optuna=config.Optuna(
+            study_name='keen-sweep',
+            trials=100,
+        ),
         tracker=config.Tracker(
             cls='wandb',
             project='ryn-keen',
@@ -37,16 +41,16 @@ def train(
         model=config.Model(
             cls=model,
             embedding_dim=config.IntSuggestion(low=50, high=500, step=50),
-            preferred_device='cuda',
             automatic_memory_optimization=True,
+            preferred_device='cuda',
         ),
         optimizer=config.Optimizer(
             cls='Adagrad',
-            lr=config.FloatSuggestion(low=10e-4, high=10e-1),
+            lr=config.FloatSuggestion(low=1e-4, high=1e-1, log=True),
         ),
         regularizer=config.Regularizer(
             cls='LpRegularizer',
-            weight=0.1,
+            weight=config.FloatSuggestion(low=1e-2, high=1e-1, log=True),
             p=2.0,
             normalize=True,
         ),
@@ -57,24 +61,23 @@ def train(
         ),
         evaluator=config.Evaluator(
             cls='RankBasedEvaluator',
-            # batch_size=300,
         ),
         stopper=config.Stopper(
             cls='EarlyStopper',
             frequency=20,
-            patience=10,
-            relative_delta=0.0001,
+            patience=20,
+            relative_delta=1e-4,
         ),
         training_loop=config.TrainingLoop(
             cls='SLCWATrainingLoop',
         ),
         sampler=config.Sampler(
             cls='BasicNegativeSampler',
-            num_negs_per_pos=config.IntSuggestion(low=2, high=20, step=2),
+            num_negs_per_pos=config.IntSuggestion(low=1, high=20, step=1),
         ),
         training=config.Training(
             num_epochs=2000,
-            batch_size=200,
+            batch_size=250,
         ),
     )
 
