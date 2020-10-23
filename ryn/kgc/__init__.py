@@ -17,7 +17,7 @@ def click_kgc():
     """
     Knowledge graph completion models
     """
-    log.info('kgc called')
+    pass
 
 
 @click_kgc.command(name='cli')
@@ -55,5 +55,4 @@ def kgc_cli(path: str = None):
     '--offline', is_flag=True,
     help='do not sync wandb')
 def click_train(**kwargs):
-    log.info('train called')
     trainer.train_from_cli(**kwargs)
