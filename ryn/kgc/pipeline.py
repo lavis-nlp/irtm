@@ -110,21 +110,19 @@ class Result:
 
         # tracking
         wandb_run = self.result_tracker.run
+
         dic['wandb'] = dict(
             id=wandb_run.id,
             dir=wandb_run.dir,
             path=wandb_run.path,
             name=wandb_run.name,
-            project=wandb_run.project,
-            offline=wandb_run.offline,
-            sweep_id=wandb_run.sweep_id,
+            offline=True,
         )
 
-        if not wandb_run.offline:
+        if not hasattr(wandb_run, 'offline'):
             dic['wandb'].update(dict(
-                project_url=wandb_run.get_project_url(),
-                sweep_url=wandb_run.get_sweep_url(),
-                url=wandb_run.get_url(),
+                url=wandb_run.url,
+                offline=False,
             ))
 
         return dic
@@ -221,7 +219,7 @@ def single(
         negative_sampler_kwargs=config.sampler.kwargs,
     )
 
-    # kindling
+    # training
 
     ts = datetime.now()
 
@@ -247,11 +245,18 @@ def single(
         raise exc
 
     training_time = Time(start=ts, end=datetime.now())
+    result_tracker.log_metrics(
+        prefix='validation',
+        metrics=dict(best=stopper.best_metric, metric=stopper.metric),
+        step=stopper.best_epoch)
+
+    # evaluation
+
     ts = datetime.now()
-
     # TODO evaluator -> metric_results
-
     evaluation_time = Time(start=ts, end=datetime.now())
+
+    # aggregation
 
     return Result(
         created=datetime.now(),
@@ -269,6 +274,40 @@ def single(
 
 
 @helper.notnone
+def _create_study(
+        *,
+        config: config.Config = None,
+        out: pathlib.Path = None,
+) -> optuna.Study:
+
+    out.mkdir(parents=True, exist_ok=True)
+    db_path = out / 'optuna.db'
+
+    timestamp = datetime.now().strftime('%Y.%m.%d-%H.%M')
+    study_name = f'{config.optuna.study_name}-{timestamp}'
+
+    log.info(f'create optuna study "{study_name}"')
+    study = optuna.create_study(
+        study_name=study_name,
+        storage=f'sqlite:///{db_path}',
+    )
+
+    # if there are any initial values to be set,
+    # create and enqueue a custom trial
+
+    params = {
+        k: v.initial for k, v in config.suggestions.items()
+        if v.initial is not None}
+
+    if params:
+        log.info('setting initial study params: ' + ', '.join(
+            f'{k}={v}' for k, v in params.items()))
+        study.enqueue_trial(params)
+
+    return study
+
+
+@helper.notnone
 def multi(
         *,
         base: config.Config = None,
@@ -280,23 +319,12 @@ def multi(
     #   Trial: A single call of the objective function
     #   Study: An optimization session, which is a set of trials
     #   Parameter: A variable whose value is to be optimized
-    # Parameter spaces:
-    #      categorical -> List[Any]
-    #              int -> Tuple[lower: int, upper: int]
-    #          uniform -> Tuple[lower: float, upper: float]
-    #       loguniform -> Tuple[lower: float, upper: float]
-    # discrete_uniform -> Tuple[lower: float, upper: float, step: float]
-
     assert base.optuna, 'no optuna config found'
-
-    out.mkdir(parents=True, exist_ok=True)
-    db_path = out / 'optuna.db'
-    study = optuna.create_study(storage=f'sqlite:///{db_path}')
 
     def objective(trial):
 
         # obtain optuna suggestions
-        config = base.from_trial(trial)
+        config = base.suggest(trial)
         name = f'{config.tracker.experiment}-{trial.number}'
         path = out / f'trial-{trial.number:04d}'
 
@@ -321,7 +349,9 @@ def multi(
 
         # min optimization
         result.save(path)
-        return -best_metric
+        return -best_metric if base.optuna.maximise else best_metric
+
+    study = _create_study(config=base, out=out)
 
     study.optimize(
         objective,

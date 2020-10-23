@@ -21,6 +21,7 @@ import pathlib
 import dataclasses
 from dataclasses import dataclass
 
+from typing import Any
 from typing import Union
 
 
@@ -166,20 +167,23 @@ class Optuna:
 
     study_name: str
     trials: int
+    maximise: bool = False
 
 
 @dataclass
 class Suggestion:
+
     pass
 
 
 @dataclass
 class FloatSuggestion(Suggestion):
 
-    low:  float
-    high: float
-    step: float = None
-    log:   bool = False
+    low:     float
+    high:    float
+    step:    float = None
+    log:      bool = False
+    initial: float = None
 
     @helper.notnone
     def suggest(
@@ -195,10 +199,11 @@ class FloatSuggestion(Suggestion):
 @dataclass
 class IntSuggestion(Suggestion):
 
-    low:  int
-    high: int
-    step: int = 1
-    log: bool = False
+    low:     int
+    high:    int
+    step:    int = 1
+    log:    bool = False
+    initial: int = None
 
     @helper.notnone
     def suggest(
@@ -261,7 +266,22 @@ class Config:
     def load(path: Union[str, pathlib.Path]) -> 'Config':
         raise NotImplementedError()
 
-    def from_trial(self, trial) -> 'Config':
+    # optuna related
+
+    @property
+    def suggestions(self):
+        suggestions = {}
+        for name, option in self.__dict__.items():
+            for key, val in option.__dict__.items():
+                if isinstance(val, Suggestion):
+                    suggestions[f'{name}.{key}'] = val
+
+        if not suggestions:
+            raise ryn.RynError('no parameters marked for optimization')
+
+        return suggestions
+
+    def suggest(self, trial) -> 'Config':
 
         replaced = {}
         for name, option in self.__dict__.items():
@@ -277,7 +297,8 @@ class Config:
             }
 
             if suggestions:
-                log.info(f'obtained suggestions: {suggestions}')
+                log.info('obtained suggestions: ' + ', '.join(
+                    f'{k}={v}' for k, v in suggestions.items()))
 
             # create a new dataclass instance with the respective
             # fields replaced with the concrete optuna suggestion
