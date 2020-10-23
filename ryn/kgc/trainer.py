@@ -28,8 +28,9 @@ def train(
             dataset=split_dataset.name,
         ),
         optuna=config.Optuna(
-            study_name='keen-sweep',
+            study_name=f'{model}-keen-sweep',
             trials=100,
+            maximise=True,  # hits@10
         ),
         tracker=config.Tracker(
             cls='wandb',
@@ -40,13 +41,15 @@ def train(
         ),
         model=config.Model(
             cls=model,
-            embedding_dim=config.IntSuggestion(low=50, high=500, step=50),
+            embedding_dim=config.IntSuggestion(
+                low=50, high=500, step=50, initial=250),
             automatic_memory_optimization=True,
             preferred_device='cuda',
         ),
         optimizer=config.Optimizer(
             cls='Adagrad',
-            lr=config.FloatSuggestion(low=1e-4, high=1e-1, log=True),
+            lr=config.FloatSuggestion(
+                low=1e-3, high=1e-1, log=True, initial=1e-2),
         ),
         regularizer=config.Regularizer(
             cls='LpRegularizer',
@@ -66,14 +69,15 @@ def train(
             cls='EarlyStopper',
             frequency=20,
             patience=20,
-            relative_delta=1e-4,
+            relative_delta=1e-2,
         ),
         training_loop=config.TrainingLoop(
             cls='SLCWATrainingLoop',
         ),
         sampler=config.Sampler(
             cls='BasicNegativeSampler',
-            num_negs_per_pos=config.IntSuggestion(low=1, high=20, step=1),
+            num_negs_per_pos=config.IntSuggestion(
+                low=1, high=20, step=1, initial=5),
         ),
         training=config.Training(
             num_epochs=2000,
@@ -95,6 +99,7 @@ def train_from_cli(
         model: str = None,
         split_dataset: str = None,
         offline: bool = False):
+    log.info('running training from cli')
 
     if offline:
         log.warning('offline run!')
