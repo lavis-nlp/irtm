@@ -141,6 +141,28 @@ def cached(filename: str):
 # --- UTILITY
 
 
+def path(
+        name: Union[str, pathlib.Path],
+        create: bool = False,
+        exists: bool = False,
+        message: str = None,
+) -> pathlib.Path:
+    # TODO describe message (see kgc.config)
+    path = pathlib.Path(name)
+
+    if exists and not path.exists():
+        raise RynError(f'{path} does not exist')
+
+    if create:
+        path.mkdir(exist_ok=True, parents=True)
+
+    if message:
+        path_abbrv = f'{path.parent.name}/{path.name}'
+        log.info(message.format(path=path, path_abbrv=path_abbrv))
+
+    return path
+
+
 def seed(seed: int) -> np.random.Generator:
     log.info(f'! setting seed to {seed}')
     random.seed(seed)
