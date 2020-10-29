@@ -2,8 +2,9 @@
 
 
 from ryn.cli import main
-from ryn.kgc import keen
 from ryn.kgc import trainer
+from ryn.kgc import pipeline
+from ryn.common import helper
 from ryn.common import logging
 
 import click
@@ -22,32 +23,39 @@ def click_kgc():
 
 @click_kgc.command(name='cli')
 @click.option(
-    '--path', type=str, required=True,
-    help='path to a kgc.keen.Model directory')
-def kgc_cli(path: str = None):
+    '--result', type=str, required=True,
+    help='path to a trained kgc model directory')
+def kgc_cli(result: str = None):
+    """
+    Open a shell and load a result
+    """
 
-    m = keen.Model.load(path)
-    print(f'\n{m}')
+    result = helper.path(result, exists=True)
+    result = pipeline.Result.load(result)
 
-    banner = '\n'.join((
-        '',
-        '-' * 20,
-        ' RYN KEEN CLIENT',
-        '-' * 20,
-        '',
-        'variables in scope:',
-        '    m: Model',
-        '',
-    ))
+    print(f'{result.str_stats}')
 
-    import IPython
-    IPython.embed(banner1=banner)
+    __import__("pdb").set_trace()
+
+    # banner = '\n'.join((
+    #     '',
+    #     '-' * 20,
+    #     ' RYN KEEN CLIENT',
+    #     '-' * 20,
+    #     '',
+    #     'variables in scope:',
+    #     '    m: Model',
+    #     '',
+    # ))
+
+    # import IPython
+    # IPython.embed(banner1=banner)
 
 
 @click_kgc.command(name='train')
 @click.option(
-    '--model', type=str, required=True,
-    help='model name (as registered with pykeen)')
+    '--config', type=str, required=True,
+    help='json (see conf/kgc/*json)')
 @click.option(
     '--split-dataset', type=str, required=True,
     help='path to ryn.graphs.split.Dataset folder')
@@ -55,4 +63,7 @@ def kgc_cli(path: str = None):
     '--offline', is_flag=True,
     help='do not sync wandb')
 def click_train(**kwargs):
+    """
+    Train a knowledge graph completion model
+    """
     trainer.train_from_cli(**kwargs)
