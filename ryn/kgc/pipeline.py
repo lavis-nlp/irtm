@@ -22,6 +22,7 @@ from dataclasses import dataclass
 
 from typing import Any
 from typing import List
+from typing import Dict
 from typing import Union
 
 
@@ -45,9 +46,11 @@ def resolve_device(*, device_name: str = None):
 
 @helper.notnone
 def _save_model(*, path: pathlib.Path = None, model=None):
-    _path_abbrv = f'{path.parent.name}/{path.name}'
     fname = 'model.ckpt'
-    log.info(f'saving results to {_path_abbrv}/{fname}')
+    path = helper.path(
+        path, exists=True,
+        message=f'saving {fname} to {{path_abbrv}}')
+
     torch.save(model, str(path / fname))
 
 
@@ -60,6 +63,12 @@ class Time:
 
     start: datetime
     end: datetime
+
+    @classmethod
+    def create(K, dic: Dict[str, str]):
+        return K(**{
+            k: datetime.fromisoformat(v)
+            for k, v in dic.items()})
 
 
 @dataclass
@@ -77,22 +86,27 @@ class Result:
     # instances (may be None when recreating from disk)
     # being lazy: not annotating with all the pykeen classes
     model: Any
+
+    # set by pipeline
     stopper: Any = None
     result_tracker: Any = None
+
+    # set by Result.load
+    wandb: Dict = None
 
     @property
     def str_stats(self):
         # TODO add metric_results
 
-        s = 'training result for {self.config.model.cls}\n'
+        s = f'training result for {self.config.model.cls}\n'
         s += textwrap.indent(
             f'created: {self.created}\n'
-            f'git hash: {self.git_hash}\n',
+            f'git hash: {self.git_hash}\n'
             f'training took: {self.training_time.took}\n'
             f'evaluation took: {self.evaluation_time.took}\n'
             f'dataset: {self.config.general.dataset}\n'
             f'seed: {self.config.general.seed}\n'
-            ' ' * 2)
+            '', ' ' * 2)
 
         return s
 
@@ -128,15 +142,16 @@ class Result:
         return dic
 
     def _save_results(self, path):
-        _path_abbrv = f'{path.parent.name}/{path.name}'
         fname = 'result.json'
-        log.info(f'saving results to {_path_abbrv}/{fname}')
+        path = helper.path(
+            path, exists=True,
+            message=f'saving {fname} to {{path_abbrv}}')
+
         with (path / fname).open(mode='w') as fd:
             json.dump(self.result_dict, fd, default=str, indent=2)
 
     def save(self, path: Union[str, pathlib.Path]):
-        path = pathlib.Path(path)
-        path.mkdir(parents=True, exist_ok=True)
+        path = helper.path(path, create=True)
 
         self.config.save(path)
         self._save_results(path)
@@ -145,9 +160,21 @@ class Result:
         with (path / 'summary.txt').open(mode='w') as fd:
             fd.write(self.str_stats)
 
-    @staticmethod
-    def load(self):
-        raise NotImplementedError
+    @classmethod
+    def load(K, path: Union[str, pathlib.Path]):
+        path = helper.path(
+            path, exists=True,
+            message='loading pipeline results from {path_abbrv}')
+
+        with (path / 'result.json').open(mode='r') as fd:
+            raw = json.load(fd)
+
+        return K(**{**raw, **dict(
+            training_time=Time.create(raw['training_time']),
+            evaluation_time=Time.create(raw['evaluation_time']),
+            config=config.Config.load(path / 'config.json'),
+            model=torch.load(str(path / 'model.ckpt')),
+        )})
 
 
 @helper.notnone
