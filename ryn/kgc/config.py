@@ -21,6 +21,7 @@ import pathlib
 import dataclasses
 from dataclasses import dataclass
 
+import typing
 from typing import Any
 from typing import Union
 
@@ -173,7 +174,15 @@ class Optuna:
 @dataclass
 class Suggestion:
 
-    pass
+    @staticmethod
+    def create(**kwargs):
+        # quite arbitrary heuristics in here
+        if 'low' in kwargs and 'high' in kwargs:
+            if any(type(kwargs[k]) is float for k in kwargs):
+                return FloatSuggestion(**kwargs)
+            return IntSuggestion(**kwargs)
+
+        raise ryn.RynError(f'cannot create suggestion from {kwargs}')
 
 
 @dataclass
@@ -253,18 +262,35 @@ class Config:
             raise exc
 
     def save(self, path: Union[str, pathlib.Path]):
-        path = pathlib.Path(path)
-        path.mkdir(parents=True, exist_ok=True)
-
-        _path_abbrv = f'{path.parent.name}/{path.name}'
         fname = 'config.json'
-        log.info(f'saving config to {_path_abbrv}/{fname}')
+        path = helper.path(
+            path, create=True,
+            message=f'saving {fname} to {{path_abbrv}}')
+
         with (path / fname).open(mode='w') as fd:
             json.dump(dataclasses.asdict(self), fd, indent=2)
 
-    @staticmethod
-    def load(path: Union[str, pathlib.Path]) -> 'Config':
-        raise NotImplementedError()
+    @classmethod
+    def load(K, path: Union[str, pathlib.Path]) -> 'Config':
+        path = helper.path(path, exists=True, message='loading {path}')
+
+        with path.open(mode='r') as fd:
+            raw = json.load(fd)
+
+        # there are two levels to consider
+        # 1: Config attributes (resolved by type hints)
+        # 2: Possible Suggestion instances
+
+        constructors = typing.get_type_hints(K)
+        return K(**{
+            # e.g. model
+            key: constructors[key](**{
+                # e.g. embedding_dim
+                attr: (Suggestion.create(**val) if type(val) is dict else val)
+                for attr, val in section.items()
+            })
+            for key, section in raw.items()
+        })
 
     # optuna related
 
