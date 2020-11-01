@@ -70,6 +70,10 @@ ryn kgc train \
   --split-dataset data/split/oke.fb15k237_30061990_50
 ```
 
+This writes the results to `data/kgc/<DATASET>/<MODEL>-<TIMESTAMP>`
+(where `data/kgc` is set by `ryn.ENV.KGC_DIR` in `ryn/__init__.py`)
+
+
 ### Evaluation
 
 The evaluation is run seperately from the training (to avoid the
