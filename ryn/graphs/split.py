@@ -518,21 +518,19 @@ class Splitter:
         _p = int(self.cfg.ow_split * 100)
         log.info(f'targeting {_p}% of all triples for ow')
 
-        # there are three thresholds:
-        # 0 < t1 < t2 < t3 < len(candidates) = n
+        # there are two thresholds:
+        # 0 < t1 < t2 < len(triples) = n
         # where:
         #  0-t1:   ow valid
         #  t1-t2:  ow test
-        #  t2-t3:  cw train
-        #  t3-n:   cw valid
+        #  t2-n:   cw
 
         t1 = self.cfg.ow_split * self.cfg.train_split
         t2 = self.cfg.ow_split
-        t3 = t2 + (1 - t2) * self.cfg.train_split
 
         n = len(self.g.source.triples)
-        t1, t2, t3 = (int(n * x) for x in (t1, t2, t3))
-        log.info(f'target splits: 0 {t1=} {t2=} {t3=} {n=}')
+        t1, t2 = (int(n * x) for x in (t1, t2))
+        log.info(f'target splits: 0 {t1=} {t2=} {n=}')
 
         # retain all triples where both head and tail
         # are concept entities for cw train
@@ -549,17 +547,12 @@ class Splitter:
             agg |= found
             curr = len(agg)
 
-            # open
             if curr < t1:
                 ow.valid |= found
             elif curr < t2:
                 ow.test |= found
-
-            # closed
-            elif curr < t3:
-                cw.train |= found
             else:
-                cw.valid |= found
+                cw.train |= found
 
         # ---
 
@@ -567,6 +560,14 @@ class Splitter:
         log.info(
             f'split {len(ow.unionized)=} and '
             f'{len(cw.unionized)=} triples')
+
+        cw_triples = list(cw.train)
+        t3 = int((1 - self.cfg.train_split) * len(cw_triples))
+        log.info(f'selecting {t3} random triples for cw.valid')
+
+        random.shuffle(cw_triples)
+        cw.valid |= set(cw_triples[:t3])
+        cw.train -= cw.valid
 
         log.info('reordering triples')
         log.info(f'{len(cw.train)=} {len(cw.valid)=}')
@@ -636,14 +637,15 @@ def create(g: graph.Graph, cfg: Config):
     Splitter(g=g, cfg=cfg, name=name).create()
 
 
-@helper.notnone
 def create_from_conf(
         *,
-        uri: List[str] = None,
-        ratio: List[int] = None,
-        seed: List[int] = None):
+        uris: List[str] = None,
+        ratios: List[int] = None,
+        seeds: List[int] = None,
+        ow_split: float = None,
+        train_split: float = None):
 
-    for g in loader.load_graphs_from_uri(**uri):
+    for g in loader.load_graphs_from_uri(*uris):
         log.info(f'loaded {g.name}, analysing relations')
 
         rels = Relation.from_graph(g)
@@ -654,13 +656,13 @@ def create_from_conf(
         # parameters use itertools permutations
 
         print('')
-        bar = tqdm(total=len(ratio) * len(seed))
+        bar = tqdm(total=len(ratios) * len(seeds))
 
-        K = partial(Config, ow_split=0.5, train_split=0.7)
-        for threshold in ratio:
+        K = partial(Config, ow_split=ow_split, train_split=train_split)
+        for threshold in ratios:
             log.info(f'! {threshold=}')
 
-            for seed in seed:
+            for seed in seeds:
                 log.info(f'! {seed=}')
 
                 cfg = K(seed=seed, threshold=threshold)

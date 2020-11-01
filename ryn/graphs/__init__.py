@@ -92,11 +92,20 @@ def click_split():
 
 @click_split.command()
 @click.option(
-    '--seed', type=int, multiple=True, required=True,
+    '--uris', type=str, multiple=True,
+    help='graph uris (e.g. f)')
+@click.option(
+    '--seeds', type=int, multiple=True,
     help='random seeds')
 @click.option(
-    '--ratio', type=int, multiple=True, required=True,
+    '--ratios', type=int, multiple=True,
     help='ratio thresholds (cut at n-th relation for concepts)')
+@click.option(
+    '--ow-split', type=float, required=True,
+    help='closed world / open world triple ratio')
+@click.option(
+    '--train-split', type=float, required=True,
+    help='training / validation|test ratio')
 def create(**kwargs):
     """
     Create a graphs.split.Dataset from a graphs.graph.Graph
