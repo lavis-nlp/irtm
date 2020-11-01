@@ -250,7 +250,7 @@ def single(
         config.stopper,
         model=model,
         evaluator=evaluator,
-        evaluation_triples_factory=keen_dataset.training,
+        evaluation_triples_factory=keen_dataset.validation,
         result_tracker=result_tracker,
     )
 
