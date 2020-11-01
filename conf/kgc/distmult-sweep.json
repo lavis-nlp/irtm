@@ -56,7 +56,7 @@
     "cls": "EarlyStopper",
     "frequency": 50,
     "patience": 2,
-    "relative_delta": 0.01
+    "relative_delta": 0.001
   },
   "sampler": {
     "cls": "BasicNegativeSampler",
