@@ -273,7 +273,7 @@ def single(
             **dict(
                 stopper=stopper,
                 result_tracker=result_tracker,
-                clear_optimizer=False,
+                clear_optimizer=True,
             )
         })
 
@@ -323,6 +323,7 @@ def _create_study(
     study_name = f'{config.optuna.study_name}-{timestamp}'
 
     log.info(f'create optuna study "{study_name}"')
+    # TODO use direction="maximise"
     study = optuna.create_study(
         study_name=study_name,
         storage=f'sqlite:///{db_path}',
@@ -488,6 +489,7 @@ def _evaluate(train_result, keen_dataset):
         tqdm_kwargs=dict(
             position=1,
             ncols=80,
+            leave=False,
         )
     )
 
@@ -530,7 +532,7 @@ def evaluate(
             train_result = TrainingResult.load(path)
             assert train_result.config.general.dataset == split_dataset.name
 
-        except FileNotFoundError as exc:
+        except (FileNotFoundError, NotADirectoryError) as exc:
             log.info(f'skipping {path.name}: {exc}')
             continue
 
