@@ -13,52 +13,72 @@ pip install -r requirements.txt
 pip install -e .
 ```
 
-## Run Command Line Client
+You also need to install pytorch.
+
+
+## Command Line Client
 
 ```
  > ryn --help
-RYN - working with knowledge graphs
+Usage: ryn [OPTIONS] COMMAND [ARGS]...
 
-usage: ryn CMD [ARGS]
+  RYN - working with texts and graphs
 
-  possible values for CMD:
-       help: print this message
-        app: handle streamlit instances
-     graphs: analyse paths through the networks
-     embers: work with graph embeddings
-      tests: run some tests
+Options:
+  --help  Show this message and exit.
 
-to get CMD specific help type ryn CMD --help
-e.g. ryn embers --help
+Commands:
+  graphs     Working with graphs
+  kgc        Knowledge graph completion models
+  streamlit  Run a streamlit app instance
+  tests      Run unit tests
+  text       Process text data
 ```
 
-Detailed informations
+To get more specific information, each subcommand also offers help:
 
 ```
  > ryn graphs --help
-attempting to run "graphs"
-usage: ryn [-h] [--seeds SEEDS [SEEDS ...]] [--ratios RATIOS [RATIOS ...]] [-c CONFIG] [-s SPEC]
-           [-g GRAPHS [GRAPHS ...]] [--uri URI [URI ...]]
-           _ cmd subcmd
+Usage: ryn graphs [OPTIONS] COMMAND [ARGS]...
 
-positional arguments:
-  _
-  cmd                   one of graph, split
-  subcmd                graph: (cli),
+  Working with graphs
 
-optional arguments:
-  -h, --help            show this help message and exit
-  --seeds SEEDS [SEEDS ...]
-                        random seeds
-  --ratios RATIOS [RATIOS ...]
-                        ratio thresholds (cut at n-th relation for concepts)
-  -c CONFIG, --config CONFIG
-                        config file (conf/*.conf)
-  -s SPEC, --spec SPEC  config specification file (conf/*.spec.conf)
-  -g GRAPHS [GRAPHS ...], --graphs GRAPHS [GRAPHS ...]
-                        selection of graphs (names defined in --config)
-  --uri URI [URI ...]   instead of -c -s -g combination
+Options:
+  --help  Show this message and exit.
+
+Commands:
+  graph  Networkx graph abstractions
+  split  Create open world triple splits
 ```
 
 
-For example, to run streamlit, simply type: `ryn app`
+## Knowledge Graph Completion
+
+The `ryn.kgc` module offers kgc functionality on top of
+[pykeen](https://github.com/pykeen/pykeen).
+
+
+### Training
+
+You need a split dataset (see `ryn.graphs.split.Dataset`) and
+configuration file (see `conf/kgc/*.json`). Models are trained by
+simply providing these two arguments:
+
+```
+ryn kgc train \
+  --config conf/kgc/complex-sweep.json \
+  --split-dataset data/split/oke.fb15k237_30061990_50
+```
+
+### Evaluation
+
+The evaluation is run seperately from the training (to avoid the
+temptation to tune your hyperparameters on the test data ;) ). It is
+possible to provide multiple directories which are evaluated
+successively:
+
+```
+dataset=data/split/oke.fb15k237_30061990_50
+sweep=data/kgc/oke.fb15k237_30061990_50/DistMult-2020-10-22_10:58:50.325146
+ryn kgc evaluate --out $sweep --split_dataset $dataset $sweep
+```
