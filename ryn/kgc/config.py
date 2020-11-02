@@ -36,7 +36,7 @@ log = logging.get('kgc.config')
 @dataclass
 class General:
 
-    dataset: str
+    dataset: str = None
     seed: int = None
 
 

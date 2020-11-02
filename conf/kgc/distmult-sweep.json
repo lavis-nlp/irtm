@@ -1,12 +1,10 @@
 {
   "general": {
-    "seed": null,
-    "dataset": null
+    "seed": null
   },
   "tracker": {
     "cls": "wandb",
     "project": "ryn-keen",
-    "experiment": null,
     "reinit": true,
     "offline": false
   },
@@ -62,10 +60,10 @@
     "cls": "BasicNegativeSampler",
     "num_negs_per_pos": {
       "low": 1,
-      "high": 20,
+      "high": 50,
       "step": 1,
       "log": false,
-      "initial": 5
+      "initial": 10
     }
   },
   "training": {

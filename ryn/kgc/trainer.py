@@ -211,17 +211,13 @@ def single(
     if not config.general.seed:
         # choice of range is arbitrary
         config.general.seed = np.random.randint(10**5, 10**7)
+        log.info(f'setting seed to {config.general.seed}')
 
     helper.seed(config.general.seed)
 
     # initialization
 
     result_tracker = config.resolve(config.tracker)
-    if not result_tracker.experiment:
-        result_tracker = dataclasses.replace(
-            result_tracker,
-            experiment=f'{split_dataset.name}-{config.model.cls}')
-
     result_tracker.start_run()
     result_tracker.log_params(dataclasses.asdict(config))
 
@@ -359,6 +355,7 @@ def multi(
         *,
         base: Config = None,
         out: pathlib.Path = None,
+        split_dataset: split.Dataset = None,
         **kwargs
 ) -> None:
 
@@ -372,7 +369,7 @@ def multi(
 
         # obtain optuna suggestions
         config = base.suggest(trial)
-        name = f'{config.tracker.experiment}-{trial.number}'
+        name = f'{split_dataset.name}-{config.model.cls}-{trial.number}'
         path = out / f'trial-{trial.number:04d}'
 
         # update configuration
@@ -381,7 +378,11 @@ def multi(
 
         # run training
         try:
-            result = single(config=config, **kwargs)
+            result = single(
+                config=config,
+                split_dataset=split_dataset,
+                **kwargs)
+
         except RuntimeError as exc:
             msg = f'objective: got runtime error "{exc}"'
             log.error(msg)
