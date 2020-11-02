@@ -11,6 +11,7 @@ import torch
 import optuna
 import numpy as np
 from tqdm import tqdm as _tqdm
+from tabulate import tabulate
 
 import gc
 import csv
@@ -175,7 +176,7 @@ class TrainingResult:
             fd.write(self.str_stats)
 
     @classmethod
-    def load(K, path: Union[str, pathlib.Path]):
+    def load(K, path: Union[str, pathlib.Path], load_model: bool = True):
         path = helper.path(
             path, exists=True,
             message='loading training results from {path_abbrv}')
@@ -183,10 +184,14 @@ class TrainingResult:
         with (path / 'training.json').open(mode='r') as fd:
             raw = json.load(fd)
 
+        model = None
+        if load_model:
+            model = torch.load(str(path / 'model.ckpt'))
+
         return K(**{**raw, **dict(
             training_time=Time.create(raw['training_time']),
             config=Config.load(path / 'config.json'),
-            model=torch.load(str(path / 'model.ckpt')),
+            model=model,
         )})
 
 
@@ -212,6 +217,11 @@ def single(
     # initialization
 
     result_tracker = config.resolve(config.tracker)
+    if not result_tracker.experiment:
+        result_tracker = dataclasses.replace(
+            result_tracker,
+            experiment=f'{split_dataset.name}-{config.model.cls}')
+
     result_tracker.start_run()
     result_tracker.log_params(dataclasses.asdict(config))
 
@@ -320,7 +330,7 @@ def _create_study(
     db_path = out / 'optuna.db'
 
     timestamp = datetime.now().strftime('%Y.%m.%d-%H.%M')
-    study_name = f'{config.optuna.study_name}-{timestamp}'
+    study_name = f'{config.model.cls}-sweep-{timestamp}'
 
     log.info(f'create optuna study "{study_name}"')
     # TODO use direction="maximise"
@@ -422,6 +432,7 @@ def train(
 
 @helper.notnone
 def train_from_kwargs(
+        *,
         config: str = None,
         split_dataset: str = None,
         offline: bool = False):
@@ -519,6 +530,7 @@ def _evaluate_wrapper(path, fname, train_result, keen_dataset):
 
 @helper.notnone
 def evaluate(
+        *,
         glob: Iterable[pathlib.Path] = None,
         split_dataset: split.Dataset = None,
         keen_dataset: keen.Dataset = None):
@@ -551,6 +563,7 @@ def evaluate(
 
 @helper.notnone
 def evaluate_from_kwargs(
+        *,
         results: List[str] = None,
         split_dataset: str = None,
 ):
@@ -563,3 +576,59 @@ def evaluate_from_kwargs(
         keen_dataset=keen_dataset)
 
     return eval_results
+
+
+@helper.notnone
+def print_results(*, results, out: Union[str, pathlib.Path] = None):
+
+    def _save_rget(dic, *args, default=None):
+        ls = list(args)[::-1]
+
+        while ls:
+            try:
+                dic = dic[ls.pop()]
+            except KeyError as exc:
+                log.error(str(exc))
+                return default
+
+        return dic
+
+    rows = []
+    sort_key = 4
+    headers = ['name', 'model', 'val', 'hits@1', 'hits@10', 'A-MR']
+    headers[sort_key] += ' *'
+
+    for eval_result, path in results:
+        train_result = TrainingResult.load(path, load_model=False)
+
+        test_metrics = eval_result.metrics
+        get_test = partial(_save_rget, test_metrics)
+
+        rows.append([
+            path.name,
+            eval_result.model,
+            train_result.stopper['results'][-1],
+            get_test('hits_at_k', 'both', 'avg', '1', default=0) * 100,
+            get_test('hits_at_k', 'both', 'avg', '10', default=0) * 100,
+            get_test('adjusted_mean_rank', 'both', default=2),
+        ])
+
+    rows.sort(key=lambda r: r[sort_key], reverse=True)
+    table = tabulate(rows, headers=headers)
+
+    print()
+    print(table)
+
+    if out is not None:
+        fname = 'evaluation'
+        out = helper.path(
+            out, create=True,
+            message=f'writing {fname} txt/csv to {{path_abbrv}}')
+
+        with (out / (fname + '.txt')).open(mode='w') as fd:
+            fd.write(table)
+
+        with (out / (fname + '.csv')).open(mode='w') as fd:
+            writer = csv.DictWriter(fd, fieldnames=headers)
+            writer.writeheader()
+            writer.writerows([dict(zip(headers, row)) for row in rows])

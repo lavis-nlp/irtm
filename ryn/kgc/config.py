@@ -71,7 +71,7 @@ class Tracker(Base):
     getter = pk_trackers.get_result_tracker_cls
 
     project: str
-    experiment: str
+    experiment: str = None
 
     reinit: bool = False
     offline: bool = False
@@ -166,7 +166,6 @@ class Training:
 @dataclass
 class Optuna:
 
-    study_name: str
     trials: int
     maximise: bool = False
 

@@ -6,7 +6,7 @@
   "tracker": {
     "cls": "wandb",
     "project": "ryn-keen",
-    "experiment": "oke.fb15k237_30061990_50-DistMult",
+    "experiment": null,
     "reinit": true,
     "offline": false
   },
@@ -81,7 +81,6 @@
     "cls": "SLCWATrainingLoop"
   },
   "optuna": {
-    "study_name": "DistMult-keen-sweep",
     "trials": 100,
     "maximise": true
   }
