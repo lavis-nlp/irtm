@@ -619,7 +619,7 @@ def print_results(*, results, out: Union[str, pathlib.Path] = None):
             get_test('hits_at_k', 'both', 'avg', '1', default=0) * 100,
             get_test('hits_at_k', 'both', 'avg', '10', default=0) * 100,
             get_test('mean_reciprocal_rank', 'both', 'avg') * 100,
-            get_test('mean_rank', 'both', 'avg') * 100,
+            int(get_test('mean_rank', 'both', 'avg')),
             get_test('adjusted_mean_rank', 'both', default=2),
         ])
 
