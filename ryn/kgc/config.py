@@ -168,6 +168,7 @@ class Optuna:
 
     trials: int
     maximise: bool = False
+    study_name: str = None
 
 
 @dataclass

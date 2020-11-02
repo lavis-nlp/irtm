@@ -177,6 +177,8 @@ class TrainingResult:
 
     @classmethod
     def load(K, path: Union[str, pathlib.Path], load_model: bool = True):
+        # TODO instead of load_model: lazy load self.model
+
         path = helper.path(
             path, exists=True,
             message='loading training results from {path_abbrv}')
@@ -286,6 +288,10 @@ def single(
     except RuntimeError as exc:
         log.error(f'training error: "{exc}"')
         log.error('sweeping training loop memory up under the rug')
+
+        # not working although documented?
+        # result_tracker.wandb.alert(title='RuntimeError', text=msg)
+        result_tracker.run.finish(exit_code=1)
 
         gc.collect()
         training_loop.optimizer.zero_grad()
@@ -595,15 +601,16 @@ def print_results(*, results, out: Union[str, pathlib.Path] = None):
         return dic
 
     rows = []
-    sort_key = 4
-    headers = ['name', 'model', 'val', 'hits@1', 'hits@10', 'A-MR']
+    sort_key = 4  # hits@10
+
+    headers = [
+        'name', 'model', 'val',
+        'hits@1', 'hits@10', 'MRR', 'MR', 'A-MR']
     headers[sort_key] += ' *'
 
     for eval_result, path in results:
         train_result = TrainingResult.load(path, load_model=False)
-
-        test_metrics = eval_result.metrics
-        get_test = partial(_save_rget, test_metrics)
+        get_test = partial(_save_rget, eval_result.metrics)
 
         rows.append([
             path.name,
@@ -611,6 +618,8 @@ def print_results(*, results, out: Union[str, pathlib.Path] = None):
             train_result.stopper['results'][-1],
             get_test('hits_at_k', 'both', 'avg', '1', default=0) * 100,
             get_test('hits_at_k', 'both', 'avg', '10', default=0) * 100,
+            get_test('mean_reciprocal_rank', 'both', 'avg') * 100,
+            get_test('mean_rank', 'both', 'avg') * 100,
             get_test('adjusted_mean_rank', 'both', default=2),
         ])
 

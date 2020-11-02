@@ -53,7 +53,7 @@
   "stopper": {
     "cls": "EarlyStopper",
     "frequency": 50,
-    "patience": 2,
+    "patience": 4,
     "relative_delta": 0.001
   },
   "sampler": {

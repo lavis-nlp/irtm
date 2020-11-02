@@ -2,6 +2,10 @@
 
 import pathlib
 
+
+__version__ = '0.2'
+
+
 _root_path = pathlib.Path(__file__).parent.parent
 _DATA_DIR = 'data'
 
