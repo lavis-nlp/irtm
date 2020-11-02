@@ -1,9 +1,8 @@
-import ryn
 from distutils.core import setup
 
 setup(
     name='RYN',
-    version=ryn.__version__,
+    version='0.2',
     packages=['ryn'],
     license='MIT',
     long_description=open('README.md').read(),
