@@ -273,8 +273,6 @@ class Dataset:
         # (use .entities property which gets this information directly
         # directly from the triple sets)
 
-        print(self.cw_valid.owe)
-
         assert self.cw_train.owe == self.cw_train.entities, (
             'cw.train owe != cw.train entities')
         assert not len(self.cw_valid.owe), (
@@ -287,6 +285,14 @@ class Dataset:
         seen |= self.ow_valid.entities
         assert self.ow_test.owe.isdisjoint(seen), (
             'entities in ow test leaked)')
+
+        # each triple of the open world splits must contain at least
+        # one open world entity
+        for part in (self.ow_valid, self.ow_test):
+            undesired = set(
+                (h, t, r) for h, t, r in part.triples
+                if h not in part.owe and t not in part.owe)
+            assert not len(undesired), f'found undesired triples: {undesired}'
 
     @classmethod
     @helper.cached('.cached.split.dataset.pkl')
@@ -525,11 +531,10 @@ class Splitter:
         #  t1-t2:  ow test
         #  t2-n:   cw
 
-        t1 = self.cfg.ow_split * self.cfg.train_split
-        t2 = self.cfg.ow_split
-
         n = len(self.g.source.triples)
-        t1, t2 = (int(n * x) for x in (t1, t2))
+        t1 = int(self.cfg.ow_split * (1 - self.cfg.train_split) * n)
+        t2 = int(self.cfg.ow_split * n)
+
         log.info(f'target splits: 0 {t1=} {t2=} {n=}')
 
         # retain all triples where both head and tail
@@ -540,17 +545,28 @@ class Splitter:
         cw = Split(train=retained, valid=set())
         ow = Split(valid=set(), test=set())
 
+        _subbar = tqdm(position=1, total=len(candidates), leave=False)
         while candidates:
             e = candidates.pop()
-            found = self.g.find(heads={e}, tails={e}) - agg
+            _subbar.update()
 
+            found = self.g.find(heads={e}, tails={e})
+            # it does this (but much faster):
+            # found = set(
+            #     (h, t, r) for h, t, r in self.g.source.triples
+            #     if h == e or t == e)
+
+            found -= agg
             agg |= found
             curr = len(agg)
 
-            if curr < t1:
-                ow.valid |= found
-            elif curr < t2:
+            if not found:
+                continue
+
+            elif curr < t1:
                 ow.test |= found
+            elif curr < t2:
+                ow.valid |= found
             else:
                 cw.train |= found
 
