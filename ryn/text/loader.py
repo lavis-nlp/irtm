@@ -31,12 +31,14 @@ def load_sqlite(
 
     Load text from a sqlite database
 
-    Schema must be like this:
+    Schema must be like this (v4):
 
     TABLE contexts:
-      id INTEGER PRIMARY KEY AUTOINCREMENT
-      entity TEXT
-      context TEXT
+        entity INT,
+        entity_label TEXT,
+        page_title TEXT,
+        context TEXT,
+        masked_context TEXT
 
     """
     query = 'SELECT entity, context FROM contexts'
@@ -56,13 +58,14 @@ class SQLite:
 
     Load text from a sqlite database
 
-    Schema must be like this:
+    Schema must be like this (v4):
 
     TABLE contexts:
-      id INTEGER PRIMARY KEY AUTOINCREMENT
-      entity INTEGER
-      entity_label TEXT
-      context TEXT
+        entity INT,
+        entity_label TEXT,
+        page_title TEXT,
+        context TEXT,
+        masked_context TEXT
 
     "entity_label" is the mention
 
@@ -72,10 +75,10 @@ class SQLite:
 
     # ---
 
-    COL_ID = 'id'
-    COL_ENTITY = 'entity'
-    COL_MENTION = 'entity_label'
-    COL_CONTEXT = 'context'
+    COL_ID: int = 'id'
+    COL_ENTITY: int = 'entity'
+    COL_MENTION: str = 'entity_label'
+    COL_CONTEXT: str = 'context'
 
     # ---
 

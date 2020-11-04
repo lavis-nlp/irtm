@@ -23,7 +23,6 @@ from dataclasses import dataclass
 from collections import defaultdict
 
 import transformers as tf
-from nltk.tokenize import sent_tokenize as split_sentences
 
 from typing import IO
 from typing import List
@@ -34,7 +33,7 @@ from typing import Tuple
 log = logging.get('text.data')
 
 
-SEP = ' • '
+SEP = ' | '
 
 
 class Tokenizer:
@@ -74,38 +73,15 @@ class TransformContext:
     tokens: int
 
 
-def _split_sentences(blob: str, mention: str) -> Tuple[str]:
-    blob = ' '.join(blob.split())
-    split = split_sentences(blob)
-    sel = tuple(
-        s.replace('[MASK]', mention)
-        for s in split if '[MASK]' in s)
-
-    return sel
-
-
 def _transform_result(result, *, e: int = None, amount: int = None):
     entities, mentions, blobs = zip(*result)
     assert all(e == db_entity for db_entity in entities)
-
-    # TODO adjust after next db update
-    # ----------
-    mult = [
-        _split_sentences(blob, mention)
-        for blob, mention in zip(blobs, mentions)]
-
-    sentences = [
-        sentence
-        for res in mult for sentence in res
-        if sentence]
-
-    if not sentences:
-        return None
 
     # ----------
 
     # select text
 
+    sentences = [sent for blob in blobs for sent in blob.split('\n')]
     random.shuffle(sentences)
     sentences = tuple(
         # remove unnecessary whitespace
@@ -275,7 +251,8 @@ def transform(
     if suffix:
         name = f'{name}-{suffix}'
 
-    p_out = ryn.ENV.TEXT_DIR / 'data' / dataset.name / name
+    folder = f'{dataset.name}-{pathlib.Path(database).name}'
+    p_out = ryn.ENV.TEXT_DIR / 'data' / folder / name
     p_out.mkdir(exist_ok=True, parents=True)
 
     with (p_out / 'info.json').open(mode='w') as fd:

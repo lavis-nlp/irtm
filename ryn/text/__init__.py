@@ -78,9 +78,7 @@ def transform(
         model: str = None,
         suffix: str = None, ):
     """
-
     Transform a graph.split.Dataset to a text.data.Dataset
-
     """
     dataset = split.Dataset.load(path=dataset)
     data.transform(
@@ -97,4 +95,7 @@ def transform(
     '--debug', is_flag=True,
     help='only test a model and do not log')
 def train(debug: bool = None):
+    """
+    Train a mapper to align embeddings
+    """
     trainer.train_from_cli(debug=debug)
