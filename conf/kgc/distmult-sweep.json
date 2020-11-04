@@ -53,7 +53,7 @@
   "stopper": {
     "cls": "EarlyStopper",
     "frequency": 50,
-    "patience": 4,
+    "patience": 5,
     "relative_delta": 0.001
   },
   "sampler": {
@@ -63,17 +63,12 @@
       "high": 50,
       "step": 1,
       "log": false,
-      "initial": 10
+      "initial": 25
     }
   },
   "training": {
     "num_epochs": 2000,
-      "batch_size": {
-          "low": 64,
-          "high": 512,
-          "step": 64,
-          "initial": 256
-      }
+      "batch_size": 512
   },
   "training_loop": {
     "cls": "SLCWATrainingLoop"
