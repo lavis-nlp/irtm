@@ -593,7 +593,7 @@ def print_results(*, results, out: Union[str, pathlib.Path] = None):
 
         while ls:
             try:
-                dic = dic[ls.pop()]
+                dic = {str(k): v for k, v in dic.items()}[ls.pop()]
             except KeyError as exc:
                 log.error(str(exc))
                 return default
