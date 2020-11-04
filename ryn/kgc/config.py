@@ -22,7 +22,6 @@ import dataclasses
 from dataclasses import dataclass
 
 import typing
-from typing import Any
 from typing import Union
 
 
