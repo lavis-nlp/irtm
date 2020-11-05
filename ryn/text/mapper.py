@@ -3,6 +3,7 @@
 import ryn
 from ryn.kgc import keen
 from ryn.text import data
+from ryn.text.config import Config
 from ryn.common import helper
 from ryn.common import logging
 
@@ -14,15 +15,12 @@ import transformers as tf
 import pytorch_lightning as pl
 
 import yaml
-import pathlib
 
-from dataclasses import field
 from dataclasses import dataclass
 from collections import defaultdict
 
 from typing import Any
 from typing import Dict
-from typing import Union
 from typing import Tuple
 
 log = logging.get('text.mapper')
@@ -229,49 +227,6 @@ class Components:
     kgc_model: keen.Model
 
 
-@dataclass
-class MapperConfig:
-
-    # whether to fine-tune the text_encoder
-    freeze_text_encoder: bool
-
-    # https://github.com/PyTorchLightning/pytorch-lightning/blob/9acee67c31c84dac74cc6169561a483d3b9c9f9d/pytorch_lightning/trainer/trainer.py#L81
-    trainer_args: Dict[str, any]
-
-    # https://pytorch.org/docs/stable/data.html#torch.utils.data.DataLoader
-    dataloader_train_args: Dict[str, any]
-    dataloader_valid_args: Dict[str, any]
-
-    # ow_valid is split for the training
-    # into validation and testing data
-    valid_split: int
-
-    # the trained knowledge graph completion model
-    # for more information see ryn.kgc.keen.Model
-    kgc_model: Union[str, pathlib.Path]
-
-    # this is the pre-processed text data
-    # and it also determines the upstream text encoder
-    # for more information see tyn.text.data.Dataset
-    text_dataset: Union[str, pathlib.Path]
-
-    optimizer: str
-    optimizer_args: Dict[str, Any]
-
-    # see the respective <Class>.impl dictionary
-    # for available implementations
-    # and possibly <Class>.Config for the
-    # necessary configuration
-
-    aggregator: str
-    projector: str
-    comparator: str
-
-    aggregator_args: Dict[str, Any] = field(default_factory=dict)
-    projector_args: Dict[str, Any] = field(default_factory=dict)
-    comparator_args: Dict[str, Any] = field(default_factory=dict)
-
-
 class Mapper(pl.LightningModule):
 
     @property
@@ -396,7 +351,7 @@ class Mapper(pl.LightningModule):
     @classmethod
     def from_config(
             K, *,
-            config: MapperConfig = None,
+            config: Config = None,
             text_encoder_name: str = None):
 
         kgc_model = keen.Model.load(config.kgc_model)

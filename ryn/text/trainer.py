@@ -228,7 +228,7 @@ def train_from_cli(debug: bool = False):
         name=name,
         save_dir=str(out),
         offline=debug,
-        project='ryn',
+        project='ryn-text',
         log_model=False,
     )
 
