@@ -113,7 +113,7 @@ class Cache:
         name = f'{path.name}/{cache.name}'
 
         if not self.invalid and cache.is_file():
-            log.info(f'loading from cache: {cache}')
+            log.info(f'loading from cache: {name}')
             with cache.open(mode='rb') as fd:
                 return pickle.load(fd)
 
