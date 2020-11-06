@@ -1,0 +1,79 @@
+{
+  "general": {
+    "seed": null
+  },
+  "tracker": {
+    "cls": "wandb",
+    "project": "ryn-keen",
+    "reinit": true,
+    "offline": false
+  },
+  "model": {
+    "cls": "Complex",
+    "embedding_dim": {
+      "low": 50,
+      "high": 500,
+      "step": 50,
+      "log": false,
+      "initial": 250
+    },
+    "preferred_device": "cuda",
+    "automatic_memory_optimization": true
+  },
+  "optimizer": {
+    "cls": "Adagrad",
+    "lr": {
+      "low": 0.001,
+      "high": 0.5,
+      "step": null,
+      "log": true,
+      "initial": 0.01
+    }
+  },
+  "evaluator": {
+    "cls": "RankBasedEvaluator"
+  },
+  "regularizer": {
+    "cls": "LpRegularizer",
+    "p": 2.0,
+    "weight": {
+      "low": 0.01,
+      "high": 0.1,
+      "step": null,
+      "log": true,
+      "initial": null
+    },
+    "normalize": true
+  },
+  "loss": {
+    "cls": "SoftplusLoss",
+    "reduction": "mean"
+  },
+  "stopper": {
+    "cls": "EarlyStopper",
+    "frequency": 50,
+    "patience": 5,
+    "relative_delta": 0.001
+  },
+  "sampler": {
+    "cls": "BasicNegativeSampler",
+    "num_negs_per_pos": {
+      "low": 1,
+      "high": 50,
+      "step": 1,
+      "log": false,
+      "initial": 25
+    }
+  },
+  "training": {
+    "num_epochs": 2000,
+    "batch_size": 200
+  },
+  "training_loop": {
+    "cls": "SLCWATrainingLoop"
+  },
+  "optuna": {
+    "trials": 100,
+    "maximise": true
+  }
+}
