@@ -246,7 +246,7 @@ class Mapper(pl.LightningModule):
         self._c = c
         self._lr = self.c.optimizer_args['lr']
 
-        log.info('setting kgc model to eval')
+        log.info('freezing kgc model')
         self.c.kgc_model.keen.eval()
 
         self.encode = c.text_encoder
@@ -344,17 +344,24 @@ class Mapper(pl.LightningModule):
             self.log(f'valid_loss_{name}_step', loss)
 
         log.error(f'{tuple(losses.values())=}')
-        return torch.cat(tuple(losses.values())).mean()
+
+        __import__("pdb").set_trace()
+        self.log('valid_loss', 10)
+        return 10
+        # return torch.cat(tuple(losses.values())).mean()
 
     # ---
 
     @classmethod
+    @helper.notnone
     def from_config(
             K, *,
-            config: Config = None,
-            text_encoder_name: str = None):
+            text_encoder_name: str = None,
+            config: Config = None, ):
 
-        kgc_model = keen.Model.load(config.kgc_model)
+        kgc_model = keen.Model.load(
+            config.kgc_model,
+            split_dataset=config.split_dataset)
 
         text_encoder = tf.BertModel.from_pretrained(
             text_encoder_name,

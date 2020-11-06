@@ -39,6 +39,7 @@ class Config:
     # and it also determines the upstream text encoder
     # for more information see tyn.text.data.Dataset
     text_dataset: Union[str, pathlib.Path]
+    split_dataset: Union[str, pathlib.Path]
 
     optimizer: str
     optimizer_args: Dict[str, Any]
@@ -55,6 +56,9 @@ class Config:
     aggregator_args: Dict[str, Any] = field(default_factory=dict)
     projector_args: Dict[str, Any] = field(default_factory=dict)
     comparator_args: Dict[str, Any] = field(default_factory=dict)
+
+    # directory to save everything to
+    out: Union[str, pathlib.Path] = None
 
     def save(self, path: Union[str, pathlib.Path]):
         fname = 'config.json'

@@ -251,8 +251,10 @@ def transform(
     if suffix:
         name = f'{name}-{suffix}'
 
-    folder = f'{dataset.name}-{pathlib.Path(database).name}'
-    p_out = ryn.ENV.TEXT_DIR / 'data' / folder / name
+    ds_name = dataset.name
+    db_name = pathlib.Path(database).name
+
+    p_out = ryn.ENV.TEXT_DIR / 'data' / ds_name / db_name / name
     p_out.mkdir(exist_ok=True, parents=True)
 
     with (p_out / 'info.json').open(mode='w') as fd:
@@ -450,7 +452,7 @@ class Part:
         for e, blob in read(f'{name}-indexes.txt.gz'):
             id2idxs[e].append(tuple(map(int, blob.split())))
 
-        log.info(f'loaded data for {len(id2ent)} distinct entities')
+        log.info(f'obtained data for {len(id2ent)} distinct entities')
 
         part = K(
             name=name,
@@ -542,7 +544,7 @@ class Dataset:
 
     @classmethod
     @helper.notnone
-    @helper.cached('.cached.data.dataset.pkl')
+    @helper.cached('.cached.text.data.dataset.pkl')
     def load(K, path: Union[str, pathlib.Path], ratio: float = None):
 
         path = pathlib.Path(path)
@@ -556,7 +558,8 @@ class Dataset:
         train = Part.load(name='cw.train', path=path)
         train, transductive = train.split_text_contexts(ratio=ratio)
         inductive = Part.load(name='ow.valid', path=path)
-        inductive, test = inductive.split_by_entity(ratio=ratio)
+        test = Part.load(name='ow.test', path=path)
+        # inductive, test = inductive.split_by_entity(ratio=ratio)
 
         self = Dataset(
             ratio=ratio,
@@ -581,5 +584,5 @@ class Dataset:
 
         self.check()
 
-        log.info(f'loaded {self.name}')
+        log.info(f'obtained {self.name}')
         return self

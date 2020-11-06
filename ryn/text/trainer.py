@@ -3,6 +3,7 @@
 import ryn
 from ryn.text import data
 from ryn.text import mapper
+from ryn.text.config import Config
 from ryn.common import helper
 from ryn.common import logging
 
@@ -11,14 +12,13 @@ import torch.utils.data as torch_data
 from torch.nn.utils.rnn import pad_sequence
 
 import pytorch_lightning as pl
-from pytorch_lightning.callbacks.base import Callback
 
 import gc
+import pathlib
 import dataclasses
 
 from itertools import chain
 from itertools import repeat
-from datetime import datetime
 from collections import defaultdict
 
 from typing import List
@@ -83,7 +83,7 @@ class ValidationSet(Dataset):
         return resd
 
 
-class TrainerCallback(Callback):
+class TrainerCallback(pl.callbacks.base.Callback):
 
     @property
     def config(self):
@@ -100,7 +100,7 @@ class TrainerCallback(Callback):
     def __init__(
             self,
             *args,
-            config: mapper.MapperConfig = None,
+            config: Config = None,
             dl_train: torch_data.DataLoader = None,
             dl_valid: torch_data.DataLoader = None,
             **kwargs):
@@ -142,36 +142,15 @@ class TrainerCallback(Callback):
 
 
 @helper.notnone
-def train(*, config: mapper.MapperConfig = None):
-    # initializing models
-    log.info('initializing models')
+def train(*, config: Config = None, debug: bool = False):
 
+    # --- initialize data
+
+    log.info('loading datasets')
     text_dataset = data.Dataset.load(
         path=config.text_dataset,
         ratio=config.valid_split)
 
-    # if a previous cache file with different ratio
-    # has not been deleted prior
-    assert text_dataset.ratio == config.valid_split, 'old cache file?'
-
-    model = mapper.Mapper.from_config(
-        config=config,
-        text_encoder_name=text_dataset.model)
-
-    if config.freeze_text_encoder:
-        log.info('freezing text encoder')
-        model.c.text_encoder.eval()
-
-    # TODO to reproduce runs:
-    # pl.seed_everything(...)
-    # also pl.Trainer(deterministic=True, ...)
-
-    assert model.c.tokenizer.base.vocab['[PAD]'] == 0
-
-    # --- handling data
-
-    # TODO
-    # # test = Dataset(part=text_dataset.ow_valid)
     dl_train = torch_data.DataLoader(
         TrainSet(part=text_dataset.train),
         collate_fn=TrainSet.collate_fn,
@@ -184,46 +163,49 @@ def train(*, config: mapper.MapperConfig = None):
         collate_fn=ValidationSet.collate_fn,
         **config.dataloader_valid_args)
 
-    # --- torment the machine
+    # --- initialize model
 
-    # callback = TrainerCallback(
-    #     config=config,
-    #     dl_train=dl_train,
-    #     dl_valid=dl_valid)
+    log.info('initializing models')
+    model = mapper.Mapper.from_config(
+        config=config,
+        text_encoder_name=text_dataset.model)
 
-    trainer = pl.Trainer(**config.trainer_args)
-    trainer.fit(model, dl_train, dl_valid)
+    if config.freeze_text_encoder:
+        log.info('freezing text encoder')
+        model.c.text_encoder.eval()
 
-    log.info('done')
+    # TODO to reproduce runs:
+    # pl.seed_everything(...)
+    # also pl.Trainer(deterministic=True, ...)
+    assert model.c.tokenizer.base.vocab['[PAD]'] == 0
 
+    # --
 
-# TODO replae with config management (await hpo with wandb)
-def train_from_cli(debug: bool = False):
+    # if a previous cache file with different ratio
+    # has not been deleted prior
+    assert text_dataset.ratio == config.valid_split, 'old cache file?'
 
-    if debug:
-        log.warning('phony debug run!')
+    text_encoder_name = text_dataset.model
+    kgc_model_name = model.c.kgc_model.config.model.cls
+    name = f'{text_encoder_name}-{kgc_model_name}'
+    log.info(f'! training {name}')
 
-    DATEFMT = '%Y.%m.%d.%H%M%S'
+    out = pathlib.Path((
+        ryn.ENV.TEXT_DIR / 'mapper' /
+        text_dataset.dataset / text_dataset.database /
+        text_dataset.model / name))
 
-    # ---
+    if not debug:
+        out = helper.path(
+            out, create=True,
+            message='writing model to {path_abbrv}')
 
-    kgc_model = 'DistMult'
-    text_encoder = 'bert-base-cased'
-    split_dataset = 'oke.fb15k237_30061990_50'
+        config = dataclasses.replace(config, out=out)
+        config.save(config.out)
 
-    kgc_model_dir = f'{kgc_model}-256-2020.08.12.120540.777006'
-    text_encoder_dir = f'{text_encoder}.200.768-unmasked'
+    # --- initialize logger
 
-    # ---
-
-    now = datetime.now().strftime(DATEFMT)
-    name = f'{kgc_model.lower()}.{text_encoder.lower()}.{now}'
-    out = ryn.ENV.TEXT_DIR / 'mapper' / split_dataset / name
-
-    out.mkdir(parents=True, exist_ok=True)
-
-    # ---
-
+    log.info('initializating logger')
     logger = pl.loggers.wandb.WandbLogger(
         name=name,
         save_dir=str(out),
@@ -232,11 +214,56 @@ def train_from_cli(debug: bool = False):
         log_model=False,
     )
 
-    # ---
+    logger.experiment.config.update({
+        'kgc_model': kgc_model_name,
+        'text_dataset': text_dataset.name,
+        'text_encoder': text_encoder_name,
+        'mapper_config': dataclasses.asdict(config),
+    })
+
+    # --- initialize trainer
+
+    callbacks = [
+        # to write model checkpoints based on the validation loss
+        pl.callbacks.ModelCheckpoint(
+            monitor='valid_loss',
+            save_top_k=5,
+            mode='min'),
+    ]
+
+    log.info('initializing trainer')
+    trainer = pl.Trainer(
+        **config.trainer_args,
+        logger=logger,
+        callbacks=callbacks,
+        # trained model directory
+        weights_save_path=out / 'weights',
+        # checkpoint directory
+        default_root_dir=out / 'checkpoints',
+    )
+
+    # --- torment the machine
+
+    log.info('Pape Satan, pape Satan aleppe')
+    trainer.fit(model, dl_train, dl_valid)
+
+    log.info('')
+
+
+@helper.notnone
+def train_from_cli(
+        debug: bool = False,
+        kgc_model: str = None,
+        text_dataset: str = None,
+        split_dataset: str = None,
+):
+
+    if debug:
+        log.warning('phony debug run!')
 
     # bert-large-cased: hidden size 1024
     # bert-base-cased: hidden size 768
-    config = mapper.MapperConfig(
+    config = Config(
 
         freeze_text_encoder=True,
 
@@ -245,8 +272,6 @@ def train_from_cli(debug: bool = False):
         trainer_args=dict(
             gpus=1,
             max_epochs=25,
-            logger=logger,
-            weights_save_path=out / 'weights',
             # auto_lr_find=True,
             fast_dev_run=debug,
         ),
@@ -264,11 +289,9 @@ def train_from_cli(debug: bool = False):
         ),
 
         # ryn upstream
-        kgc_model=(
-            ryn.ENV.KGC_DIR / split_dataset / kgc_model_dir),
-
-        text_dataset=(
-            ryn.ENV.TEXT_DIR / 'data' / split_dataset / text_encoder_dir),
+        kgc_model=kgc_model,
+        text_dataset=text_dataset,
+        split_dataset=split_dataset,
 
         # pytorch
         optimizer='adam',
@@ -276,17 +299,15 @@ def train_from_cli(debug: bool = False):
 
         # ryn models
         aggregator='max 1',
+
         projector='mlp 1',
-        projector_args=dict(input_dims=768, hidden_dims=500, output_dims=256),
+        projector_args=dict(
+            input_dims=768,
+            hidden_dims=500,
+            output_dims=450),
+
         comparator='euclidean 1',
         valid_split=0.7,
     )
 
-    logger.experiment.config.update({
-        'kgc_model': kgc_model,
-        'text_encoder': text_encoder,
-        'split_dataset': split_dataset,
-        'mapper_config': dataclasses.asdict(config),
-    })
-
-    train(config=config)
+    train(config=config, debug=debug)

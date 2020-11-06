@@ -94,8 +94,26 @@ def transform(
 @click.option(
     '--debug', is_flag=True,
     help='only test a model and do not log')
-def train(debug: bool = None):
+@click.option(
+    '--split-dataset', type=str, required=True,
+    help='path to ryn.graphs.split.Dataset directory')
+@click.option(
+    '--text-dataset', type=str, required=True,
+    help='path to ryn.text.data.Dataset directory')
+@click.option(
+    '--kgc-model', type=str, required=True,
+    help='path to ryn.kgc.keen.Model directory')
+def train(**kwargs):
     """
     Train a mapper to align embeddings
     """
-    trainer.train_from_cli(debug=debug)
+    trainer.train_from_cli(**kwargs)
+
+
+@text.command()
+def resume(**kwargs):
+    """
+    Resume training of a mapper
+    """
+    raise NotImplementedError()
+    trainer.resume_from_cli(**kwargs)
