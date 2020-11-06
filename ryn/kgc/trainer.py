@@ -2,6 +2,7 @@
 
 import ryn
 from ryn.kgc import keen
+from ryn.kgc import data
 from ryn.kgc.config import Config
 from ryn.graphs import split
 from ryn.common import helper
@@ -17,16 +18,11 @@ import gc
 import csv
 import json
 import pathlib
-import textwrap
 import dataclasses
 from functools import partial
 from datetime import datetime
-from datetime import timedelta
-from dataclasses import dataclass
 
-from typing import Any
 from typing import List
-from typing import Dict
 from typing import Union
 from typing import Iterable
 
@@ -50,153 +46,6 @@ def resolve_device(*, device_name: str = None):
     return device
 
 
-@helper.notnone
-def _load_datasets(path: Union[str, pathlib.Path] = None):
-    split_dataset = split.Dataset.load(path=path)
-    keen_dataset = keen.Dataset.create(
-        name=split_dataset.name,
-        path=split_dataset.path,
-        split_dataset=split_dataset)
-
-    return split_dataset, keen_dataset
-
-
-@helper.notnone
-def _save_model(*, path: pathlib.Path = None, model=None):
-    fname = 'model.ckpt'
-    path = helper.path(
-        path, exists=True,
-        message=f'saving {fname} to {{path_abbrv}}')
-
-    torch.save(model, str(path / fname))
-
-
-# --------------------
-
-
-@dataclass
-class Time:
-
-    @property
-    def took(self) -> timedelta:
-        return self.end - self.start
-
-    start: datetime
-    end: datetime
-
-    @classmethod
-    def create(K, dic: Dict[str, str]):
-        return K(**{
-            k: datetime.fromisoformat(v)
-            for k, v in dic.items()})
-
-
-@dataclass
-class TrainingResult:
-
-    created: datetime
-    git_hash: str
-    config: Config
-
-    # metrics
-    training_time: Time
-    losses: List[float]
-
-    model: torch.nn.Module
-
-    # set by train()
-    stopper: Any = None
-    result_tracker: Any = None
-
-    # set by Result.load
-    wandb: Dict = None
-
-    @property
-    def str_stats(self):
-        # TODO add metric_results
-
-        s = f'training result for {self.config.model.cls}\n'
-        s += textwrap.indent(
-            f'created: {self.created}\n'
-            f'git hash: {self.git_hash}\n'
-            f'training took: {self.training_time.took}\n'
-            f'dataset: {self.config.general.dataset}\n'
-            f'seed: {self.config.general.seed}\n'
-            '', ' ' * 2)
-
-        return s
-
-    @property
-    def result_dict(self):
-        dic = dict(
-            created=self.created,
-            git_hash=self.git_hash,
-            # metrics
-            training_time=dataclasses.asdict(self.training_time),
-            losses=self.losses,
-            stopper=self.stopper.get_summary_dict(),
-        )
-
-        # tracking
-        wandb_run = self.result_tracker.run
-
-        dic['wandb'] = dict(
-            id=wandb_run.id,
-            dir=wandb_run.dir,
-            path=wandb_run.path,
-            name=wandb_run.name,
-            offline=True,
-        )
-
-        if not hasattr(wandb_run, 'offline'):
-            dic['wandb'].update(dict(
-                url=wandb_run.url,
-                offline=False,
-            ))
-
-        return dic
-
-    def _save_results(self, path):
-        fname = 'training.json'
-        path = helper.path(
-            path, exists=True,
-            message=f'saving {fname} to {{path_abbrv}}')
-
-        with (path / fname).open(mode='w') as fd:
-            json.dump(self.result_dict, fd, default=str, indent=2)
-
-    def save(self, path: Union[str, pathlib.Path]):
-        path = helper.path(path, create=True)
-
-        self.config.save(path)
-        self._save_results(path)
-        _save_model(path=path, model=self.model)
-
-        with (path / 'summary.txt').open(mode='w') as fd:
-            fd.write(self.str_stats)
-
-    @classmethod
-    def load(K, path: Union[str, pathlib.Path], load_model: bool = True):
-        # TODO instead of load_model: lazy load self.model
-
-        path = helper.path(
-            path, exists=True,
-            message='loading training results from {path_abbrv}')
-
-        with (path / 'training.json').open(mode='r') as fd:
-            raw = json.load(fd)
-
-        model = None
-        if load_model:
-            model = torch.load(str(path / 'model.ckpt'))
-
-        return K(**{**raw, **dict(
-            training_time=Time.create(raw['training_time']),
-            config=Config.load(path / 'config.json'),
-            model=model,
-        )})
-
-
 # --------------------
 
 
@@ -206,7 +55,10 @@ def single(
         config: Config = None,
         split_dataset: split.Dataset = None,
         keen_dataset: keen.Dataset = None,
-) -> TrainingResult:
+) -> data.TrainingResult:
+
+    # TODO https://github.com/pykeen/pykeen/issues/129
+    BATCH_SIZE = 60
 
     # preparation
 
@@ -224,7 +76,7 @@ def single(
     result_tracker.log_params(dataclasses.asdict(config))
 
     device = resolve_device(
-        device_name=config.model.preferred_device)
+        device_name=config.model.kwargs['preferred_device'])
 
     # target filtering for ranking losses is enabled by default
     loss = config.resolve(
@@ -247,6 +99,7 @@ def single(
 
     evaluator = config.resolve(
         config.evaluator,
+        batch_size=BATCH_SIZE,
     )
 
     optimizer = config.resolve(
@@ -260,6 +113,7 @@ def single(
         evaluator=evaluator,
         evaluation_triples_factory=keen_dataset.validation,
         result_tracker=result_tracker,
+        evaluation_batch_size=BATCH_SIZE,
     )
 
     training_loop = config.resolve(
@@ -299,7 +153,7 @@ def single(
 
         raise exc
 
-    training_time = Time(start=ts, end=datetime.now())
+    training_time = data.Time(start=ts, end=datetime.now())
     result_tracker.log_metrics(
         prefix='validation',
         metrics=dict(best=stopper.best_metric, metric=stopper.metric),
@@ -307,7 +161,7 @@ def single(
 
     # aggregation
 
-    return TrainingResult(
+    return data.TrainingResult(
         created=datetime.now(),
         git_hash=helper.git_hash(),
         config=config,
@@ -379,8 +233,9 @@ def multi(
         path = out / f'trial-{trial.number:04d}'
 
         # update configuration
-        tracker = dataclasses.replace(config.tracker, experiment=name)
-        config = dataclasses.replace(config, tracker=tracker)
+        config.tracker.kwargs['experiment'] = name
+        # tracker = dataclasses.replace(config.tracker, experiment=name)
+        # config = dataclasses.replace(config, tracker=tracker)
 
         # run training
         try:
@@ -448,11 +303,12 @@ def train_from_kwargs(
     if offline:
         log.warning('offline run!')
 
-    split_dataset, keen_dataset = _load_datasets(path=split_dataset)
+    split_dataset, keen_dataset = data.load_datasets(path=split_dataset)
 
     print(f'\n{split_dataset}\n{keen_dataset}\n')
 
-    config = Config.load(config)
+    path = helper.path(config)
+    config = Config.load(path.parent, fname=path.name)
     config.general.dataset = split_dataset.name
 
     train(
@@ -463,35 +319,6 @@ def train_from_kwargs(
 
 
 # --------------------
-
-
-@dataclass
-class EvaluationResult:
-
-    model: str
-    created: datetime
-    git_hash: str
-
-    # metrics
-    evaluation_time: Time
-    metrics: Dict
-
-    @classmethod
-    def load(K, path: Union[str, pathlib.Path]):
-        path = helper.path(
-            path, exists=True,
-            message='loading {path_abbrv}')
-
-        with path.open(mode='r') as fd:
-            raw = json.load(fd)
-
-        return K(
-            model=raw['model'],
-            created=raw['created'],
-            git_hash=raw['git_hash'],
-            evaluation_time=Time.create(raw['evaluation_time']),
-            metrics=raw['metrics'],
-        )
 
 
 def _evaluate(train_result, keen_dataset):
@@ -511,9 +338,9 @@ def _evaluate(train_result, keen_dataset):
         )
     )
 
-    evaluation_time = Time(start=ts, end=datetime.now())
+    evaluation_time = data.Time(start=ts, end=datetime.now())
 
-    return EvaluationResult(
+    evaluation_result = data.EvaluationResult(
         model=train_result.config.model.cls,
         created=datetime.now(),
         evaluation_time=evaluation_time,
@@ -521,18 +348,8 @@ def _evaluate(train_result, keen_dataset):
         metrics=dataclasses.asdict(metrics),
     )
 
-
-def _evaluate_wrapper(path, fname, train_result, keen_dataset):
-    eval_result = _evaluate(train_result, keen_dataset)
-    log.info(f'evaluation took: {eval_result.evaluation_time.took}')
-
-    path = helper.path(path, message=f'writing {fname} to {{path_abbrv}}')
-    with (path / fname).open(mode='w') as fd:
-        json.dump(
-            dataclasses.asdict(eval_result),
-            fd, default=str, indent=2)
-
-    return eval_result
+    log.info(f'evaluation took: {evaluation_time.took}')
+    return evaluation_result
 
 
 @helper.notnone
@@ -548,20 +365,19 @@ def evaluate(
     results = []
     for path in tqdm(glob):
         try:
-            train_result = TrainingResult.load(path)
+            train_result = data.TrainingResult.load(path)
             assert train_result.config.general.dataset == split_dataset.name
 
         except (FileNotFoundError, NotADirectoryError) as exc:
             log.info(f'skipping {path.name}: {exc}')
             continue
 
-        fname = 'evaluation.json'
-        if (path / fname).is_file():
-            eval_result = EvaluationResult.load(path / fname)
+        try:
+            eval_result = data.EvaluationResult.load(path)
 
-        else:
-            eval_result = _evaluate_wrapper(
-                path, fname, train_result, keen_dataset)
+        except FileNotFoundError:
+            eval_result = _evaluate(train_result, keen_dataset)
+            eval_result.save(path)
 
         results.append((eval_result, path))
 
@@ -575,7 +391,7 @@ def evaluate_from_kwargs(
         split_dataset: str = None,
 ):
 
-    split_dataset, keen_dataset = _load_datasets(path=split_dataset)
+    split_dataset, keen_dataset = data.load_datasets(path=split_dataset)
 
     eval_results = evaluate(
         glob=map(pathlib.Path, results),
@@ -609,7 +425,7 @@ def print_results(*, results, out: Union[str, pathlib.Path] = None):
     headers[sort_key] += ' *'
 
     for eval_result, path in results:
-        train_result = TrainingResult.load(path, load_model=False)
+        train_result = data.TrainingResult.load(path, load_model=False)
         get_test = partial(_save_rget, eval_result.metrics)
 
         rows.append([

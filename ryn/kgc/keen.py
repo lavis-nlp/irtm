@@ -9,17 +9,17 @@ https://github.com/pykeen/pykeen
 """
 
 import ryn
+from ryn.kgc import data
 from ryn.graphs import split
 from ryn.graphs import graph
 from ryn.common import helper
 from ryn.common import logging
+from ryn.kgc.config import Config
 
-import json
 import pickle
 import pathlib
 import textwrap
 
-from datetime import datetime
 from functools import partial
 from functools import lru_cache
 from dataclasses import dataclass
@@ -33,9 +33,7 @@ from pykeen import datasets as keen_datasets
 from pykeen.models import base as keen_models_base
 from pykeen.datasets import base as keen_datasets_base
 
-from typing import Any
 from typing import Set
-from typing import Dict
 from typing import List
 from typing import Union
 from typing import Tuple
@@ -328,7 +326,7 @@ class Dataset(keen_datasets_base.DataSet):
                 f'{_mapped.issubset(factory.relation_to_id.keys())=}')
 
     @classmethod
-    @helper.cached('.cached.keen.dataset.pkl')
+    @helper.cached('.cached.kgc.keen.dataset.pkl')
     def create(
             K, *,
             # name is required for my version of the hpo pipeline
@@ -404,7 +402,7 @@ class Dataset(keen_datasets_base.DataSet):
         return self
 
     @classmethod
-    @helper.cached('.cached.keen.dataset.pkl')
+    @helper.cached('.cached.kgc.keen.dataset.pkl')
     def load(
             K, *,
             # name is required for my version of the hpo pipeline
@@ -492,38 +490,40 @@ class Model:
 
     """
 
+    config: Config
     path: pathlib.Path
-    timestamp: datetime
 
-    # is attempted to be loaded but may fail
-    split_dataset: Union[split.Dataset, None]
+    # a torch.nn.Module
+    keen: keen_models_base.Model
 
-    results: Dict[str, Any]
-    parameters: Dict[str, Any]
-    metadata: Dict[str, Any]
-
-    keen: keen_models_base.Model  # which is a torch.nn.Module
     keen_dataset: Dataset
+    split_dataset: split.Dataset
+
+    training_result: data.TrainingResult
+    evaluation_result: data.EvaluationResult
+
+    # --
 
     @property
     def name(self) -> str:
-        return self.parameters['model']
-
-    @property
-    def uri(self) -> str:
-        return (
-            f'{self.split_dataset.name}_'
-            f'{self.name}_'
-            f'{self.timestamp.strftime(DATEFMT)}')
+        return self.config.model.cls
 
     @property
     def dimensions(self) -> int:
-        return self.parameters['model_kwargs']['embedding_dim']
+        return self.config.model.embedding_dim
+
+    @property
+    def uri(self) -> str:
+        # assuming the timestamp is unique...
+        return (
+            f'{self.split_dataset.name}/'
+            f'{self.name}/'
+            f'{self.timestamp.strftime(DATEFMT)}')
 
     @property
     @lru_cache
     def metrics(self) -> pd.DataFrame:
-        metrics = self.results['metrics']
+        metrics = self.test_results['metrics']
         hits_at_k = metrics['hits_at_k']['both']
 
         data = {}
@@ -545,7 +545,7 @@ class Model:
 
         return title + textwrap.indent(
             f'Trained: {self.timestamp.strftime("%d.%m.%Y %H:%M")}\n'
-            f'Dataset: {self.metadata["dataset_name"]}\n\n'
+            f'Dataset: {self.split_dataset.name}\n\n'
             f'{self.metrics}\n', '  ')
 
     def __hash__(self) -> int:
@@ -788,51 +788,47 @@ class Model:
     # ---
 
     @classmethod
-    def load(K, path: Union[str, pathlib.Path]):
-        log.info(f'loading keen model from {path}')
-        path = pathlib.Path(path)
+    def load(
+            K, path: Union[str, pathlib.Path], *,
+            split_dataset: str = None,
+            load_model: bool = True, ):
 
-        # TODO do not use path information and put a timestamp
-        # into the metadata.json
+        assert split_dataset
+
+        path = helper.path(
+            path, exists=True,
+            message='loading keen model from {path_abbrv}')
+
+        config = Config.load(path)
+        training_result = data.TrainingResult.load(path)
+
         try:
-            _, _, created = path.name.split('-')
-            timestamp = datetime.strptime(created, DATEFMT)
-        except ValueError as exc:
-            log.error(f'cannot read {path}')
-            raise exc
+            evaluation_result = data.EvaluationResult.load(path)
+        except FileNotFoundError:
+            evaluation_result = None
 
-        md_path = path / 'metadata.json'
-        with (md_path).open(mode='r') as fd:
-            raw = json.load(fd)
-            parameters = raw['pipeline']
-            metadata = raw['metadata']
+        split_dataset = split.Dataset.load(path=split_dataset)
+        assert config.general.dataset == split_dataset.name
 
-        res_path = path / 'results.json'
-        with (res_path).open(mode='r') as fd:
-            results = json.load(fd)
-
-        ds_path = ryn.ENV.ROOT_DIR / metadata['dataset_path']
-        split_dataset = split.Dataset.load(path=ds_path)
-
-        keen_path = str(path / 'trained_model.pkl')
-        keen_model = torch.load(keen_path)
-
-        log.info('reconstructing keen dataset')
         keen_dataset = Dataset.create(
+            name=split_dataset.name,
             path=split_dataset.path,
-            dataset=split_dataset)
+            split_dataset=split_dataset)
 
         assert keen_dataset.training.mapped_triples.equal(
-            keen_model.triples_factory.mapped_triples), (
+            training_result.model.triples_factory.mapped_triples), (
                 'cannot reproduce triple split')
+
+        keen = None
+        if load_model:
+            keen = data._load_model(path=path)
 
         return K(
             path=path,
-            timestamp=timestamp,
-            results=results,
-            parameters=parameters,
-            metadata=metadata,
-            split_dataset=split_dataset,
-            keen=keen_model,
+            config=config,
+            keen=keen,
             keen_dataset=keen_dataset,
+            split_dataset=split_dataset,
+            training_result=training_result,
+            evaluation_result=evaluation_result,
         )

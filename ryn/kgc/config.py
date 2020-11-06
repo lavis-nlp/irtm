@@ -22,6 +22,8 @@ import dataclasses
 from dataclasses import dataclass
 
 import typing
+from typing import Any
+from typing import Dict
 from typing import Union
 
 
@@ -55,25 +57,13 @@ class Base:
         """
         return self.__class__.getter(self.cls)
 
-    @property
-    def kwargs(self):
-        d = dataclasses.asdict(self)
-        del d['cls']
-        return d
-
     cls: str
+    kwargs: Dict[str, Any]
 
 
 @dataclass
 class Tracker(Base):
-
     getter = pk_trackers.get_result_tracker_cls
-
-    project: str
-    experiment: str = None
-
-    reinit: bool = False
-    offline: bool = False
 
 
 # model
@@ -81,30 +71,17 @@ class Tracker(Base):
 
 @dataclass
 class Model(Base):
-
     getter = pk_models.get_model_cls
-
-    embedding_dim: int
-    preferred_device: str = 'cuda'  # or cpu
-    automatic_memory_optimization: bool = True
 
 
 @dataclass
 class Optimizer(Base):
-
     getter = pk_optimizers.get_optimizer_cls
-
-    lr: int
 
 
 @dataclass
 class Regularizer(Base):
-
     getter = pk_regularizers.get_regularizer_cls
-
-    p: float
-    weight: float
-    normalize: bool
 
 
 # training
@@ -112,42 +89,26 @@ class Regularizer(Base):
 
 @dataclass
 class Loss(Base):
-
     getter = pk_losses.get_loss_cls
-
-    margin: float
-    reduction: str
 
 
 @dataclass
 class Evaluator(Base):
-
     getter = pk_evaluation.get_evaluator_cls
-
-    # batch_size: int
 
 
 @dataclass
 class Stopper(Base):
-
     getter = pk_stoppers.get_stopper_cls
-
-    frequency: int
-    patience: int
-    relative_delta: float
 
 
 @dataclass
 class Sampler(Base):
-
     getter = pk_sampling.get_negative_sampler_cls
-
-    num_negs_per_pos: int
 
 
 @dataclass
 class TrainingLoop(Base):
-
     getter = pk_training.get_training_loop_cls
 
 
@@ -266,12 +227,44 @@ class Config:
             path, create=True,
             message=f'saving {fname} to {{path_abbrv}}')
 
+        def _wrap(key, val):
+            try:
+                val = {
+                    # e.g. attr=embedding_dim
+                    **{attr: (
+                        # suggestions
+                        dataclasses.asdict(val)
+                        if dataclasses.is_dataclass(val) else val
+                    ) for attr, val in val['kwargs'].items()},
+                    **{'cls': val['cls']},
+                }
+
+            # val['kwargs'] and val['cls'] triggers this
+            except KeyError:
+                pass
+
+            return val
+
+        dic = {
+            # e.g. key=model
+            key: _wrap(key, val)
+            for key, val in dataclasses.asdict(self).items()
+        }
+
         with (path / fname).open(mode='w') as fd:
-            json.dump(dataclasses.asdict(self), fd, indent=2)
+            json.dump(dic, fd, indent=2)
 
     @classmethod
-    def load(K, path: Union[str, pathlib.Path]) -> 'Config':
-        path = helper.path(path, exists=True, message='loading {path}')
+    def load(
+            K,
+            path: Union[str, pathlib.Path],
+            fname: str = None,
+    ) -> 'Config':
+
+        path = helper.path(path)
+        path = helper.path(
+            path / (fname or 'config.json'), exists=True,
+            message='loading kgc config from {path_abbrv}')
 
         with path.open(mode='r') as fd:
             raw = json.load(fd)
@@ -281,13 +274,28 @@ class Config:
         # 2: Possible Suggestion instances
 
         constructors = typing.get_type_hints(K)
+
+        def _unwrap(key, section):
+            kwargs = section
+            if 'cls' in section:
+                kwargs = dict(
+                    cls=section['cls'],
+                    kwargs={
+                        # e.g. attr=embedding_dim
+                        attr: (
+                            Suggestion.create(**val)
+                            if type(val) is dict else val
+                        )
+                        for attr, val in section.items()
+                        if attr != 'cls'
+                    }
+                )
+
+            return constructors[key](**kwargs)
+
         return K(**{
-            # e.g. model
-            key: constructors[key](**{
-                # e.g. embedding_dim
-                attr: (Suggestion.create(**val) if type(val) is dict else val)
-                for attr, val in section.items()
-            })
+            # e.g. key=model
+            key: _unwrap(key, section)
             for key, section in raw.items()
         })
 
@@ -297,9 +305,14 @@ class Config:
     def suggestions(self):
         suggestions = {}
         for name, option in self.__dict__.items():
-            for key, val in option.__dict__.items():
-                if isinstance(val, Suggestion):
-                    suggestions[f'{name}.{key}'] = val
+            try:
+                for key, val in option.kwargs.items():
+                    if isinstance(val, Suggestion):
+                        suggestions[f'{name}.{key}'] = val
+
+            # option.kwargs triggers this
+            except AttributeError:
+                pass
 
         if not suggestions:
             raise ryn.RynError('no parameters marked for optimization')
@@ -307,27 +320,42 @@ class Config:
         return suggestions
 
     def suggest(self, trial) -> 'Config':
-
         replaced = {}
+        # for name, option in self.__dict__.items():
+        #     try:
+        #         for key, val in option.kwargs.items():
+        #             if isin
+
+        #     _dic = {}
+        #     for key, val in option.__dict__.items():
+        #         if isinstance(val, Suggestion):
+        #             _dic[key] = val
+
+        #     suggestions = {
+        #         k: v.suggest(name=f'{name}.{k}', trial=trial)
+        #         for k, v in _dic.items()
+        #     }
+
+        #     if suggestions:
+        #         log.info('obtained suggestions: ' + ', '.join(
+        #             f'{k}={v}' for k, v in suggestions.items()))
         for name, option in self.__dict__.items():
+            try:
+                # suggest concrete values
+                suggestions = {
+                    k: v.suggest(name=f'{name}.{k}', trial=trial)
+                    for k, v in option.kwargs.items()
+                    if isinstance(v, Suggestion)
+                }
 
-            _dic = {}
-            for key, val in option.__dict__.items():
-                if isinstance(val, Suggestion):
-                    _dic[key] = val
+                if suggestions:
+                    option = self.__dict__[name]
+                    kwargs = {**option.kwargs, **suggestions}
+                    replaced[name] = dataclasses.replace(option, kwargs=kwargs)
 
-            suggestions = {
-                k: v.suggest(name=f'{name}.{k}', trial=trial)
-                for k, v in _dic.items()
-            }
-
-            if suggestions:
-                log.info('obtained suggestions: ' + ', '.join(
-                    f'{k}={v}' for k, v in suggestions.items()))
-
-            # create a new dataclass instance with the respective
-            # fields replaced with the concrete optuna suggestion
-            replaced[name] = dataclasses.replace(option, **suggestions)
+            # triggered by option.kwargs
+            except AttributeError:
+                continue
 
         if not replaced:
             raise ryn.RynError('no parameters marked for optimization')

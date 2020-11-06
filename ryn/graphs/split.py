@@ -295,7 +295,7 @@ class Dataset:
             assert not len(undesired), f'found undesired triples: {undesired}'
 
     @classmethod
-    @helper.cached('.cached.split.dataset.pkl')
+    @helper.cached('.cached.graphs.split.dataset.pkl')
     def load(K, path: Union[str, pathlib.Path]) -> 'Dataset':
         """
 
