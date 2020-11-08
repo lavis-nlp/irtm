@@ -329,26 +329,25 @@ class Mapper(pl.LightningModule):
         both for the inductive and the transductive setting.
 
         """
-        losses = {}
-        for name, batch in batchd.items():
-            sentences, entities = batch
 
+        losses = {}
+
+        # name is in ['inductive', 'transductive']
+        for name, batch in batchd.items():
+
+            # TODO implement MAP
+            # TODO implement pykeen evaluator for MRR etc.
+
+            if name == 'inductive':
+                continue
+
+            sentences, entities = batch
             projected, target = self.forward(
                 sentences=sentences,
                 entities=entities)
 
-            # TODO (after keen training): there is a problem
-            # that 'loss' is a zero-value tensor
-
             losses[name] = loss = self.loss(projected, target)
             self.log(f'valid_loss_{name}_step', loss)
-
-        log.error(f'{tuple(losses.values())=}')
-
-        __import__("pdb").set_trace()
-        self.log('valid_loss', 10)
-        return 10
-        # return torch.cat(tuple(losses.values())).mean()
 
     # ---
 
@@ -358,6 +357,7 @@ class Mapper(pl.LightningModule):
             K, *,
             text_encoder_name: str = None,
             config: Config = None, ):
+        log.info('creating mapper from config')
 
         kgc_model = keen.Model.load(
             config.kgc_model,
