@@ -16,7 +16,6 @@ from tabulate import tabulate
 
 import gc
 import csv
-import json
 import pathlib
 import dataclasses
 from functools import partial
