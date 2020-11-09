@@ -2,7 +2,9 @@
 
 import ryn
 
+from ryn.kgc import keen
 from ryn.text import loader
+from ryn.text.config import Config
 from ryn.graphs import split
 from ryn.common import helper
 from ryn.common import logging
@@ -15,6 +17,7 @@ import textwrap
 import contextlib
 import multiprocessing as mp
 
+from itertools import count
 from datetime import datetime
 from functools import partial
 from functools import lru_cache
@@ -22,6 +25,10 @@ from dataclasses import field
 from dataclasses import dataclass
 from collections import defaultdict
 
+import torch
+import torch.utils.data as torch_data
+from torch.nn.utils.rnn import pad_sequence
+from pykeen import triples as keen_triples
 import transformers as tf
 
 from typing import IO
@@ -586,3 +593,256 @@ class Dataset:
 
         log.info(f'obtained {self.name}')
         return self
+
+
+# --- for mapper training
+
+
+class TorchDataset(torch_data.Dataset):
+
+    def __len__(self):
+        return len(self._flat)
+
+    def __getitem__(self, idx: int) -> Tuple[torch.Tensor, int]:
+        return self._flat[idx]
+
+    @helper.notnone
+    def __init__(self, *, part: Part = None):
+        super().__init__()
+
+        self._flat = [
+            (torch.Tensor(idxs).to(dtype=torch.long), e)
+            for e, idx_lists in part.id2idxs.items()
+            for idxs in idx_lists]
+
+        self._max_len = max(len(idxs) for idxs, _ in self._flat)
+        log.info('initialized Data: '
+                 f'samples={len(self._flat)}, '
+                 f'max sequence length: {self._max_len}')
+
+    @property
+    def collator(self):
+        # TODO use trainer callback instead
+        max_len = self._max_len
+
+        def _collate_fn(batch: List[Tuple]):
+            ents, idxs = zip(*batch)
+
+            padded = pad_sequence(idxs, batch_first=True)
+            shape = padded.shape[0], max_len
+            bowl = torch.zeros(shape).to(dtype=torch.long)
+            bowl[:, :padded.shape[1]] = padded
+
+            return bowl, ents
+
+        return _collate_fn
+
+    @staticmethod
+    def collate_fn(batch: List[Tuple]):
+        idxs, ents = zip(*batch)
+        return pad_sequence(idxs, batch_first=True), ents
+
+
+@dataclass
+class Models:
+
+    @property
+    def kgc_model_name(self) -> str:
+        return self.kgc_model.config.model.cls.lower()
+
+    kgc_model: keen.Model
+    text_encoder: tf.BertModel
+
+    @classmethod
+    @helper.notnone
+    def load(
+            K, *,
+            config: Config = None, ):
+
+        text_encoder = tf.BertModel.from_pretrained(
+            config.text_encoder,
+            cache_dir=ryn.ENV.CACHE_DIR / 'lib.transformers')
+
+        if config.freeze_text_encoder:
+            log.info('freezing text encoder')
+            text_encoder.eval()
+
+        kgc_model = keen.Model.load(
+            config.kgc_model,
+            split_dataset=config.split_dataset)
+
+        return K(
+            text_encoder=text_encoder,
+            kgc_model=kgc_model,
+        )
+
+
+@dataclass
+class Triples:
+
+    # maps ryn entity ids to keen entity ids
+    ryn2keen: Dict[int, int]
+    dataloader: torch_data.DataLoader
+    factory: keen_triples.TriplesFactory
+
+
+@dataclass
+class Datasets:
+
+    @property
+    def text_encoder(self):
+        return self.text.model.lower()
+
+    text: Dataset
+    keen: keen.Dataset
+    split: split.Dataset
+
+    # mapper training
+    train: torch_data.DataLoader
+    valid: torch_data.DataLoader
+
+    # knowledge graph completion for mapper validation
+    inductive: Triples
+    transductive: Triples
+
+    @staticmethod
+    @helper.notnone
+    def _create_triples(
+            *,
+            config: Config = None,
+            text_part: Part = None,
+            split_dataset: split.Dataset = None,
+            split_part: split.Part = None,
+            **kwargs,  # e2id and r2id
+    ):
+        # kgc
+        triples = keen.triples_to_ndarray(split_dataset.g, split_part.triples)
+        factory = keen_triples.TriplesFactory(triples=triples, **kwargs)
+
+        # TODO put into ryn.kgc.keen
+        ryn2keen = {
+            int(name.split(':', maxsplit=1)[0]): keen_id
+            for name, keen_id in factory.entity_to_id.items()
+        }
+
+        # mapper
+        dataset = TorchDataset(part=text_part)
+        dataloader = torch_data.DataLoader(
+            dataset,
+            collate_fn=TorchDataset.collate_fn,
+            **config.dataloader_valid_args)
+
+        return Triples(
+            ryn2keen=ryn2keen,
+            dataloader=dataloader,
+            factory=factory,
+        )
+
+    @staticmethod
+    @helper.notnone
+    def _create_triples_factories(
+            *,
+            config: Config = None,
+            text_dataset: Dataset = None,
+            keen_dataset: keen.Dataset = None,
+            split_dataset: split.Dataset = None,
+    ):
+        # create triple factories usable by pykeen
+        # re-use original id-mapping and extend this with own ids
+        relation_to_id = keen_dataset.relation_to_id
+        entity_to_id = keen_dataset.entity_to_id
+        split_part_ow = split_dataset.ow_valid
+
+        # add owe entities to the entity mapping
+        entity_to_id.update({
+            keen.e2s(split_dataset.g, e): idx
+            for e, idx in zip(split_part_ow.owe, count(len(entity_to_id)))
+        })
+
+        log.info(f'added {len(split_part_ow.owe)} ow entities to mapping')
+
+        transductive = Datasets._create_triples(
+            config=config,
+            text_part=text_dataset.train | text_dataset.transductive,
+            split_dataset=split_dataset,
+            split_part=split_dataset.cw_valid,
+            entity_to_id=entity_to_id,
+            relation_to_id=relation_to_id,
+        )
+
+        inductive = Datasets._create_triples(
+            config=config,
+            text_part=text_dataset.inductive,
+            split_dataset=split_dataset,
+            split_part=split_part_ow,
+            entity_to_id=entity_to_id,
+            relation_to_id=relation_to_id,
+        )
+
+        log.info('created transductive/inductive triples factories')
+        return transductive, inductive
+
+    @staticmethod
+    @helper.notnone
+    def _create_dataloader(
+            *,
+            config: Config = None,
+            text_dataset: Dataset = None
+    ):
+
+        # training and validation operate on reference embeddings
+        # of the kgc model and thus no inductive part can be used here
+
+        training_set = TorchDataset(part=text_dataset.train)
+        train = torch_data.DataLoader(
+            training_set,
+            collate_fn=TorchDataset.collate_fn,
+            **config.dataloader_train_args)
+
+        validation_set = TorchDataset(part=text_dataset.transductive)
+        valid = torch_data.DataLoader(
+            validation_set,
+            collate_fn=TorchDataset.collate_fn,
+            **config.dataloader_valid_args)
+
+        log.info('created train/valid dataloaders')
+        return train, valid
+
+    @classmethod
+    @helper.notnone
+    def load(K, config: Config = None, models: Models = None):
+        log.info('loading datasets')
+
+        keen_dataset = models.kgc_model.keen_dataset
+        split_dataset = models.kgc_model.split_dataset
+
+        text_dataset = Dataset.load(
+            path=config.text_dataset,
+            ratio=config.valid_split,
+        )
+
+        train, valid = Datasets._create_dataloader(
+            config=config,
+            text_dataset=text_dataset,
+        )
+
+        transductive, inductive = Datasets._create_triples_factories(
+            config=config,
+            text_dataset=text_dataset,
+            keen_dataset=keen_dataset,
+            split_dataset=split_dataset,
+        )
+
+        return K(
+            text=text_dataset,
+            keen=keen_dataset,
+            split=split_dataset,
+
+            # mapper
+            train=train,
+            valid=valid,
+
+            # kgc
+            inductive=inductive,
+            transductive=transductive,
+        )

@@ -9,134 +9,19 @@ from ryn.common import logging
 
 import torch.optim
 import torch.utils.data as torch_data
-from torch.nn.utils.rnn import pad_sequence
-
 import pytorch_lightning as pl
 
 import gc
 import pathlib
 import dataclasses
 from datetime import datetime
-from dataclasses import dataclass
 
 from itertools import chain
 from itertools import repeat
-from collections import defaultdict
 
-from typing import List
-from typing import Tuple
 from typing import Optional
 
 log = logging.get('text.trainer')
-
-
-class Dataset(torch_data.Dataset):
-
-    def __len__(self):
-        return len(self._flat)
-
-    def __getitem__(self, idx: int) -> Tuple[torch.Tensor, int]:
-        return self._flat[idx]
-
-
-class TrainingSet(Dataset):
-
-    @helper.notnone
-    def __init__(self, *, part: data.Part = None):
-        super().__init__()
-
-        self._flat = [
-            (e, torch.Tensor(idxs).to(dtype=torch.long))
-            for e, idx_lists in part.id2idxs.items()
-            for idxs in idx_lists]
-
-        self._max_len = max(len(idxs) for _, idxs in self._flat)
-        log.info('initialized TrainingSet: '
-                 f'samples={len(self._flat)}, '
-                 f'max sequence length: {self._max_len}')
-
-    @property
-    def collator(self):
-        max_len = self._max_len
-
-        def _collate_fn(batch: List[Tuple]):
-            ents, idxs = zip(*batch)
-
-            padded = pad_sequence(idxs, batch_first=True)
-            shape = padded.shape[0], max_len
-            bowl = torch.zeros(shape).to(dtype=torch.long)
-            bowl[:, :padded.shape[1]] = padded
-
-            return bowl, ents
-
-        return _collate_fn
-
-    @staticmethod
-    def collate_fn(batch: List[Tuple]):
-        ents, idxs = zip(*batch)
-        return pad_sequence(idxs, batch_first=True), ents
-
-
-class ValidationSet(Dataset):
-
-    def __init__(self, **parts: data.Part):
-        super().__init__()
-        self._flat = [
-            (name, e, torch.Tensor(idxs).to(dtype=torch.long))
-            for name, part in parts.items()
-            for e, idx_lists in part.id2idxs.items()
-            for idxs in idx_lists
-        ]
-
-        self._max_len = max(len(idxs) for _, _, idxs in self._flat)
-        log.info('initialized ValidationSet: '
-                 f'samples={len(self._flat)}, '
-                 f'max sequence length: {self._max_len}')
-
-    # TODO use the sanity check trainer callbacks!
-    @property
-    def collator(self):
-        max_len = self._max_len
-
-        def _collate_fn(batch: List[Tuple]):
-
-            idxd = defaultdict(list)
-            entd = defaultdict(list)
-
-            for name, e, idxs in batch:
-                idxd[name].append(idxs)
-                entd[name].append(e)
-
-            resd = {}
-            for name in idxd:
-                padded = pad_sequence(idxd[name], batch_first=True)
-                shape = padded.shape[0], max_len
-                bowl = torch.zeros(shape).to(dtype=torch.long)
-                bowl[:, :padded.shape[1]] = padded
-
-                resd[name] = (bowl, entd[name])
-
-            return resd
-
-        return _collate_fn
-
-    @staticmethod
-    def collate_fn(batch: List[Tuple]):
-
-        idxd = defaultdict(list)
-        entd = defaultdict(list)
-
-        for name, e, idxs in batch:
-            idxd[name].append(idxs)
-            entd[name].append(e)
-
-        resd = {}
-        for name in idxd:
-            resd[name] = (
-                pad_sequence(idxd[name], batch_first=True),
-                entd[name])
-
-        return resd
 
 
 class TrainerCallback(pl.callbacks.base.Callback):
@@ -195,46 +80,6 @@ class TrainerCallback(pl.callbacks.base.Callback):
 
         torch.cuda.empty_cache()
         gc.collect()
-
-
-@dataclass
-class Datasets:
-
-    @property
-    def text_encoder(self):
-        return self.text.model.lower()
-
-    text: data.Dataset
-    train: torch_data.DataLoader
-    valid: torch_data.DataLoader
-
-
-@helper.notnone
-def _init_datasets(config: Config = None):
-    log.info('loading datasets')
-
-    text_dataset = data.Dataset.load(
-        path=config.text_dataset,
-        ratio=config.valid_split)
-
-    training_set = TrainingSet(
-        part=text_dataset.train)
-
-    validation_set = ValidationSet(
-        inductive=text_dataset.inductive,
-        transductive=text_dataset.transductive)
-
-    return Datasets(
-        text=text_dataset,
-        train=torch_data.DataLoader(
-            training_set,
-            collate_fn=TrainingSet.collate_fn,
-            **config.dataloader_train_args),
-        valid=torch_data.DataLoader(
-            validation_set,
-            collate_fn=ValidationSet.collate_fn,
-            **config.dataloader_valid_args),
-    )
 
 
 @helper.notnone
@@ -317,23 +162,23 @@ def _init_trainer(
 
 @helper.notnone
 def train(*, config: Config = None, debug: bool = False):
-    datasets = _init_datasets(config=config)
-    model = mapper.Mapper.from_config(
-        config=config,
-        text_encoder_name=datasets.text_encoder)
+    log.info('lasciate ogni speranza o voi che entrate')
 
-    if config.freeze_text_encoder:
-        log.info('freezing text encoder')
-        model.c.text_encoder.eval()
+    upstream_models = data.Models.load(config=config)
+    datasets = data.Datasets.load(config=config, models=upstream_models)
+
+    map_model = mapper.Mapper.create(
+        config=config,
+        datasets=datasets,
+        models=upstream_models,
+    )
 
     # TODO to reproduce runs:
     # pl.seed_everything(...)
     # also pl.Trainer(deterministic=True, ...)
-    assert model.c.tokenizer.base.vocab['[PAD]'] == 0
 
-    # if a previous cache file with different ratio has not been deleted prior
+    assert config.text_encoder == datasets.text.model
     assert datasets.text.ratio == config.valid_split, 'old cache file?'
-    kgc_model_name = model.c.kgc_model.config.model.cls.lower()
 
     # --
 
@@ -342,7 +187,8 @@ def train(*, config: Config = None, debug: bool = False):
         datasets.text.dataset /
         datasets.text.database /
         datasets.text.model /
-        f'{kgc_model_name}_{datetime.now()}'))
+        f'{upstream_models.kgc_model_name}_{datetime.now()}'
+    ))
 
     if not debug:
         config = dataclasses.replace(config, out=helper.path(
@@ -352,7 +198,7 @@ def train(*, config: Config = None, debug: bool = False):
     logger = _init_logger(
         debug=debug,
         config=config,
-        kgc_model_name=kgc_model_name,
+        kgc_model_name=upstream_models.kgc_model_name,
         text_encoder_name=datasets.text_encoder,
         text_dataset_name=datasets.text.name
     )
@@ -366,8 +212,8 @@ def train(*, config: Config = None, debug: bool = False):
     if not debug:
         config.save(out)
 
-    log.info('Pape Satan, pape Satan aleppe')
-    trainer.fit(model, datasets.train, datasets.valid)
+    log.info('pape satan, pape satan aleppe')
+    trainer.fit(map_model, datasets.train, datasets.valid)
 
     log.info('')
 
@@ -386,6 +232,10 @@ def train_from_cli(
     # bert-large-cased: hidden size 1024
     # bert-base-cased: hidden size 768
     config = Config(
+
+        # this is annoying to be declared explicitly
+        # but simplifies a lot down the line
+        text_encoder='bert-base-cased',
 
         freeze_text_encoder=True,
         valid_split=0.7,

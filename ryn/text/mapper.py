@@ -2,6 +2,7 @@
 
 import ryn
 from ryn.kgc import keen
+from ryn.kgc import trainer as kgc_trainer
 from ryn.text import data
 from ryn.text.config import Config
 from ryn.common import helper
@@ -10,9 +11,12 @@ from ryn.common import logging
 import torch as t
 import torch.optim
 from torch import nn
-
 import transformers as tf
 import pytorch_lightning as pl
+from tqdm import tqdm
+
+# https://github.com/pykeen/pykeen/pull/132
+# from pykeen.nn import emb as keen_emb
 
 import yaml
 
@@ -21,7 +25,7 @@ from collections import defaultdict
 
 from typing import Any
 from typing import Dict
-from typing import Tuple
+
 
 log = logging.get('text.mapper')
 
@@ -209,7 +213,6 @@ class Components:
 
     # text encoder
     text_encoder: tf.BertModel
-    tokenizer: data.Tokenizer
 
     # takes token representations and maps them to
     # a single vector for the projector
@@ -228,6 +231,27 @@ class Components:
 
 
 class Mapper(pl.LightningModule):
+    """Maps textual descriptions to knowledge graph embeddings
+
+    Open World Knowledge Graph Completion
+    -------------------------------------
+
+    Pykeen is used for evaluation, but it is not able to work with
+    unknown entities. The following "hacks" are used to make it work:
+
+    Pykeen TriplesFactories contain an E-sized entity-id, and R-sized
+    relation-id mapping.  Entities and relations are combined a N x 3
+    matrix (N = #triples). Each pykeen model uses the enitites and
+    relations to construct torch.nn.Embdding (pykeen.nn.emb.Embdding)
+    instances for relations and entities (E x D) and (R x D) (for
+    pykeen.models.base.EntityRelationEmbeddingModel).
+
+    After each validation epoch (see Mapper.on_validation_epoch_end)
+    the internal entity embeddings are overwritten for all owe
+    entities and the pykeen evaluator is used to quantify the kgc
+    performance of the mapped entity representations.
+
+    """
 
     @property
     def lr(self):
@@ -238,26 +262,39 @@ class Mapper(pl.LightningModule):
         self._lr = val
 
     @property
-    def c(self) -> Components:
-        return self._c
+    def rync(self) -> Components:
+        return self._rync
 
-    def __init__(self, *, c: Components = None):
+    @property
+    def datasets(self) -> data.Datasets:
+        return self._datasets
+
+    @helper.notnone
+    def __init__(
+            self, *,
+            datasets: data.Datasets = None,
+            rync: Components = None):
+
         super().__init__()
-        self._c = c
-        self._lr = self.c.optimizer_args['lr']
+        self._rync = rync
+        self._lr = self.rync.optimizer_args['lr']
+        self._datasets = datasets
 
         log.info('freezing kgc model')
-        self.c.kgc_model.keen.eval()
+        self.rync.kgc_model.keen.eval()
 
-        self.encode = c.text_encoder
-        self.aggregate = c.aggregator
-        self.project = c.projector
+        self.encode = rync.text_encoder
+        self.aggregate = rync.aggregator
+        self.project = rync.projector
 
-        self.loss = c.comparator
+        self.loss = rync.comparator
 
     def configure_optimizers(self):
-        optim = self.c.Optimizer(self.parameters(), **self.c.optimizer_args)
-        log.info(f'initialized optimizer with {self.c.optimizer_args}')
+        optim = self.rync.Optimizer(
+            self.parameters(),
+            **self.rync.optimizer_args)
+
+        log.info(f'initialized optimizer with {self.rync.optimizer_args}')
         return optim
 
     #
@@ -266,8 +303,8 @@ class Mapper(pl.LightningModule):
 
     def forward_sentences(self, sentences: torch.Tensor):
         # mask padding and [MASK] tokens
-        mask = self.c.tokenizer.base.vocab['[MASK]']
-        attention_mask = (sentences > 0) | (sentences == mask)
+        # mask = self.rync.tokenizer.base.vocab['[MASK]']
+        attention_mask = (sentences > 0)  # | (sentences == mask)
         attention_mask = attention_mask.to(dtype=torch.long)
 
         return self.encode(
@@ -275,8 +312,7 @@ class Mapper(pl.LightningModule):
             attention_mask=attention_mask)[0]
 
     def forward_entities(self, entities: torch.Tensor):
-        # TODO: add embeddings to self; take care of id mapping
-        return self.c.kgc_model.embeddings(
+        return self.rync.kgc_model.embeddings(
             entities=entities,
             device=self.device)
 
@@ -284,7 +320,7 @@ class Mapper(pl.LightningModule):
     def forward(
             self, *,
             sentences: torch.Tensor = None,  # batch x tokens
-            entities: Tuple[int] = None):    # batch
+    ):
 
         # batch x tokens x text_dims
         encoded = self.forward_sentences(sentences)
@@ -295,77 +331,140 @@ class Mapper(pl.LightningModule):
         # batch x kge_dims
         projected = self.project(aggregated)
 
-        # batch x kge_dims
-        target = self.forward_entities(entities)
-
-        return projected, target
+        return projected
 
     #
     #   TRAINING
     #
 
     def training_step(self, batch, batch_idx: int):
-        assert not self.c.kgc_model.keen.training
-
+        assert not self.rync.kgc_model.keen.training
         sentences, entities = batch
 
-        projected, target = self.forward(
-            sentences=sentences,
-            entities=entities)
+        # batch x kge_dims
+        projected = self.forward(sentences=sentences)
+
+        # batch x kge_dims
+        target = self.forward_entities(entities)
 
         loss = self.loss(projected, target)
         self.log('train_loss_step', loss)
-
-        return loss
 
     #
     #   VALIDATION
     #
 
-    def validation_step(self, batchd, batch_idx: int):
+    def validation_step(self, batch, batch_idx: int):
+        sentences, entities = batch
+
+        # batch x kge_dims
+        projected = self.forward(sentences=sentences)
+
+        # batch x kge_dims
+        target = self.forward_entities(entities)
+
+        loss = self.loss(projected, target)
+        self.log('valid_loss_step', loss)
+
+    def on_validation_epoch_end(self):
         """
 
-        Each validation step makes two passes through the model
-        both for the inductive and the transductive setting.
+        Transductive and inductive knowledge graph completion
+        with projected entity mappings (see Mapper docstring)
 
         """
 
-        losses = {}
+        # TODO reactivate
+        # only happens for fast_dev_run and sanity checks
+        # if self.global_step == 0:
+        #     # TODO run kgc evaluation as sanity check and for wandb
+        #     return
 
-        # name is in ['inductive', 'transductive']
-        for name, batch in batchd.items():
+        # TODO replace
+        #   kgc_model.entity_embeddings: pykeen.nn.emb.Embdding
 
-            # TODO implement MAP
-            # TODO implement pykeen evaluator for MRR etc.
+        # TODO assert id mappings are equal for cw entities
+        # and relations (self.rync.kgc_model.keen_dataset.training)
+        log.info('hook called on validation epoch end')
 
-            if name == 'inductive':
-                continue
+        # TODO overwrite embeddings with projections
+
+        log.info('running transductive evaluation')
+
+        kgc_model = self.rync.kgc_model
+        triples = self.datasets.transductive
+        tqdm_kwargs = dict(
+            total=len(triples.dataloader),
+            position=2,
+            ncols=80,
+            leave=False,
+        )
+
+        # project all sentences to an embedding and
+        # accumulate these vectors
+
+        accum = defaultdict(lambda: dict(
+            count=0,
+            vsum=torch.zeros((kgc_model.keen.embedding_dim, )),
+        ))
+
+        gen = enumerate(triples.dataloader)
+        for batch_idx, batch in tqdm(gen, **tqdm_kwargs):
 
             sentences, entities = batch
-            projected, target = self.forward(
-                sentences=sentences,
-                entities=entities)
+            sentences = sentences.to(device=self.device)
 
-            losses[name] = loss = self.loss(projected, target)
-            self.log(f'valid_loss_{name}_step', loss)
+            projected = self.forward(sentences=sentences)
+            for e, v in zip(entities, projected):
+                accum[e]['count'] += 1
+                accum[e]['vsum'] += v.to(device='cpu')
+
+        # create bov representation
+        accum = {e: d['vsum'] / d['count'] for e, d in accum.items()}
+        log.info(f'replacing {len(accum)} embeddings')
+
+        original_embeddings = kgc_model.keen.entity_embeddings
+
+        # kgc_model.keen.entity_embeddings = \
+        #    keen_emb.Embedding.init_with_device(
+        #     original_embeddings.num_embeddings,
+        #     original_embeddings.embedding_dim,
+        #     self.device,
+        # )
+
+        kgc_model.keen.entity_embeddings = torch.nn.Embedding(
+            original_embeddings.num_embeddings,
+            original_embeddings.embedding_dim,
+        ).to(device=self.device)
+
+        E = kgc_model.keen.entity_embeddings.weight
+        for e, v in accum.items():
+            E[triples.ryn2keen[e]] = v
+
+        transductive_result = kgc_trainer.evaluate(
+            train_result=kgc_model.training_result,
+            mapped_triples=triples.factory.mapped_triples,
+            tqdm_kwargs=tqdm_kwargs,
+        )
+
+        kgc_model.keen.entity_embeddings = original_embeddings
+
+        log.info('running inductive evaluation')
+        # TODO inductive
+
+        __import__("pdb").set_trace()
 
     # ---
 
     @classmethod
     @helper.notnone
-    def from_config(
+    def create(
             K, *,
-            text_encoder_name: str = None,
-            config: Config = None, ):
+            config: Config = None,
+            models: data.Models = None,
+            datasets: data.Datasets = None,
+    ):
         log.info('creating mapper from config')
-
-        kgc_model = keen.Model.load(
-            config.kgc_model,
-            split_dataset=config.split_dataset)
-
-        text_encoder = tf.BertModel.from_pretrained(
-            text_encoder_name,
-            cache_dir=ryn.ENV.CACHE_DIR / 'lib.transformers')
 
         aggregator = Aggregator.init(
             name=config.aggregator,
@@ -379,15 +478,19 @@ class Mapper(pl.LightningModule):
             name=config.comparator,
             **config.comparator_args)
 
-        model = K(c=Components(
+        rync = Components(
             Optimizer=OPTIMIZER[config.optimizer],
             optimizer_args=config.optimizer_args,
-            text_encoder=text_encoder,
-            tokenizer=data.Tokenizer(model=text_encoder_name),
+            text_encoder=models.text_encoder,
             aggregator=aggregator,
             projector=projector,
             comparator=comparator,
-            kgc_model=kgc_model,
-        ))
+            kgc_model=models.kgc_model,
+        )
+
+        model = K(
+            datasets=datasets,
+            rync=rync,
+        )
 
         return model

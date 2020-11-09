@@ -37,6 +37,7 @@ from typing import Set
 from typing import List
 from typing import Union
 from typing import Tuple
+from typing import Optional
 from typing import Collection
 
 
@@ -213,7 +214,7 @@ class Dataset(keen_datasets_base.DataSet):
     Dataset as required by pykeen
 
     Using the same split.Dataset must always result in
-    exactly the same TripleFactories configuration
+    exactly the same TriplesFactories configuration
 
     """
 
@@ -284,7 +285,7 @@ class Dataset(keen_datasets_base.DataSet):
 
     def check(self):
         ds = self.split_dataset
-        log.info(f'! running self-check for {ds.path.name} TripleFactories')
+        log.info(f'! running self-check for {ds.path.name} TriplesFactories')
 
         assert self.validation.num_entities <= self.training.num_entities, (
             f'{self.validation.num_entities=} > {self.training.num_entities=}')
@@ -401,78 +402,15 @@ class Dataset(keen_datasets_base.DataSet):
         self.check()
         return self
 
-    @classmethod
-    @helper.cached('.cached.kgc.keen.dataset.pkl')
-    def load(
-            K, *,
-            # name is required for my version of the hpo pipeline
-            name: str = None,
-            # path is needed for helper.cached
-            # (you may want to use dataset.path)
-            path: pathlib.Path = None,
-            split_dataset: split.Dataset = None) -> 'Dataset':
-        """
-        Load a pykeen dataset from ryn
-
-        A graphs.split.Dataset instance is required.
-        The following triples mapping is applied:
-
-          training: split_dataset.cw_train
-          validation: split_dataset.cw_valid
-          testing: split_dataset.ow_valid
-
-        Parameters
-        ----------
-
-        name: str
-          human readable name referenced by pykeen hpo and wandb
-
-        path: str
-          path to store the cache file to (you can use split_dataset.path)
-
-        split_dataset: graphs.split.Dataset
-          the graph split used for training
-
-        Returns
-        -------
-
-          An instance ready for training with pykeen
-
-        """
-        log.info(f'creating triple factories {path}')
-
-        to_a = partial(triples_to_ndarray, split_dataset.g)
-
-        training = keen_triples.TriplesFactory(
-            triples=to_a(split_dataset.cw_train.triples)
-        )
-
-        # re-use existing entity/relation mappings
-
-        validation = keen_triples.TriplesFactory(
-            triples=to_a(split_dataset.cw_valid.triples),
-            entity_to_id=training.entity_to_id,
-            relation_to_id=training.relation_to_id,
-        )
-
-        testing = keen_triples.TriplesFactory(
-            triples=to_a(split_dataset.ow_valid.triples),
-            entity_to_id=training.entity_to_id,
-            relation_to_id=training.relation_to_id,
-        )
-
-        self = K(
-            name=name,
-            split_dataset=split_dataset,
-            training=training,
-            validation=validation,
-            testing=testing,
-        )
-
-        self.check()
-        return self
+    @staticmethod
+    def from_split_dataset(split_dataset: split.Dataset):
+        return Dataset.create(
+            name=split_dataset.name,
+            path=split_dataset.path,
+            split_dataset=split_dataset)
 
 
+# TODO unused?
 # need to ninja-register this dataset with a string
 # as otherwise wandb param updates do not work as types (.__class__)
 # are not json serializable
@@ -493,14 +431,11 @@ class Model:
     config: Config
     path: pathlib.Path
 
-    # a torch.nn.Module
-    keen: keen_models_base.Model
-
     keen_dataset: Dataset
     split_dataset: split.Dataset
 
     training_result: data.TrainingResult
-    evaluation_result: data.EvaluationResult
+    evaluation_result: Optional[data.EvaluationResult]
 
     # --
 
@@ -519,6 +454,10 @@ class Model:
             f'{self.split_dataset.name}/'
             f'{self.name}/'
             f'{self.timestamp.strftime(DATEFMT)}')
+
+    @property
+    def keen(self) -> keen_models_base.Model:  # a torch.nn.Module
+        return self.training_result.model
 
     @property
     @lru_cache
@@ -810,23 +749,14 @@ class Model:
         split_dataset = split.Dataset.load(path=split_dataset)
         assert config.general.dataset == split_dataset.name
 
-        keen_dataset = Dataset.create(
-            name=split_dataset.name,
-            path=split_dataset.path,
-            split_dataset=split_dataset)
-
+        keen_dataset = Dataset.from_split_dataset(split_dataset)
         assert keen_dataset.training.mapped_triples.equal(
             training_result.model.triples_factory.mapped_triples), (
                 'cannot reproduce triple split')
 
-        keen = None
-        if load_model:
-            keen = data._load_model(path=path)
-
         return K(
             path=path,
             config=config,
-            keen=keen,
             keen_dataset=keen_dataset,
             split_dataset=split_dataset,
             training_result=training_result,

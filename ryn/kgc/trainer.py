@@ -320,7 +320,12 @@ def train_from_kwargs(
 # --------------------
 
 
-def _evaluate(train_result, keen_dataset):
+def evaluate(
+        train_result: data.TrainingResult = None,
+        mapped_triples=None,
+        tqdm_kwargs=None):
+
+    tqdm_kwargs = tqdm_kwargs or {}
 
     evaluator = train_result.config.resolve(
         train_result.config.evaluator,
@@ -329,12 +334,8 @@ def _evaluate(train_result, keen_dataset):
     ts = datetime.now()
     metrics = evaluator.evaluate(
         model=train_result.model,
-        mapped_triples=keen_dataset.testing.mapped_triples,
-        tqdm_kwargs=dict(
-            position=1,
-            ncols=80,
-            leave=False,
-        )
+        mapped_triples=mapped_triples,
+        tqdm_kwargs=tqdm_kwargs,
     )
 
     evaluation_time = data.Time(start=ts, end=datetime.now())
@@ -352,7 +353,7 @@ def _evaluate(train_result, keen_dataset):
 
 
 @helper.notnone
-def evaluate(
+def evaluate_glob(
         *,
         glob: Iterable[pathlib.Path] = None,
         split_dataset: split.Dataset = None,
@@ -375,7 +376,15 @@ def evaluate(
             eval_result = data.EvaluationResult.load(path)
 
         except FileNotFoundError:
-            eval_result = _evaluate(train_result, keen_dataset)
+            eval_result = evaluate(
+                train_result=train_result,
+                mapped_triples=keen_dataset.testing.mapped_triples,
+                tqdm_kwargs=dict(
+                    position=1,
+                    ncols=80,
+                    leave=False,
+                ),
+            )
             eval_result.save(path)
 
         results.append((eval_result, path))
@@ -392,7 +401,7 @@ def evaluate_from_kwargs(
 
     split_dataset, keen_dataset = data.load_datasets(path=split_dataset)
 
-    eval_results = evaluate(
+    eval_results = evaluate_glob(
         glob=map(pathlib.Path, results),
         split_dataset=split_dataset,
         keen_dataset=keen_dataset)

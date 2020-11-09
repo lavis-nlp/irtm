@@ -18,6 +18,9 @@ from typing import Optional
 @dataclass
 class Config:
 
+    # must match Config.text_dataset.model
+    text_encoder: str
+
     # whether to fine-tune the text_encoder
     freeze_text_encoder: bool
 
