@@ -32,6 +32,8 @@ tqdm = partial(_tqdm, ncols=80)
 
 def notnone(fn):
 
+    # TODO let it work with f(foo=False)
+
     # def f(a, b)
     # spec: args=['a', 'b'], defaults=None, kwonlyargs=[]
     #
