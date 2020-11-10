@@ -57,14 +57,25 @@ def kgc_cli(result: str = None):
 @click.option(
     '--split-dataset', type=str, required=True,
     help='path to ryn.graphs.split.Dataset folder')
-@click.option(
-    '--offline', is_flag=True,
-    help='do not sync wandb')
 def click_train(**kwargs):
     """
     Train a knowledge graph completion model
     """
     trainer.train_from_kwargs(**kwargs)
+
+
+@click_kgc.command(name='resume')
+@click.option(
+    '--path', type=str, required=True,
+    help='directory containing a config.json and optuna.db')
+@click.option(
+    '--split-dataset', type=str, required=True,
+    help='path to ryn.graphs.split.Dataset folder')
+def click_resume(**kwargs):
+    """
+    Resume hyperparameter search
+    """
+    trainer.resume_from_kwargs(**kwargs)
 
 
 @click_kgc.command(name='evaluate')

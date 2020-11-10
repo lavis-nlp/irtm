@@ -52,8 +52,8 @@ def resolve_device(*, device_name: str = None):
 def single(
         *,
         config: Config = None,
-        split_dataset: split.Dataset = None,
         keen_dataset: keen.Dataset = None,
+        split_dataset: split.Dataset = None,
 ) -> data.TrainingResult:
 
     # TODO https://github.com/pykeen/pykeen/issues/129
@@ -179,32 +179,43 @@ def _create_study(
         *,
         config: Config = None,
         out: pathlib.Path = None,
+        resume: bool = False,
 ) -> optuna.Study:
 
     out.mkdir(parents=True, exist_ok=True)
     db_path = out / 'optuna.db'
 
-    timestamp = datetime.now().strftime('%Y.%m.%d-%H.%M')
-    study_name = f'{config.model.cls}-sweep-{timestamp}'
+    # removed timestamp: current way of doing it in ryn
+    # has seperate optuna.db for each study; might change
+    # at some point...
 
+    # timestamp = datetime.now().strftime('%Y.%m.%d-%H.%M')
+    # study_name = f'{config.model.cls}-sweep-{timestamp}'
+
+    study_name = f'{config.model.cls}-sweep'
     log.info(f'create optuna study "{study_name}"')
+
+    if resume:
+        log.info('! resuming old study')
+
     # TODO use direction="maximise"
     study = optuna.create_study(
         study_name=study_name,
         storage=f'sqlite:///{db_path}',
+        load_if_exists=resume,
     )
 
     # if there are any initial values to be set,
     # create and enqueue a custom trial
+    if not resume:
+        params = {
+            k: v.initial for k, v in config.suggestions.items()
+            if v.initial is not None}
 
-    params = {
-        k: v.initial for k, v in config.suggestions.items()
-        if v.initial is not None}
-
-    if params:
-        log.info('setting initial study params: ' + ', '.join(
-            f'{k}={v}' for k, v in params.items()))
-        study.enqueue_trial(params)
+        if params:
+            log.info('setting initial study params: ' + ', '.join(
+                f'{k}={v}' for k, v in params.items()))
+            study.enqueue_trial(params)
 
     return study
 
@@ -214,7 +225,7 @@ def multi(
         *,
         base: Config = None,
         out: pathlib.Path = None,
-        split_dataset: split.Dataset = None,
+        resume: bool = False,
         **kwargs
 ) -> None:
 
@@ -225,10 +236,11 @@ def multi(
     assert base.optuna, 'no optuna config found'
 
     def objective(trial):
+        log.info(f'! starting trial {trial.number}')
 
         # obtain optuna suggestions
         config = base.suggest(trial)
-        name = f'{split_dataset.name}-{config.model.cls}-{trial.number}'
+        name = f'{config.model.cls}-{trial.number}'
         path = out / f'trial-{trial.number:04d}'
 
         # update configuration
@@ -238,10 +250,7 @@ def multi(
 
         # run training
         try:
-            result = single(
-                config=config,
-                split_dataset=split_dataset,
-                **kwargs)
+            result = single(config=config, **kwargs)
 
         except RuntimeError as exc:
             msg = f'objective: got runtime error "{exc}"'
@@ -259,7 +268,10 @@ def multi(
         result.save(path)
         return -best_metric if base.optuna.maximise else best_metric
 
-    study = _create_study(config=base, out=out)
+    study = _create_study(
+        config=base,
+        out=out,
+        resume=resume)
 
     study.optimize(
         objective,
@@ -277,7 +289,7 @@ def train(
         config: Config = None,
         split_dataset: split.Dataset = None,
         keen_dataset: keen.Dataset = None,
-        offline: bool = False,
+        **kwargs,
 ) -> None:
 
     time = str(datetime.now()).replace(' ', '_')
@@ -287,8 +299,10 @@ def train(
     multi(
         out=out,
         base=config,
+        keen_dataset=keen_dataset,
         split_dataset=split_dataset,
-        keen_dataset=keen_dataset)
+        resume=False,
+        **kwargs)
 
 
 @helper.notnone
@@ -296,12 +310,9 @@ def train_from_kwargs(
         *,
         config: str = None,
         split_dataset: str = None,
-        offline: bool = False):
-    log.info('running training from cli')
+        **kwargs):
 
-    if offline:
-        log.warning('offline run!')
-
+    log.info('running training')
     split_dataset, keen_dataset = data.load_datasets(path=split_dataset)
 
     print(f'\n{split_dataset}\n{keen_dataset}\n')
@@ -314,8 +325,34 @@ def train_from_kwargs(
         config=config,
         split_dataset=split_dataset,
         keen_dataset=keen_dataset,
-        offline=offline)
+        **kwargs
+    )
 
+
+@helper.notnone
+def resume_from_kwargs(
+        *,
+        path: str = None,
+        split_dataset: str = None,
+        **kwargs):
+
+    log.info('resuming training')
+    out = helper.path(path, exists=True)
+
+    config = Config.load(out)
+    split_dataset, keen_dataset = data.load_datasets(path=split_dataset)
+
+    assert split_dataset.name == config.general.dataset
+    multi(
+        out=out,
+        base=config,
+        resume=True,
+        keen_dataset=keen_dataset,
+        split_dataset=split_dataset,
+        **kwargs
+    )
+
+    log.info('done')
 
 # --------------------
 
