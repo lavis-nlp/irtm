@@ -68,26 +68,22 @@ def cli(dataset: str = None):
     '--model', type=str, required=True,
     help='huggingface pretrained model (e.g. bert-base-cased)')
 @click.option(
+    '--masked/--not-masked', default=False,
+    help='whether to mask mentions')
+@click.option(
+    '--marked/--not-marked', default=False,
+    help='whether to add marker tokens to mentions')
+@click.option(
     '--suffix', type=str,
     help='suffix to append to the dataset directory')
 def transform(
         dataset: str = None,
-        database: str = None,
-        sentences: int = None,
-        tokens: int = None,
-        model: str = None,
-        suffix: str = None, ):
+        **kwargs):
     """
     Transform a graph.split.Dataset to a text.data.Dataset
     """
     dataset = split.Dataset.load(path=dataset)
-    data.transform(
-        dataset=dataset,
-        database=database,
-        sentences=sentences,
-        tokens=tokens,
-        model=model,
-        suffix=suffix, )
+    data.transform(dataset=dataset, **kwargs)
 
 
 @text.command()

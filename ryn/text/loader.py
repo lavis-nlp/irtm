@@ -77,8 +77,10 @@ class SQLite:
 
     COL_ID: int = 'id'
     COL_ENTITY: int = 'entity'
-    COL_MENTION: str = 'entity_label'
+    COL_LABEL: str = 'entity_label'
+    COL_MENTION: str = 'mention'
     COL_CONTEXT: str = 'context'
+    COL_CONTEXT_MASKED: str = 'masked_context'
 
     # ---
 
@@ -93,7 +95,8 @@ class SQLite:
                 'SELECT '
                 f'{SQLite.COL_ENTITY}, '
                 f'{SQLite.COL_MENTION}, '
-                f'{SQLite.COL_CONTEXT} '
+                f'{SQLite.COL_CONTEXT}, '
+                f'{SQLite.COL_CONTEXT_MASKED} '
 
                 f'FROM {SQLite.DB_NAME} '
                 f'WHERE {SQLite.COL_ENTITY}=?')
@@ -108,7 +111,8 @@ class SQLite:
                 'SELECT '
                 f'{SQLite.COL_ENTITY}, '
                 f'{SQLite.COL_MENTION}, '
-                f'{SQLite.COL_CONTEXT} '
+                f'{SQLite.COL_CONTEXT}, '
+                f'{SQLite.COL_CONTEXT_MASKED} '
 
                 f'FROM {SQLite.DB_NAME} '
                 f'WHERE {SQLite.COL_ENTITY}=?')
@@ -130,7 +134,6 @@ class SQLite:
 
             log.info(f'opening {database}')
             with sqlite3.connect(database) as con:
-                # bar = partial(tqdm,  desc='copy to memory', unit=' statements')  # noqa
                 for sql in con.iterdump():
                     self._cursor.execute(sql)
 

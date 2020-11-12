@@ -9,6 +9,7 @@ from ryn.graphs import split
 from ryn.common import helper
 from ryn.common import logging
 
+import re
 import gzip
 import json
 import random
@@ -32,6 +33,7 @@ from pykeen import triples as keen_triples
 import transformers as tf
 
 from typing import IO
+from typing import Set
 from typing import List
 from typing import Dict
 from typing import Union
@@ -44,6 +46,9 @@ SEP = ' | '
 
 
 class Tokenizer:
+
+    TOK_MENTION_START = '[MENTION_START]'
+    TOK_MENTION_END = '[MENTION_END]'
 
     @property
     def base(self):
@@ -58,7 +63,13 @@ class Tokenizer:
     def __init__(self, model: str = None):
         cache_dir = str(ryn.ENV.CACHE_DIR / 'lib.transformers')
         self._base = tf.BertTokenizer.from_pretrained(
-            model, cache_dir=cache_dir)
+            model,
+            cache_dir=cache_dir,
+            additional_special_tokens=[
+                Tokenizer.TOK_MENTION_START,
+                Tokenizer.TOK_MENTION_END,
+            ]
+        )
 
 # ---
 
@@ -80,26 +91,63 @@ class TransformContext:
     tokens: int
 
 
-def _transform_result(result, *, e: int = None, amount: int = None):
-    entities, mentions, blobs = zip(*result)
+# this matches masked sequences of the upstream sqlite context dbs
+RE_MASKS = re.compile('#+')
+MARKED = (
+    Tokenizer.TOK_MENTION_START +
+    ' {mention} ' +
+    Tokenizer.TOK_MENTION_END
+)
+
+
+def _transform_result(
+        result,
+        *,
+        e: int = None,
+        amount: int = None,
+        masked: bool = None,
+        marked: bool = None,
+        tokenizer: Tokenizer = None,
+):
+
+    entities, mentions, blobs, blobs_masked = zip(*result)
     assert all(e == db_entity for db_entity in entities)
 
-    # ----------
+    def _flatten(nested):
+        return [sent for blob in nested for sent in blob.split('\n')]
 
-    # select text
+    sentences = _flatten(blobs_masked) if masked else _flatten(blobs)
 
-    sentences = [sent for blob in blobs for sent in blob.split('\n')]
+    if masked:
+        assert not marked
+        sentences = [
+            RE_MASKS.sub(tokenizer.base.mask_token, s)
+            for s in sentences]
+
+    if marked:
+        assert not masked
+        sentences = [
+            s.replace(mention, MARKED.format(mention=mention))
+            for s, mention in zip(sentences, mentions)
+        ]
+
     random.shuffle(sentences)
-    sentences = tuple(
+
+    return tuple(
         # remove unnecessary whitespace
         ' '.join(sentence.split()) for sentence in
         sentences[:amount])
 
-    return sentences
 
+def _transform_split(
+        wid: int,
+        ctx: TransformContext,
+        part: split.Part,
+        masked: bool = False,
+        marked: bool = False):
 
-def _transform_split(wid: int, ctx: TransformContext, part: split.Part):
-    log.info(f'transforming split {part.name}')
+    log.info(f'! transforming split {part.name} '
+             f'({masked=}, {marked=})')
 
     # ---
 
@@ -114,7 +162,7 @@ def _transform_split(wid: int, ctx: TransformContext, part: split.Part):
     ctx.fd_tokens.write(
         f'# Format: <ID>{SEP}<NAME>{SEP}<TOKEN1> <TOKEN2> ...\n'.encode())
     ctx.fd_nocontext.write(
-        f'# Format: <ID>{SEP}<NAME>\n'.encode())
+        f'# Format: <ID>{SEP}<NAME>{SEP}<TRIPLES>\n'.encode())
 
     ents = list(part.owe)
     shape = len(ents), ctx.sentences, 3, ctx.tokens
@@ -135,24 +183,42 @@ def _transform_split(wid: int, ctx: TransformContext, part: split.Part):
         helper.tqdm,
         position=wid,
         desc=part.name,
+        leave=True,
         unit=' entities',)
 
+    no_context_triples = set()
     for i, e, name in bar(gen):
         result = ctx.select.by_entity(e)
 
-        def _log(msg: str):
-            log.info(f'! {msg} {e}: {name}')
+        def _no_ctx():
+            nonlocal no_context_triples
+
+            triples = part.g.find(heads={e}, tails={e})
+            count = len(triples)
+
+            no_context_triples |= triples
+            _write(ctx.fd_nocontext, f'{e}{SEP}{name}{SEP}{count}')
+
+            msg = f'! no context for {e}: {name} ({count} triples)'
+            log.info(msg)
 
         if not result:
-            _log('no contexts found for')
-            _write(ctx.fd_nocontext, f'{e}{SEP}{name}')
+            _no_ctx()
             continue
 
-        sentences = _transform_result(result, e=e, amount=ctx.sentences)
+        # both clear and masked
+        sentences = _transform_result(
+            result,
+            e=e,
+            amount=ctx.sentences,
+            masked=masked,
+            marked=marked,
+            tokenizer=ctx.tokenizer,
+        )
 
         if not sentences:
-            _log('no sentences with [MASK] found for')
-            _write(ctx.fd_nocontext, f'{e}{SEP}{name}')
+            _no_ctx()
+            log.error('no contexts after transformation')
             continue
 
         # tokenize and map to vocabulary ids
@@ -169,17 +235,28 @@ def _transform_split(wid: int, ctx: TransformContext, part: split.Part):
         assert len(indexes) == len(sentences), (
             f'{len(indexes)=} != {len(sentences)=}')
 
-        for sentence, idx_list in zip(sentences, indexes):
-            tokens = ' '.join(ctx.tokenizer.vocab[idx] for idx in idx_list)
+        convert_ids_to_tokens = ctx.tokenizer.base.convert_ids_to_tokens
+        gen = zip(sentences, indexes)
+        for sentence, idx_list in gen:
+            tokens = ' '.join(convert_ids_to_tokens(idx_list))
             idxstr = ' '.join(map(str, idx_list))
 
             if not all((sentence, tokens, idxstr)):
                 log.error(f'skipping empty sentence of {e} ({name})')
                 continue
 
-            _write(ctx.fd_sentences, f'{e}{SEP}{name}{SEP}{sentence}')
-            _write(ctx.fd_tokens, f'{e}{SEP}{name}{SEP}{tokens}')
-            _write(ctx.fd_indexes, f'{e}{SEP}{idxstr}')
+            _write(ctx.fd_sentences,
+                   f'{e}{SEP}{name}{SEP}{sentence}')
+            _write(ctx.fd_tokens,
+                   f'{e}{SEP}{name}{SEP}{tokens}')
+            _write(ctx.fd_indexes,
+                   f'{e}{SEP}{idxstr}')
+
+    log.info(f'finished processing {part.name}')
+    if len(no_context_triples):
+        log.error(
+            f'{part.name}: {len(no_context_triples)}'
+            f'/{len(part.triples)} triples without context')
 
 
 @dataclass
@@ -221,14 +298,15 @@ def _transform_get_ctx(stack, split: str, args: WorkerArgs):
 
 
 def _transform_worker(packed):
-    wid, split, args = packed
+    wid, split, args, kwargs = packed
 
     with contextlib.ExitStack() as stack:
         log.info(f'! dispatching worker #{wid} for {split}')
 
         part = args.dataset[split]
         ctx = _transform_get_ctx(stack, split, args)
-        _transform_split(wid, ctx, part)
+
+        _transform_split(wid, ctx, part, **kwargs)
 
 
 def transform(
@@ -238,7 +316,11 @@ def transform(
         sentences: int = None,
         tokens: int = None,
         model: str = None,
-        suffix: str = None, ):
+        masked: bool = None,
+        marked: bool = None,
+        # optional
+        suffix: str = None,
+):
     """
 
     Tokenize and map the text for a dataset
@@ -247,6 +329,9 @@ def transform(
 
     """
 
+    if masked and marked:
+        raise ryn.RynError('both masking and marking does not make sense')
+
     # cannot save that to a csv
     _conflicts = set(name for name in dataset.id2ent.values() if SEP in name)
     if _conflicts:
@@ -254,7 +339,14 @@ def transform(
 
     # ---
 
-    name = f'{model}.{sentences}.{tokens}'
+    if masked:
+        _mode = 'masked'
+    elif marked:
+        _mode = 'marked'
+    else:
+        _mode = 'clean'
+
+    name = f'{model}.{sentences}.{tokens}.{_mode}'
     if suffix:
         name = f'{name}-{suffix}'
 
@@ -278,7 +370,7 @@ def transform(
 
         json.dump(info, fd, indent=2)
 
-    with mp.Pool(processes=4) as pool:
+    with mp.Pool() as pool:
         args = WorkerArgs(
             p_out=p_out,
             dataset=dataset,
@@ -288,10 +380,11 @@ def transform(
             model=model,
         )
 
+        kwargs = dict(masked=masked, marked=marked)
         pool.map(_transform_worker, [
-            (1, 'cw.train', args),
-            (2, 'ow.valid', args),
-            (3, 'ow.test', args),
+            (1, 'cw.train', args, kwargs),
+            (2, 'ow.valid', args, kwargs),
+            (3, 'ow.test', args, kwargs),
         ])
 
 
@@ -663,10 +756,6 @@ class Models:
             config.text_encoder,
             cache_dir=ryn.ENV.CACHE_DIR / 'lib.transformers')
 
-        if config.freeze_text_encoder:
-            log.info('freezing text encoder')
-            text_encoder.eval()
-
         kgc_model = keen.Model.load(
             config.kgc_model,
             split_dataset=config.split_dataset)
@@ -680,9 +769,7 @@ class Models:
 @dataclass
 class Triples:
 
-    # maps ryn entity ids to keen entity ids
-    ryn2keen: Dict[int, int]
-    dataloader: torch_data.DataLoader
+    entities: Set[int]
     factory: keen_triples.TriplesFactory
 
 
@@ -701,7 +788,7 @@ class Datasets:
     train: torch_data.DataLoader
     valid: torch_data.DataLoader
 
-    # knowledge graph completion for mapper validation
+    # kgc for mapper validation
     inductive: Triples
     transductive: Triples
 
@@ -718,23 +805,10 @@ class Datasets:
         # kgc
         triples = keen.triples_to_ndarray(split_dataset.g, split_part.triples)
         factory = keen_triples.TriplesFactory(triples=triples, **kwargs)
-
-        # TODO put into ryn.kgc.keen
-        ryn2keen = {
-            int(name.split(':', maxsplit=1)[0]): keen_id
-            for name, keen_id in factory.entity_to_id.items()
-        }
-
-        # mapper
-        dataset = TorchDataset(part=text_part)
-        dataloader = torch_data.DataLoader(
-            dataset,
-            collate_fn=TorchDataset.collate_fn,
-            **config.dataloader_valid_args)
+        entities = split_part.owe.copy()
 
         return Triples(
-            ryn2keen=ryn2keen,
-            dataloader=dataloader,
+            entities=entities,
             factory=factory,
         )
 
