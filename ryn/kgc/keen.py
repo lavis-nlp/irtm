@@ -229,6 +229,10 @@ class Dataset(keen_datasets_base.DataSet):
         return self._split_dataset
 
     @property
+    def ryn2keen(self):
+        return self._ryn2keen
+
+    @property
     def kwargs(self):
         # helper function for pykeen pipelines
         return dict(
@@ -250,6 +254,13 @@ class Dataset(keen_datasets_base.DataSet):
 
         self._name = name
         self._split_dataset = split_dataset
+
+        self._ryn2keen = {}
+        for factory in (training, validation, testing):
+            self._ryn2keen.update({
+                int(name.split(':', maxsplit=1)[0]): keen_id
+                for name, keen_id in factory.entity_to_id.items()
+            })
 
         # see keen_datasets_base.DataSet
         self.training = training
