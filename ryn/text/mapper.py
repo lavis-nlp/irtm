@@ -20,6 +20,7 @@ from tqdm import tqdm
 
 import yaml
 
+from collections import Counter
 from dataclasses import dataclass
 from collections import defaultdict
 
@@ -231,7 +232,9 @@ class Components:
 
 
 class Mapper(pl.LightningModule):
-    """Maps textual descriptions to knowledge graph embeddings
+    """
+
+    Maps textual descriptions to knowledge graph embeddings
 
     Open World Knowledge Graph Completion
     -------------------------------------
@@ -247,9 +250,10 @@ class Mapper(pl.LightningModule):
     pykeen.models.base.EntityRelationEmbeddingModel).
 
     After each validation epoch (see Mapper.on_validation_epoch_end)
-    the internal entity embeddings are overwritten for all owe
-    entities and the pykeen evaluator is used to quantify the kgc
-    performance of the mapped entity representations.
+    the internal entity embeddings are overwritten for (1) all
+    entities (transductive) and (2) all owe entities (inductive) and
+    the pykeen evaluator is used to quantify the kgc performance of
+    the mapped entity representations.
 
     """
 
@@ -273,21 +277,42 @@ class Mapper(pl.LightningModule):
     def __init__(
             self, *,
             datasets: data.Datasets = None,
-            rync: Components = None):
+            rync: Components = None,
+            freeze_text_encoder: bool = False):
 
         super().__init__()
+
+        # properties
+
         self._rync = rync
         self._lr = self.rync.optimizer_args['lr']
         self._datasets = datasets
 
-        log.info('freezing kgc model')
-        self.rync.kgc_model.keen.eval()
+        # parameters
 
         self.encode = rync.text_encoder
         self.aggregate = rync.aggregator
         self.project = rync.projector
-
         self.loss = rync.comparator
+
+        if freeze_text_encoder:
+            log.info('freezing text encoder')
+            raise NotImplementedError()
+
+        self.keen = rync.kgc_model.keen
+        rync.kgc_model.freeze()
+
+        # this is a entities x kgc_dims buffer to
+        # accumulate projections throughout training and
+        # validation; they are later used for kgc validation
+        shape = (
+            len(self.datasets.ryn2keen),
+            self.keen.entity_embeddings.embedding_dim,
+        )
+
+        log.info(f'register "projections" buffer of shape {shape}')
+        self.register_buffer('projections', torch.zeros(shape))
+        self._init_projections()
 
     def configure_optimizers(self):
         optim = self.rync.Optimizer(
@@ -300,6 +325,32 @@ class Mapper(pl.LightningModule):
     #
     #   SELF REALISATION
     #
+
+    def _init_projections(self):
+        self.projections.zero_()
+        self.projections_counts = Counter()
+
+    def _norm_projections(self):
+        log.info('normalizing projections')
+        for idx, count in self.projections_counts.items():
+            self.projections[idx] /= count
+
+        # this is a safeguard agains accidental multiple
+        # normalization -> _init_projections needs to be called first
+        self.projections_counts = None
+
+    @helper.notnone
+    def _update_projections(self, entities=None, projected=None):
+        for e, v in zip(entities, projected):
+            idx = self.datasets.ryn2keen[e]
+            self.projections[idx] = v
+            self.projections_counts[idx] += 1
+
+    def on_train_epoch_start(self):
+        log.info('! starting new epoch; clearing projections buffer')
+        self._init_projections()
+
+    # ---
 
     def forward_sentences(self, sentences: torch.Tensor):
         # mask padding and [MASK] tokens
@@ -338,11 +389,11 @@ class Mapper(pl.LightningModule):
     #
 
     def training_step(self, batch, batch_idx: int):
-        assert not self.rync.kgc_model.keen.training
         sentences, entities = batch
 
         # batch x kge_dims
         projected = self.forward(sentences=sentences)
+        self._update_projections(entities=entities, projected=projected)
 
         # batch x kge_dims
         target = self.forward_entities(entities)
@@ -359,12 +410,52 @@ class Mapper(pl.LightningModule):
 
         # batch x kge_dims
         projected = self.forward(sentences=sentences)
+        self._update_projections(entities=entities, projected=projected)
 
         # batch x kge_dims
         target = self.forward_entities(entities)
 
         loss = self.loss(projected, target)
         self.log('valid_loss_step', loss)
+
+    @helper.notnone
+    def _run_kgc_evaluation(self, *, triples: data.Triples = None):
+
+        # TODO multi-gpu:
+        #  - only run kgc evaluation in one process
+        #  - get all projections from subprocesses (reduce_all?)
+
+        original_embeddings = self.keen.entity_embeddings
+
+        # TODO: I don't know why I need to do this manually
+        # self.keen is on the correct device but the
+        # attached embedding modules are not
+        log.error(f'manually moving embedding layers to {self.device}')
+
+        self.keen.entity_embeddings = torch.nn.Embedding(
+            len(self.datasets.ryn2keen),
+            original_embeddings.embedding_dim,
+        ).to(self.device)
+
+        log.info(
+            'created a new embedding layer of shape '
+            f'{self.keen.entity_embeddings.weight.shape}')
+
+        idxs = list(map(lambda i: self.datasets.ryn2keen[i], triples.entities))
+        self.keen.entity_embeddings.weight[idxs] = self.projections[idxs]
+
+        evaluation_result = kgc_trainer.evaluate(
+            train_result=self.rync.kgc_model.training_result,
+            mapped_triples=triples.factory.mapped_triples,
+            tqdm_kwargs=dict(
+                position=2,
+                ncols=80,
+                leave=False,
+            )
+        )
+
+        self.keen.entity_embeddings = original_embeddings
+        return evaluation_result
 
     def on_validation_epoch_end(self):
         """
@@ -373,86 +464,41 @@ class Mapper(pl.LightningModule):
         with projected entity mappings (see Mapper docstring)
 
         """
-
-        # TODO reactivate
-        # only happens for fast_dev_run and sanity checks
-        # if self.global_step == 0:
-        #     # TODO run kgc evaluation as sanity check and for wandb
-        #     return
-
-        # TODO replace
-        #   kgc_model.entity_embeddings: pykeen.nn.emb.Embdding
+        if self.global_step == 0 and not self.trainer.fast_dev_run:
+            # TODO run kgc evaluation as sanity check and for wandb
+            # unless it's fast_dev_run
+            return
 
         # TODO assert id mappings are equal for cw entities
         # and relations (self.rync.kgc_model.keen_dataset.training)
         log.info('hook called on validation epoch end')
+        self._norm_projections()
 
-        # TODO overwrite embeddings with projections
+        # --
 
         log.info('running transductive evaluation')
+        transductive_result = self._run_kgc_evaluation(
+            triples=self.datasets.transductive)
 
-        kgc_model = self.rync.kgc_model
-        triples = self.datasets.transductive
-        tqdm_kwargs = dict(
-            total=len(triples.dataloader),
-            position=2,
-            ncols=80,
-            leave=False,
-        )
+        self.log('transductive', transductive_result)
+        log.info(
+            '! finished transductive evaluation with'
+            f' {transductive_result.metrics["hits_at_k"]["both"]["avg"][10]:2.3f} hits@10'  # noqa: E501
+            f' and {transductive_result.metrics["mean_reciprocal_rank"]["both"]["avg"]:2.3f} MRR')  # noqa: E501
 
-        # project all sentences to an embedding and
-        # accumulate these vectors
-
-        accum = defaultdict(lambda: dict(
-            count=0,
-            vsum=torch.zeros((kgc_model.keen.embedding_dim, )),
-        ))
-
-        gen = enumerate(triples.dataloader)
-        for batch_idx, batch in tqdm(gen, **tqdm_kwargs):
-
-            sentences, entities = batch
-            sentences = sentences.to(device=self.device)
-
-            projected = self.forward(sentences=sentences)
-            for e, v in zip(entities, projected):
-                accum[e]['count'] += 1
-                accum[e]['vsum'] += v.to(device='cpu')
-
-        # create bov representation
-        accum = {e: d['vsum'] / d['count'] for e, d in accum.items()}
-        log.info(f'replacing {len(accum)} embeddings')
-
-        original_embeddings = kgc_model.keen.entity_embeddings
-
-        # kgc_model.keen.entity_embeddings = \
-        #    keen_emb.Embedding.init_with_device(
-        #     original_embeddings.num_embeddings,
-        #     original_embeddings.embedding_dim,
-        #     self.device,
-        # )
-
-        kgc_model.keen.entity_embeddings = torch.nn.Embedding(
-            original_embeddings.num_embeddings,
-            original_embeddings.embedding_dim,
-        ).to(device=self.device)
-
-        E = kgc_model.keen.entity_embeddings.weight
-        for e, v in accum.items():
-            E[triples.ryn2keen[e]] = v
-
-        transductive_result = kgc_trainer.evaluate(
-            train_result=kgc_model.training_result,
-            mapped_triples=triples.factory.mapped_triples,
-            tqdm_kwargs=tqdm_kwargs,
-        )
-
-        kgc_model.keen.entity_embeddings = original_embeddings
+        # --
 
         log.info('running inductive evaluation')
-        # TODO inductive
+        inductive_result = self._run_kgc_evaluation(
+            triples=self.datasets.inductive)
 
-        __import__("pdb").set_trace()
+        self.log('inductive', inductive_result)
+        log.info(
+            '! finished transductive evaluation with'
+            f' {inductive_result.metrics["hits_at_k"]["both"]["avg"][10]:2.3f} hits@10'  # noqa: E501
+            f' and {inductive_result.metrics["mean_reciprocal_rank"]["both"]["avg"]:2.3f} MRR')  # noqa: E501
+
+        log.info('finished on validation epoch end hook')
 
     # ---
 
@@ -491,6 +537,7 @@ class Mapper(pl.LightningModule):
         model = K(
             datasets=datasets,
             rync=rync,
+            freeze_text_encoder=config.freeze_text_encoder,
         )
 
         return model

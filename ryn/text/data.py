@@ -789,6 +789,7 @@ class Datasets:
     valid: torch_data.DataLoader
 
     # kgc for mapper validation
+    ryn2keen: Dict[int, int]
     inductive: Triples
     transductive: Triples
 
@@ -797,6 +798,7 @@ class Datasets:
     def _create_triples(
             *,
             config: Config = None,
+            entities: Set[int] = None,
             text_part: Part = None,
             split_dataset: split.Dataset = None,
             split_part: split.Part = None,
@@ -805,7 +807,6 @@ class Datasets:
         # kgc
         triples = keen.triples_to_ndarray(split_dataset.g, split_part.triples)
         factory = keen_triples.TriplesFactory(triples=triples, **kwargs)
-        entities = split_part.owe.copy()
 
         return Triples(
             entities=entities,
@@ -840,6 +841,7 @@ class Datasets:
             text_part=text_dataset.train | text_dataset.transductive,
             split_dataset=split_dataset,
             split_part=split_dataset.cw_valid,
+            entities=split_dataset.cw_train.owe,
             entity_to_id=entity_to_id,
             relation_to_id=relation_to_id,
         )
@@ -849,12 +851,22 @@ class Datasets:
             text_part=text_dataset.inductive,
             split_dataset=split_dataset,
             split_part=split_part_ow,
+            entities=split_part_ow.owe,
             entity_to_id=entity_to_id,
             relation_to_id=relation_to_id,
         )
 
         log.info('created transductive/inductive triples factories')
-        return transductive, inductive
+
+        ryn2keen = {}
+        for factory in (transductive.factory, inductive.factory):
+            ryn2keen.update({
+                int(name.split(':', maxsplit=1)[0]): keen_id
+                for name, keen_id in factory.entity_to_id.items()
+            })
+
+        log.info(f'initialized ryn2keen mapping with {len(ryn2keen)} ids')
+        return transductive, inductive, ryn2keen
 
     @staticmethod
     @helper.notnone
@@ -900,7 +912,7 @@ class Datasets:
             text_dataset=text_dataset,
         )
 
-        transductive, inductive = Datasets._create_triples_factories(
+        transductive, inductive, ryn2keen = Datasets._create_triples_factories(
             config=config,
             text_dataset=text_dataset,
             keen_dataset=keen_dataset,
@@ -917,6 +929,7 @@ class Datasets:
             valid=valid,
 
             # kgc
+            ryn2keen=ryn2keen,
             inductive=inductive,
             transductive=transductive,
         )

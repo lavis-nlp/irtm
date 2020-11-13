@@ -237,7 +237,7 @@ def train_from_cli(
         # but simplifies a lot down the line
         text_encoder='bert-base-cased',
 
-        freeze_text_encoder=True,
+        freeze_text_encoder=False,
         valid_split=0.7,
 
         wandb_args=dict(
