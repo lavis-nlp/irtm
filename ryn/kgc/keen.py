@@ -229,10 +229,6 @@ class Dataset(keen_datasets_base.DataSet):
         return self._split_dataset
 
     @property
-    def ryn2keen(self):
-        return self._ryn2keen
-
-    @property
     def kwargs(self):
         # helper function for pykeen pipelines
         return dict(
@@ -254,13 +250,6 @@ class Dataset(keen_datasets_base.DataSet):
 
         self._name = name
         self._split_dataset = split_dataset
-
-        self._ryn2keen = {}
-        for factory in (training, validation, testing):
-            self._ryn2keen.update({
-                int(name.split(':', maxsplit=1)[0]): keen_id
-                for name, keen_id in factory.entity_to_id.items()
-            })
 
         # see keen_datasets_base.DataSet
         self.training = training
@@ -469,6 +458,14 @@ class Model:
     @property
     def keen(self) -> keen_models_base.Model:  # a torch.nn.Module
         return self.training_result.model
+
+    def freeze(self):
+        log.info('! freezing kgc model')
+        self.keen.requires_grad_(False)
+
+    def unfreeze(self):
+        log.info('! un-freezing kgc model')
+        self.keen.requires_grad_(True)
 
     @property
     @lru_cache
@@ -761,6 +758,9 @@ class Model:
         assert config.general.dataset == split_dataset.name
 
         keen_dataset = Dataset.from_split_dataset(split_dataset)
+
+        # TODO different triple split?
+        # __import__("pdb").set_trace()
         assert keen_dataset.training.mapped_triples.equal(
             training_result.model.triples_factory.mapped_triples), (
                 'cannot reproduce triple split')
