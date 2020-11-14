@@ -390,8 +390,6 @@ def transform(
 
     Tokenizer(model=model).save(p_out)
 
-    return
-
     with mp.Pool() as pool:
         args = WorkerArgs(
             p_out=p_out,
@@ -508,7 +506,10 @@ class Part:
         p2 = Part(name=self.name + '-context_split_b')
 
         def _split(lis):
-            n = int(len(lis) * ratio) + 1
+            if len(lis) == 1:
+                return lis, []
+
+            n = int(len(lis) * ratio)
             return lis[:n], lis[n:]
 
         for e in self.id2ent:

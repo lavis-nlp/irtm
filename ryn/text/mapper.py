@@ -437,7 +437,7 @@ class Mapper(pl.LightningModule):
                 sition=2,
                 ncols=80,
                 leave=False,
-                disable=True,  # not working with horovod atm
+                disable=hvd.size() != 1,  # not working with horovod atm
             )
         )
 
@@ -515,6 +515,7 @@ class Mapper(pl.LightningModule):
         with projected entity mappings (see Mapper docstring)
 
         """
+
         if self.global_step == 0 and not self.trainer.fast_dev_run:
             # TODO run kgc evaluation as sanity check and for wandb
             # unless it's fast_dev_run

@@ -10,6 +10,7 @@ from ryn.common import logging
 import torch.optim
 import torch.utils.data as torch_data
 import pytorch_lightning as pl
+import horovod.torch as hvd
 
 import gc
 import pathlib
@@ -85,6 +86,7 @@ class TrainerCallback(pl.callbacks.base.Callback):
 @helper.notnone
 def _init_logger(
         debug: bool = None,
+        timestamp: str = None,
         config: Config = None,
         kgc_model_name: str = None,
         text_encoder_name: str = None,
@@ -92,7 +94,7 @@ def _init_logger(
 ):
 
     logger = None
-    name = f'{text_encoder_name}.{kgc_model_name}'
+    name = f'{text_encoder_name}.{kgc_model_name}.{timestamp}'
 
     if debug:
         log.info('debug mode; not using any logger')
@@ -145,6 +147,7 @@ def _init_trainer(
 
     if not debug:
         trainer_args.update(
+            profiler='simple',
             logger=logger,
             # trained model directory
             weights_save_path=config.out / 'weights',
@@ -181,12 +184,15 @@ def train(*, config: Config = None, debug: bool = False):
 
     # --
 
+    timestamp = datetime.now().strftime('%Y.%m.%d-%H.%M.%S')
+
     out = pathlib.Path((
         ryn.ENV.TEXT_DIR / 'mapper' /
         datasets.text.dataset /
         datasets.text.database /
         datasets.text.model /
-        f'{upstream_models.kgc_model_name}_{datetime.now()}'
+        upstream_models.kgc_model_name /
+        timestamp
     ))
 
     if not debug:
@@ -197,6 +203,7 @@ def train(*, config: Config = None, debug: bool = False):
     logger = _init_logger(
         debug=debug,
         config=config,
+        timestamp=timestamp,
         kgc_model_name=upstream_models.kgc_model_name,
         text_encoder_name=datasets.text_encoder,
         text_dataset_name=datasets.text.name
@@ -208,11 +215,18 @@ def train(*, config: Config = None, debug: bool = False):
         debug=debug,
     )
 
-    if not debug:
+    # hvd is initialized now
+
+    if not debug and hvd.local_rank() == 0:
         config.save(out)
 
     log.info('pape satan, pape satan aleppe')
     trainer.fit(map_model, datasets.train, datasets.valid)
+
+    with (out / 'profiler_summary.txt').open(mode='w') as fd:
+        fd.write(trainer.profiler.summary())
+
+    log.info(f'training finished; results in: {out}')
 
 
 @helper.notnone
@@ -252,11 +266,14 @@ def train_from_cli(
         ),
 
         trainer_args=dict(
-            gpus=1,
-            distributed_backend='horovod',
-            max_epochs=25,
+            max_epochs=2,
             fast_dev_run=debug,
             # auto_lr_find=True,
+
+            # horovod
+            gpus=1,
+            distributed_backend='horovod',
+            # accumulate_grad_batches=10,
         ),
 
         checkpoint_args=dict(
@@ -282,7 +299,7 @@ def train_from_cli(
 
         # pytorch
         optimizer='adam',
-        optimizer_args=dict(lr=0.0001),
+        optimizer_args=dict(lr=0.00001),
 
         # ryn models
         aggregator='cls 1',
