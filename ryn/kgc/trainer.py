@@ -358,27 +358,31 @@ def resume_from_kwargs(
 
 
 def evaluate(
-        train_result: data.TrainingResult = None,
+        model: torch.nn.Module = None,
+        config: Config = None,
         mapped_triples=None,
-        tqdm_kwargs=None):
+        tqdm_kwargs=None,
+        **kwargs
+):
 
     tqdm_kwargs = tqdm_kwargs or {}
 
-    evaluator = train_result.config.resolve(
-        train_result.config.evaluator,
+    evaluator = config.resolve(
+        config.evaluator,
     )
 
     ts = datetime.now()
     metrics = evaluator.evaluate(
-        model=train_result.model,
+        model=model,
         mapped_triples=mapped_triples,
         tqdm_kwargs=tqdm_kwargs,
+        **kwargs,
     )
 
     evaluation_time = data.Time(start=ts, end=datetime.now())
 
     evaluation_result = data.EvaluationResult(
-        model=train_result.config.model.cls,
+        model=config.model.cls,
         created=datetime.now(),
         evaluation_time=evaluation_time,
         git_hash=helper.git_hash(),
@@ -414,7 +418,8 @@ def evaluate_glob(
 
         except FileNotFoundError:
             eval_result = evaluate(
-                train_result=train_result,
+                model=train_result.model,
+                config=train_result.config,
                 mapped_triples=keen_dataset.testing.mapped_triples,
                 tqdm_kwargs=dict(
                     position=1,

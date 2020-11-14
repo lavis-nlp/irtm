@@ -13,14 +13,13 @@ import torch.optim
 from torch import nn
 import transformers as tf
 import pytorch_lightning as pl
-from tqdm import tqdm
+import horovod.torch as hvd
 
 # https://github.com/pykeen/pykeen/pull/132
 # from pykeen.nn import emb as keen_emb
 
 import yaml
 
-from collections import Counter
 from dataclasses import dataclass
 from collections import defaultdict
 
@@ -312,6 +311,7 @@ class Mapper(pl.LightningModule):
 
         log.info(f'register "projections" buffer of shape {shape}')
         self.register_buffer('projections', torch.zeros(shape))
+        self.register_buffer('projections_counts', torch.zeros(shape[0]))
         self._init_projections()
 
     def configure_optimizers(self):
@@ -327,17 +327,9 @@ class Mapper(pl.LightningModule):
     #
 
     def _init_projections(self):
+        log.info('clearing projections buffer')
         self.projections.zero_()
-        self.projections_counts = Counter()
-
-    def _norm_projections(self):
-        log.info('normalizing projections')
-        for idx, count in self.projections_counts.items():
-            self.projections[idx] /= count
-
-        # this is a safeguard agains accidental multiple
-        # normalization -> _init_projections needs to be called first
-        self.projections_counts = None
+        self.projections_counts.zero_()
 
     @helper.notnone
     def _update_projections(self, entities=None, projected=None):
@@ -345,10 +337,6 @@ class Mapper(pl.LightningModule):
             idx = self.datasets.ryn2keen[e]
             self.projections[idx] = v
             self.projections_counts[idx] += 1
-
-    def on_train_epoch_start(self):
-        log.info('! starting new epoch; clearing projections buffer')
-        self._init_projections()
 
     # ---
 
@@ -401,6 +389,8 @@ class Mapper(pl.LightningModule):
         loss = self.loss(projected, target)
         self.log('train_loss_step', loss)
 
+        return loss
+
     #
     #   VALIDATION
     #
@@ -418,44 +408,105 @@ class Mapper(pl.LightningModule):
         loss = self.loss(projected, target)
         self.log('valid_loss_step', loss)
 
+        return loss
+
     @helper.notnone
-    def _run_kgc_evaluation(self, *, triples: data.Triples = None):
+    def _run_kgc_evaluation(
+            self, *,
+            projections: torch.Tensor = None,
+            triples: data.Triples = None):
 
-        # TODO multi-gpu:
-        #  - only run kgc evaluation in one process
-        #  - get all projections from subprocesses (reduce_all?)
+        Embedding = torch.nn.Embedding.from_pretrained
+        original_weights = self.keen.entity_embeddings.weight.cpu()
 
-        original_embeddings = self.keen.entity_embeddings
-
-        # TODO: I don't know why I need to do this manually
-        # self.keen is on the correct device but the
-        # attached embedding modules are not
-        log.error(f'manually moving embedding layers to {self.device}')
-
-        self.keen.entity_embeddings = torch.nn.Embedding(
+        new_weights = torch.zeros((
             len(self.datasets.ryn2keen),
-            original_embeddings.embedding_dim,
-        ).to(self.device)
+            original_weights.shape[1],
+        )).to(self.device)
 
-        log.info(
-            'created a new embedding layer of shape '
-            f'{self.keen.entity_embeddings.weight.shape}')
-
+        new_weights[:original_weights.shape[0]] = original_weights
         idxs = list(map(lambda i: self.datasets.ryn2keen[i], triples.entities))
-        self.keen.entity_embeddings.weight[idxs] = self.projections[idxs]
+        new_weights[idxs] = projections[idxs]
 
+        self.keen.entity_embeddings = Embedding(new_weights).to(self.device)
         evaluation_result = kgc_trainer.evaluate(
-            train_result=self.rync.kgc_model.training_result,
+            model=self.keen,
+            config=self.rync.kgc_model.config,
             mapped_triples=triples.factory.mapped_triples,
             tqdm_kwargs=dict(
-                position=2,
+                sition=2,
                 ncols=80,
                 leave=False,
+                disable=True,  # not working with horovod atm
             )
         )
 
-        self.keen.entity_embeddings = original_embeddings
+        # restore original embeddings
+        self.keen.entity_embeddings = Embedding(
+            original_weights).to(self.device)
+
         return evaluation_result
+
+    def _run_kgc_evaluations(self):
+        assert hvd.local_rank() == 0
+
+        # TODO assert id mappings are equal for cw entities
+        # and relations (self.rync.kgc_model.keen_dataset.training)
+        log.info('running kgc evaluations')
+
+        # calculate averages
+        mask = self.projections_counts != 0
+        self.projections[mask] /= self.projections_counts.unsqueeze(1)[mask]
+
+        log.info(f'gathered {int(self.projections_counts.sum().item())}'
+                 ' projections from processes')
+
+        # TODO assert this reflect entity
+        # counts of datasets (unless fast_dev_run)
+
+        # --
+
+        log.info('running transductive evaluation')
+        transductive_result = self._run_kgc_evaluation(
+            projections=self.projections,
+            triples=self.datasets.transductive,
+        )
+
+        self.log('transductive', transductive_result)
+        log.info(
+            '! finished transductive evaluation with'
+            f' {transductive_result.metrics["hits_at_k"]["both"]["avg"][10]:2.3f} hits@10'  # noqa: E501
+            f' and {transductive_result.metrics["mean_reciprocal_rank"]["both"]["avg"]:2.3f} MRR')  # noqa: E501
+
+        # --
+
+        log.info('running inductive evaluation')
+        inductive_result = self._run_kgc_evaluation(
+            projections=self.projections,
+            triples=self.datasets.inductive,
+        )
+
+        self.log('inductive', inductive_result)
+        log.info(
+            '! finished transductive evaluation with'
+            f' {inductive_result.metrics["hits_at_k"]["both"]["avg"][10]:2.3f} hits@10'  # noqa: E501
+            f' and {inductive_result.metrics["mean_reciprocal_rank"]["both"]["avg"]:2.3f} MRR')  # noqa: E501
+
+        log.info('finished on validation epoch end hook')
+
+    #
+    # HOOKS
+    #
+
+    def on_fit_start(self):
+        log.info(f'! fitting - (horovod local rank: {hvd.local_rank()})')
+
+    def on_train_epoch_start(self):
+        log.info(f'! starting new epoch; running on {self.device}')
+        self._init_projections()
+
+        assert not self.keen.entity_embeddings.weight.requires_grad
+        assert not self.keen.relation_embeddings.weight.requires_grad
 
     def on_validation_epoch_end(self):
         """
@@ -469,36 +520,21 @@ class Mapper(pl.LightningModule):
             # unless it's fast_dev_run
             return
 
-        # TODO assert id mappings are equal for cw entities
-        # and relations (self.rync.kgc_model.keen_dataset.training)
-        log.info('hook called on validation epoch end')
-        self._norm_projections()
-
-        # --
-
-        log.info('running transductive evaluation')
-        transductive_result = self._run_kgc_evaluation(
-            triples=self.datasets.transductive)
-
-        self.log('transductive', transductive_result)
         log.info(
-            '! finished transductive evaluation with'
-            f' {transductive_result.metrics["hits_at_k"]["both"]["avg"][10]:2.3f} hits@10'  # noqa: E501
-            f' and {transductive_result.metrics["mean_reciprocal_rank"]["both"]["avg"]:2.3f} MRR')  # noqa: E501
+            f'[{hvd.local_rank()}] gathered'
+            f' {int(self.projections_counts.sum().item())}'
+            ' projections')
 
-        # --
+        self.projections = hvd.allreduce(
+            self.projections,
+            op=hvd.Sum)
 
-        log.info('running inductive evaluation')
-        inductive_result = self._run_kgc_evaluation(
-            triples=self.datasets.inductive)
+        self.projections_counts = hvd.allreduce(
+            self.projections_counts,
+            op=hvd.Sum)
 
-        self.log('inductive', inductive_result)
-        log.info(
-            '! finished transductive evaluation with'
-            f' {inductive_result.metrics["hits_at_k"]["both"]["avg"][10]:2.3f} hits@10'  # noqa: E501
-            f' and {inductive_result.metrics["mean_reciprocal_rank"]["both"]["avg"]:2.3f} MRR')  # noqa: E501
-
-        log.info('finished on validation epoch end hook')
+        if hvd.local_rank() == 0:
+            self._run_kgc_evaluations()
 
     # ---
 

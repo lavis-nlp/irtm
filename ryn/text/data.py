@@ -59,17 +59,35 @@ class Tokenizer:
     def vocab(self) -> Dict[int, str]:
         return {v: k for k, v in self.base.vocab.items()}
 
-    @helper.notnone
-    def __init__(self, model: str = None):
-        cache_dir = str(ryn.ENV.CACHE_DIR / 'lib.transformers')
-        self._base = tf.BertTokenizer.from_pretrained(
-            model,
-            cache_dir=cache_dir,
-            additional_special_tokens=[
-                Tokenizer.TOK_MENTION_START,
-                Tokenizer.TOK_MENTION_END,
-            ]
-        )
+    def __init__(
+            self,
+            model: str = None,
+            path: Union[str, pathlib.Path] = None):
+
+        assert not (model and path), 'cannot do both'
+
+        if model:
+            cache_dir = str(ryn.ENV.CACHE_DIR / 'lib.transformers')
+            self._base = tf.BertTokenizer.from_pretrained(
+                model,
+                cache_dir=cache_dir,
+                additional_special_tokens=[
+                    Tokenizer.TOK_MENTION_START,
+                    Tokenizer.TOK_MENTION_END,
+                ]
+            )
+
+        if path:
+            self._base = tf.BertTokenizer.from_pretrained(str(path))
+
+    def save(self, path: Union[str, pathlib.Path]):
+        path = helper.path(path) / 'tokenizer'
+        self.base.save_pretrained(str(path))
+
+    @classmethod
+    def load(K, path: Union[str, pathlib.Path]):
+        path = helper.path(path) / 'tokenizer'
+        return K(path=path)
 
 # ---
 
@@ -369,6 +387,10 @@ def transform(
         )
 
         json.dump(info, fd, indent=2)
+
+    Tokenizer(model=model).save(p_out)
+
+    return
 
     with mp.Pool() as pool:
         args = WorkerArgs(
@@ -743,6 +765,7 @@ class Models:
     def kgc_model_name(self) -> str:
         return self.kgc_model.config.model.cls.lower()
 
+    tokenizer: Tokenizer
     kgc_model: keen.Model
     text_encoder: tf.BertModel
 
@@ -756,11 +779,17 @@ class Models:
             config.text_encoder,
             cache_dir=ryn.ENV.CACHE_DIR / 'lib.transformers')
 
+        tokenizer = Tokenizer.load(config.text_dataset)
+
+        log.info(f'resizing token embeddings to {len(tokenizer.base)}')
+        text_encoder.resize_token_embeddings(len(tokenizer.base))
+
         kgc_model = keen.Model.load(
             config.kgc_model,
             split_dataset=config.split_dataset)
 
         return K(
+            tokenizer=tokenizer,
             text_encoder=text_encoder,
             kgc_model=kgc_model,
         )

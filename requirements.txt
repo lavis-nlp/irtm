@@ -5,6 +5,7 @@ numpy
 pandas
 pykeen
 inotify
+horovod
 networkx
 tabulate
 streamlit

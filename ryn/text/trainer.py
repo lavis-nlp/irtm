@@ -139,7 +139,8 @@ def _init_trainer(
             **config.checkpoint_args))
 
     trainer_args = dict(
-        callbacks=callbacks
+        callbacks=callbacks,
+        deterministic=True,
     )
 
     if not debug:
@@ -173,9 +174,7 @@ def train(*, config: Config = None, debug: bool = False):
         models=upstream_models,
     )
 
-    # TODO to reproduce runs:
-    # pl.seed_everything(...)
-    # also pl.Trainer(deterministic=True, ...)
+    pl.seed_everything(datasets.split.cfg.seed)
 
     assert config.text_encoder == datasets.text.model
     assert datasets.text.ratio == config.valid_split, 'old cache file?'
@@ -215,8 +214,6 @@ def train(*, config: Config = None, debug: bool = False):
     log.info('pape satan, pape satan aleppe')
     trainer.fit(map_model, datasets.train, datasets.valid)
 
-    log.info('')
-
 
 @helper.notnone
 def train_from_cli(
@@ -231,6 +228,15 @@ def train_from_cli(
 
     # bert-large-cased: hidden size 1024
     # bert-base-cased: hidden size 768
+
+    # 24G:
+    #  - train batch size: 60
+    #  - valid batch size: 45
+
+    # 11G:
+    #  - train batch size: 25
+    #  - valid batch size; 15
+
     config = Config(
 
         # this is annoying to be declared explicitly
@@ -247,9 +253,10 @@ def train_from_cli(
 
         trainer_args=dict(
             gpus=1,
+            distributed_backend='horovod',
             max_epochs=25,
-            # auto_lr_find=True,
             fast_dev_run=debug,
+            # auto_lr_find=True,
         ),
 
         checkpoint_args=dict(
@@ -260,12 +267,12 @@ def train_from_cli(
 
         dataloader_train_args=dict(
             num_workers=64,
-            batch_size=60,
+            batch_size=25,
             shuffle=True,
         ),
         dataloader_valid_args=dict(
             num_workers=64,
-            batch_size=45,
+            batch_size=15,
         ),
 
         # ryn upstream
@@ -278,7 +285,7 @@ def train_from_cli(
         optimizer_args=dict(lr=0.0001),
 
         # ryn models
-        aggregator='max 1',
+        aggregator='cls 1',
 
         projector='mlp 1',
         projector_args=dict(

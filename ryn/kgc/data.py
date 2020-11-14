@@ -159,7 +159,10 @@ class TrainingResult:
             fd.write(self.str_stats)
 
     @classmethod
-    def load(K, path: Union[str, pathlib.Path], load_model: bool = True):
+    def load(
+            K,
+            path: Union[str, pathlib.Path],
+            load_model: bool = True):
         # TODO instead of load_model: lazy load self.model
 
         path = helper.path(
@@ -171,7 +174,7 @@ class TrainingResult:
 
         model = None
         if load_model:
-            model = torch.load(str(path / 'model.ckpt'))
+            model = torch.load(str(path / 'model.ckpt'), map_location='cpu')
 
         return K(**{**raw, **dict(
             training_time=Time.create(raw['training_time']),
