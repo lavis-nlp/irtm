@@ -10,7 +10,7 @@ from ryn.common import logging
 import torch.optim
 import torch.utils.data as torch_data
 import pytorch_lightning as pl
-import horovod.torch as hvd
+# import horovod.torch as hvd
 
 import gc
 import pathlib
@@ -217,8 +217,11 @@ def train(*, config: Config = None, debug: bool = False):
 
     # hvd is initialized now
 
-    if not debug and hvd.local_rank() == 0:
+    if not debug:
         config.save(out)
+
+    # if not debug and hvd.local_rank() == 0:
+    #     config.save(out)
 
     log.info('pape satan, pape satan aleppe')
     trainer.fit(map_model, datasets.train, datasets.valid)
@@ -266,13 +269,14 @@ def train_from_cli(
         ),
 
         trainer_args=dict(
+            gpus=1,
             max_epochs=2,
             fast_dev_run=debug,
             # auto_lr_find=True,
 
             # horovod
-            gpus=1,
-            distributed_backend='horovod',
+            # gpus=1,
+            # distributed_backend='horovod',
             # accumulate_grad_batches=10,
         ),
 
@@ -283,12 +287,13 @@ def train_from_cli(
         ),
 
         dataloader_train_args=dict(
-            num_workers=64,
+            num_workers=0,
             batch_size=25,
             shuffle=True,
         ),
+
         dataloader_valid_args=dict(
-            num_workers=64,
+            num_workers=0,
             batch_size=15,
         ),
 
@@ -304,11 +309,17 @@ def train_from_cli(
         # ryn models
         aggregator='cls 1',
 
-        projector='mlp 1',
+        projector='affine 1',
         projector_args=dict(
             input_dims=768,
-            hidden_dims=500,
-            output_dims=450),
+            output_dims=450,
+        ),
+
+        # projector='mlp 1',
+        # projector_args=dict(
+        #     input_dims=768,
+        #     hidden_dims=500,
+        #     output_dims=450),
 
         comparator='euclidean 1',
     )

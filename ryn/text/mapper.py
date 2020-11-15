@@ -13,7 +13,7 @@ import torch.optim
 from torch import nn
 import transformers as tf
 import pytorch_lightning as pl
-import horovod.torch as hvd
+# import horovod.torch as hvd
 
 # https://github.com/pykeen/pykeen/pull/132
 # from pykeen.nn import emb as keen_emb
@@ -194,7 +194,7 @@ class EuclideanComparator_1(Comparator):
     name = 'euclidean 1'
 
     def forward(self, X, Y):
-        return torch.dist(X, Y, p=2)
+        return torch.dist(X, Y, p=2) / X.shape[0]
 
 
 # --- WIRING
@@ -434,10 +434,10 @@ class Mapper(pl.LightningModule):
             config=self.rync.kgc_model.config,
             mapped_triples=triples.factory.mapped_triples,
             tqdm_kwargs=dict(
-                sition=2,
+                position=2,
                 ncols=80,
                 leave=False,
-                disable=hvd.size() != 1,  # not working with horovod atm
+                # disable=hvd.size() != 1,  # not working with horovod atm
             )
         )
 
@@ -448,7 +448,7 @@ class Mapper(pl.LightningModule):
         return evaluation_result
 
     def _run_kgc_evaluations(self):
-        assert hvd.local_rank() == 0
+        # assert hvd.local_rank() == 0
 
         # TODO assert id mappings are equal for cw entities
         # and relations (self.rync.kgc_model.keen_dataset.training)
@@ -464,15 +464,42 @@ class Mapper(pl.LightningModule):
         # TODO assert this reflect entity
         # counts of datasets (unless fast_dev_run)
 
+        def _result_dict(name=None, result=None):
+
+            def _item(key, val):
+                return f'{name}.{key}', torch.Tensor([val])
+
+            return dict((
+                _item('hits@10',
+                      result.metrics['hits_at_k']['both']['avg'][10]),
+                _item('hits@5',
+                      result.metrics['hits_at_k']['both']['avg'][5]),
+                _item('hits@1',
+                      result.metrics['hits_at_k']['both']['avg'][1]),
+                _item('mr',
+                      result.metrics['mean_rank']['both']['avg']),
+                _item('mrr',
+                      result.metrics['mean_reciprocal_rank']['both']['avg']),
+                _item('amr',
+                      result.metrics['adjusted_mean_rank']['both']['avg']),
+            ))
+
         # --
 
-        log.info('running transductive evaluation')
+        log.info(
+            'running transductive evaluation'
+            f' with {len(self.datasets.transductive.factory.mapped_triples.shape[0])}')  # noqa: E501
+
         transductive_result = self._run_kgc_evaluation(
             projections=self.projections,
             triples=self.datasets.transductive,
         )
 
-        self.log('transductive', transductive_result)
+        self.log_dict(_result_dict(
+            name='transductive',
+            result=transductive_result
+        ))
+
         log.info(
             '! finished transductive evaluation with'
             f' {transductive_result.metrics["hits_at_k"]["both"]["avg"][10]:2.3f} hits@10'  # noqa: E501
@@ -480,15 +507,22 @@ class Mapper(pl.LightningModule):
 
         # --
 
-        log.info('running inductive evaluation')
+        log.info(
+            'running inductive evaluation'
+            f' with {len(self.datasets.inductive.factory.mapped_triples.shape[0])}')  # noqa: E501
+
         inductive_result = self._run_kgc_evaluation(
             projections=self.projections,
             triples=self.datasets.inductive,
         )
 
-        self.log('inductive', inductive_result)
+        self.log_dict(_result_dict(
+            name='inductive',
+            result=inductive_result,
+        ))
+
         log.info(
-            '! finished transductive evaluation with'
+            '! finished inductive evaluation with'
             f' {inductive_result.metrics["hits_at_k"]["both"]["avg"][10]:2.3f} hits@10'  # noqa: E501
             f' and {inductive_result.metrics["mean_reciprocal_rank"]["both"]["avg"]:2.3f} MRR')  # noqa: E501
 
@@ -499,7 +533,8 @@ class Mapper(pl.LightningModule):
     #
 
     def on_fit_start(self):
-        log.info(f'! fitting - (horovod local rank: {hvd.local_rank()})')
+        # log.info(f'! fitting - (horovod local rank: {hvd.local_rank()})')
+        log.info('fitting')
 
     def on_train_epoch_start(self):
         log.info(f'! starting new epoch; running on {self.device}')
@@ -517,25 +552,31 @@ class Mapper(pl.LightningModule):
         """
 
         if self.global_step == 0 and not self.trainer.fast_dev_run:
-            # TODO run kgc evaluation as sanity check and for wandb
+            # TODO run kgc evaluatIon as sanity check and for wandb
             # unless it's fast_dev_run
             return
 
-        log.info(
-            f'[{hvd.local_rank()}] gathered'
-            f' {int(self.projections_counts.sum().item())}'
-            ' projections')
+        self._run_kgc_evaluations()
 
-        self.projections = hvd.allreduce(
-            self.projections,
-            op=hvd.Sum)
+        # re-enable after multi-gpu support is re-enabled
 
-        self.projections_counts = hvd.allreduce(
-            self.projections_counts,
-            op=hvd.Sum)
+        # log.info(
+        #     f'[{hvd.local_rank()}] gathered'
+        #     f' {int(self.projections_counts.sum().item())}'
+        #     ' projections')
 
-        if hvd.local_rank() == 0:
-            self._run_kgc_evaluations()
+        # log.info('allreduce vectors')
+        # self.projections = hvd.allreduce(
+        #     self.projections,
+        #     op=hvd.Sum)
+
+        # log.info('allreduce counts')
+        # self.projections_counts = hvd.allreduce(
+        #     self.projections_counts,
+        #     op=hvd.Sum)
+
+        # if hvd.local_rank() == 0:
+        #     self._run_kgc_evaluations()
 
     # ---
 
