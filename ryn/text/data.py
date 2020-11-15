@@ -668,7 +668,7 @@ class Dataset:
     @classmethod
     @helper.notnone
     @helper.cached('.cached.text.data.dataset.pkl')
-    def load(K, path: Union[str, pathlib.Path], ratio: float = None):
+    def create(K, path: Union[str, pathlib.Path], ratio: float = None):
 
         path = pathlib.Path(path)
         if not path.is_dir():
@@ -814,14 +814,15 @@ class Datasets:
     keen: keen.Dataset
     split: split.Dataset
 
-    # mapper training
-    train: torch_data.DataLoader
-    valid: torch_data.DataLoader
+    # mapper training (closed world)
+    text_train: torch_data.DataLoader
+    text_valid: torch_data.DataLoader
+    text_inductive: torch_data.DataLoader
 
-    # kgc for mapper validation
+    # kgc for mapper validation (closed/open world)
     ryn2keen: Dict[int, int]
-    inductive: Triples
-    transductive: Triples
+    kgc_inductive: Triples
+    kgc_transductive: Triples
 
     @staticmethod
     @helper.notnone
@@ -870,7 +871,7 @@ class Datasets:
             config=config,
             text_part=text_dataset.train | text_dataset.transductive,
             split_dataset=split_dataset,
-            split_part=split_dataset.cw_valid,
+            split_part=split_dataset.cw_train | split_dataset.cw_valid,
             entities=split_dataset.cw_train.owe,
             entity_to_id=entity_to_id,
             relation_to_id=relation_to_id,
@@ -913,16 +914,28 @@ class Datasets:
         train = torch_data.DataLoader(
             training_set,
             collate_fn=TorchDataset.collate_fn,
-            **config.dataloader_train_args)
+            **config.dataloader_train_args
+        )
 
         validation_set = TorchDataset(part=text_dataset.transductive)
         valid = torch_data.DataLoader(
             validation_set,
             collate_fn=TorchDataset.collate_fn,
-            **config.dataloader_valid_args)
+            **config.dataloader_valid_args
+        )
 
-        log.info('created train/valid dataloaders')
-        return train, valid
+        # the inductive dataloader is used to create projections
+        # for inductive kgc in the kgc validation
+
+        inductive_set = TorchDataset(part=text_dataset.inductive)
+        inductive = torch_data.DataLoader(
+            inductive_set,
+            collate_fn=TorchDataset.collate_fn,
+            **config.dataloader_inductive_args
+        )
+
+        log.info('created train/valid/inductive dataloaders')
+        return train, valid, inductive
 
     @classmethod
     @helper.notnone
@@ -932,22 +945,25 @@ class Datasets:
         keen_dataset = models.kgc_model.keen_dataset
         split_dataset = models.kgc_model.split_dataset
 
-        text_dataset = Dataset.load(
+        text_dataset = Dataset.create(
             path=config.text_dataset,
             ratio=config.valid_split,
         )
 
-        train, valid = Datasets._create_dataloader(
+        text = Datasets._create_dataloader(
             config=config,
             text_dataset=text_dataset,
         )
 
-        transductive, inductive, ryn2keen = Datasets._create_triples_factories(
+        kgc = Datasets._create_triples_factories(
             config=config,
             text_dataset=text_dataset,
             keen_dataset=keen_dataset,
             split_dataset=split_dataset,
         )
+
+        text_train, text_valid, text_inductive = text
+        kgc_transductive, kgc_inductive, ryn2keen = kgc
 
         return K(
             text=text_dataset,
@@ -955,11 +971,12 @@ class Datasets:
             split=split_dataset,
 
             # mapper
-            train=train,
-            valid=valid,
+            text_train=text_train,
+            text_valid=text_valid,
+            text_inductive=text_inductive,
 
             # kgc
             ryn2keen=ryn2keen,
-            inductive=inductive,
-            transductive=transductive,
+            kgc_inductive=kgc_inductive,
+            kgc_transductive=kgc_transductive,
         )

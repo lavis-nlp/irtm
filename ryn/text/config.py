@@ -52,6 +52,7 @@ class Config:
     # https://pytorch.org/docs/stable/data.html#torch.utils.data.DataLoader
     dataloader_train_args: Dict[str, Any]
     dataloader_valid_args: Dict[str, Any]
+    dataloader_inductive_args: Dict[str, Any]
 
     # pytorch optimizer
     optimizer: str

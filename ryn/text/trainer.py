@@ -200,8 +200,9 @@ def train(*, config: Config = None, debug: bool = False):
             out, create=True,
             message='writing model to {path_abbrv}'))
 
+    log.error('LOGGING DISABLED')
     logger = _init_logger(
-        debug=debug,
+        debug=True,  # debug,
         config=config,
         timestamp=timestamp,
         kgc_model_name=upstream_models.kgc_model_name,
@@ -224,12 +225,13 @@ def train(*, config: Config = None, debug: bool = False):
     #     config.save(out)
 
     log.info('pape satan, pape satan aleppe')
-    trainer.fit(map_model, datasets.train, datasets.valid)
+    trainer.fit(map_model, datasets.text_train, datasets.text_valid)
 
-    with (out / 'profiler_summary.txt').open(mode='w') as fd:
-        fd.write(trainer.profiler.summary())
+    if not debug:
+        with (out / 'profiler_summary.txt').open(mode='w') as fd:
+            fd.write(trainer.profiler.summary())
 
-    log.info(f'training finished; results in: {out}')
+    log.info('training finished')
 
 
 @helper.notnone
@@ -293,6 +295,11 @@ def train_from_cli(
         ),
 
         dataloader_valid_args=dict(
+            num_workers=0,
+            batch_size=15,
+        ),
+
+        dataloader_inductive_args=dict(
             num_workers=0,
             batch_size=15,
         ),
