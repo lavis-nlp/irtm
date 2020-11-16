@@ -13,7 +13,7 @@ pip install -r requirements.txt
 pip install -e .
 ```
 
-You also need to install pytorch.
+You also need to install pytorch. For multi-gpu support, you need horovod.
 
 
 ## Command Line Client
