@@ -26,6 +26,7 @@ from dataclasses import field
 from dataclasses import dataclass
 from collections import defaultdict
 
+import numpy as np
 import torch
 import torch.utils.data as torch_data
 from torch.nn.utils.rnn import pad_sequence
@@ -716,6 +717,18 @@ class Dataset:
 
 class TorchDataset(torch_data.Dataset):
 
+    @property
+    def name(self):
+        return self._name
+
+    @property
+    def max_sequence_length(self):
+        return self._max_len
+
+    @property
+    def max_sequence_idx(self):
+        return self._max_idx
+
     def __len__(self):
         return len(self._flat)
 
@@ -723,18 +736,23 @@ class TorchDataset(torch_data.Dataset):
         return self._flat[idx]
 
     @helper.notnone
-    def __init__(self, *, part: Part = None):
+    def __init__(self, *, name: str = None, part: Part = None):
         super().__init__()
+        self._name = name
 
         self._flat = [
             (torch.Tensor(idxs).to(dtype=torch.long), e)
             for e, idx_lists in part.id2idxs.items()
             for idxs in idx_lists]
 
-        self._max_len = max(len(idxs) for idxs, _ in self._flat)
-        log.info('initialized Data: '
-                 f'samples={len(self._flat)}, '
-                 f'max sequence length: {self._max_len}')
+        lens = np.array([len(idxs) for idxs, _ in self._flat])
+        self._max_idx = np.argmax(lens)
+        self._max_len = lens[self.max_sequence_idx]
+
+        log.info(
+            'initialized Data: '
+            f'samples={len(self)}, '
+            f'max sequence length: {self.max_sequence_length}')
 
     @property
     def collator(self):
@@ -910,14 +928,20 @@ class Datasets:
         # training and validation operate on reference embeddings
         # of the kgc model and thus no inductive part can be used here
 
-        training_set = TorchDataset(part=text_dataset.train)
+        training_set = TorchDataset(
+            name='training',
+            part=text_dataset.train,
+        )
         train = torch_data.DataLoader(
             training_set,
             collate_fn=TorchDataset.collate_fn,
             **config.dataloader_train_args
         )
 
-        validation_set = TorchDataset(part=text_dataset.transductive)
+        validation_set = TorchDataset(
+            name='validation',
+            part=text_dataset.transductive,
+        )
         valid = torch_data.DataLoader(
             validation_set,
             collate_fn=TorchDataset.collate_fn,
@@ -927,7 +951,10 @@ class Datasets:
         # the inductive dataloader is used to create projections
         # for inductive kgc in the kgc validation
 
-        inductive_set = TorchDataset(part=text_dataset.inductive)
+        inductive_set = TorchDataset(
+            name='inductive',
+            part=text_dataset.inductive,
+        )
         inductive = torch_data.DataLoader(
             inductive_set,
             collate_fn=TorchDataset.collate_fn,
