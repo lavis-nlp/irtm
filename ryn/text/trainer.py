@@ -25,64 +25,6 @@ from typing import Optional
 log = logging.get('text.trainer')
 
 
-class TrainerCallback(pl.callbacks.base.Callback):
-
-    @property
-    def config(self):
-        return self._config
-
-    @property
-    def dl_train(self) -> torch_data.DataLoader:
-        return self._dl_train
-
-    @property
-    def dl_valid(self) -> torch_data.DataLoader:
-        return self._dl_valid
-
-    def __init__(
-            self,
-            *args,
-            config: Config = None,
-            dl_train: torch_data.DataLoader = None,
-            dl_valid: torch_data.DataLoader = None,
-            **kwargs):
-
-        super().__init__(*args, **kwargs)
-        self._config = config
-        self._dl_train = dl_train
-        self._dl_valid = dl_valid
-
-    def on_sanity_check_start(self, trainer, mapper):
-        log.info('probing for functioning configuration')
-
-        max_seq = []
-        for seq, _ in chain(self.dl_train.dataset, self.dl_valid.dataset):
-            if len(max_seq) < len(seq):
-                max_seq = seq
-
-        log.info(f'determined max sequence length: {len(max_seq)}')
-
-        for batch_size in set((
-                self.config.dataloader_train_args['batch_size'],
-                self.config.dataloader_valid_args['batch_size'], )):
-
-            log.info(f'testing {batch_size=}')
-            sentences = max_seq.repeat(batch_size, 1).to(device=mapper.device)
-
-            mapper(
-                sentences=sentences,
-                entities=repeat(0, batch_size))
-
-        log.info('clean up after probing')
-
-        for p in mapper.parameters():
-            if p.grad is not None:
-                del p.grad
-
-        torch.cuda.empty_cache()
-        gc.collect()
-
-
 @helper.notnone
 def _init_logger(
         debug: bool = None,
@@ -186,23 +128,23 @@ def train(*, config: Config = None, debug: bool = False):
 
     timestamp = datetime.now().strftime('%Y.%m.%d-%H.%M.%S')
 
-    out = pathlib.Path((
+    out_dir = pathlib.Path((
         ryn.ENV.TEXT_DIR / 'mapper' /
         datasets.text.dataset /
         datasets.text.database /
         datasets.text.model /
-        upstream_models.kgc_model_name /
-        timestamp
+        upstream_models.kgc_model_name
     ))
+
+    out = out_dir / timestamp
 
     if not debug:
         config = dataclasses.replace(config, out=helper.path(
             out, create=True,
             message='writing model to {path_abbrv}'))
 
-    log.error('LOGGING DISABLED')
     logger = _init_logger(
-        debug=True,  # debug,
+        debug=debug,
         config=config,
         timestamp=timestamp,
         kgc_model_name=upstream_models.kgc_model_name,
@@ -224,8 +166,17 @@ def train(*, config: Config = None, debug: bool = False):
     # if not debug and hvd.local_rank() == 0:
     #     config.save(out)
 
-    log.info('pape satan, pape satan aleppe')
-    trainer.fit(map_model, datasets.text_train, datasets.text_valid)
+    try:
+        log.info('pape satan, pape satan aleppe')
+        trainer.fit(map_model, datasets.text_train, datasets.text_valid)
+
+    except Exception as exc:
+        log.error(f'{exc}')
+        with (out / 'exception.txt').open(mode='w') as fd:
+            fd.write(f'Exception: {datetime.now()}\n\n')
+            fd.write(str(exc))
+
+        raise exc
 
     if not debug:
         with (out / 'profiler_summary.txt').open(mode='w') as fd:
@@ -252,13 +203,38 @@ def train_from_cli(
     # bert-large-cased: hidden size 1024
     # bert-base-cased: hidden size 768
 
-    # 24G:
-    #  - train batch size: 60
-    #  - valid batch size: 45
+    # --------------------
 
-    # 11G:
-    #  - train batch size: 25
-    #  - valid batch size; 15
+    # 24G 30 ctxs batch sizes:
+    batch_sizes = dict(
+        training=70,
+        validation=70,
+        inductive=40,
+    )
+
+    # batch_sizes = dict(
+    #     training=90,
+    #     validation=80,
+    #     inductive=50,
+    # )
+
+    # --------------------
+
+    # 11G 30 ctxs batch size:
+    # batch_sizes = dict(
+    #     training=30,
+    #     validation=30,
+    #     inductive=20,
+    # )
+
+    # 11G 2 ctxs batch size:
+    # batch_sizes = dict(
+    #     training=40,
+    #     validation=40,
+    #     inductive=25,
+    # )
+
+    # --------------------
 
     config = Config(
 
@@ -277,36 +253,31 @@ def train_from_cli(
 
         trainer_args=dict(
             gpus=1,
-            max_epochs=2,
+            max_epochs=50,
             fast_dev_run=debug,
-            # auto_lr_find=True,
-
-            # horovod
-            # gpus=1,
+            # check_val_every_n_epoch=10,
             # distributed_backend='horovod',
-            # accumulate_grad_batches=10,
         ),
 
         checkpoint_args=dict(
-            # monitor='valid_loss',
-            save_top_k=-1,  # save all
-            period=250,
+            monitor='valid_loss_step',
+            save_top_k=10,
         ),
 
         dataloader_train_args=dict(
             num_workers=0,
-            batch_size=25,
+            batch_size=batch_sizes['training'],
             shuffle=True,
         ),
 
         dataloader_valid_args=dict(
             num_workers=0,
-            batch_size=15,
+            batch_size=batch_sizes['validation'],
         ),
 
         dataloader_inductive_args=dict(
             num_workers=0,
-            batch_size=15,
+            batch_size=batch_sizes['inductive'],
         ),
 
         # ryn upstream

@@ -21,6 +21,7 @@ import pytorch_lightning as pl
 import yaml
 from tqdm import tqdm
 
+from itertools import repeat
 from dataclasses import dataclass
 from collections import defaultdict
 
@@ -431,7 +432,7 @@ class Mapper(pl.LightningModule):
             def _item(key, val):
                 return f'{name}.{key}', torch.Tensor([val])
 
-            return dict((
+            return dict((k, v.item()) for k, v in (
                 _item('hits@10',
                       result.metrics['hits_at_k']['both']['avg'][10]),
                 _item('hits@5',
@@ -488,10 +489,16 @@ class Mapper(pl.LightningModule):
 
         # -- /embedding shenanigans
 
-        self.log_dict(_result_dict(
-            name='transductive',
+        result_metrics = _result_dict(
+            name=kind,
             result=evaluation_result
-        ))
+        )
+
+        # I still don't geht how self.log works...
+        # it won't update any metrics of the logger
+        #  - can this be used for early stopping then?
+        self.log_dict(result_metrics)
+        self.logger.log_metrics(result_metrics)
 
         log.info(
             f'! finished {kind} evaluation with'
@@ -523,7 +530,7 @@ class Mapper(pl.LightningModule):
         log.info(f'gathered {int(self.projections_counts.sum().item())}'
                  ' projections from processes')
 
-        # TODO assert this reflect entity
+        # TODO assert this reflect context
         # counts of datasets (unless fast_dev_run)
 
         # --
@@ -539,9 +546,52 @@ class Mapper(pl.LightningModule):
     # HOOKS
     #
 
-    def on_fit_start(self):
+    # this is not an official hook and executed from ont_train_epoch_start
+    def on_training_session_start(self):
+        log.info('running custom pre-training sanity check')
+
+        # removing some memory because some cuda
+        # allocated memory is not visible
+        device_properties = torch.cuda.get_device_properties(self.device)
+        total_memory = int(device_properties.total_memory * 0.9)
+        log.info(
+            f'checking {device_properties.name} with around '
+            f' ~{total_memory // 1024**3}GB')
+
+        for loader in (
+                self.datasets.text_train,
+                self.datasets.text_valid,
+                self.datasets.text_inductive,
+        ):
+            # moving some noise with the shape of the largest
+            # possible sample through the model to detect oom problems
+
+            log.info(
+                f'checking {loader.dataset.name} (max sequence length:'
+                f' {loader.dataset.max_sequence_length})')
+
+            sample = loader.dataset[loader.dataset.max_sequence_idx]
+            batch = repeat(sample, loader.batch_size)
+            sentences, _ = loader.collate_fn(batch)
+
+            log.info(f'trying batch with {sentences.shape}')
+
+            sentences = sentences.to(self.device)
+            self.forward(sentences=sentences)
+
+            cached_memory = torch.cuda.memory_cached(self.device)
+            memory_usage = (cached_memory / total_memory) * 100
+            log.info(
+                f'! {loader.dataset.name} is using'
+                f' ~{int(memory_usage)}% memory')
+
+            del sentences
+            torch.cuda.empty_cache()
+
+        log.info('finished custom pre-training check')
+
+    # def on_fit_start(self):
         # log.info(f'! fitting - (horovod local rank: {hvd.local_rank()})')
-        log.info('fitting')
 
     def on_train_epoch_start(self):
         log.info(f'! starting new epoch; running on {self.device}')
@@ -549,6 +599,9 @@ class Mapper(pl.LightningModule):
 
         assert not self.keen.entity_embeddings.weight.requires_grad
         assert not self.keen.relation_embeddings.weight.requires_grad
+
+        if self.global_step == 0:
+            self.on_training_session_start()
 
     def on_validation_epoch_end(self):
         """
@@ -572,12 +625,10 @@ class Mapper(pl.LightningModule):
         #     f' {int(self.projections_counts.sum().item())}'
         #     ' projections')
 
-        # log.info('allreduce vectors')
         # self.projections = hvd.allreduce(
         #     self.projections,
         #     op=hvd.Sum)
 
-        # log.info('allreduce counts')
         # self.projections_counts = hvd.allreduce(
         #     self.projections_counts,
         #     op=hvd.Sum)
