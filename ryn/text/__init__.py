@@ -91,6 +91,9 @@ def transform(
     '--debug', is_flag=True,
     help='only test a model and do not log')
 @click.option(
+    '--offline', is_flag=True,
+    help='run a complete training, but do so locally (wandb)')
+@click.option(
     '--split-dataset', type=str, required=True,
     help='path to ryn.graphs.split.Dataset directory')
 @click.option(

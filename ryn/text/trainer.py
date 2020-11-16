@@ -237,6 +237,7 @@ def train(*, config: Config = None, debug: bool = False):
 @helper.notnone
 def train_from_cli(
         debug: bool = False,
+        offline: bool = False,
         kgc_model: str = None,
         text_dataset: str = None,
         split_dataset: str = None,
@@ -244,6 +245,9 @@ def train_from_cli(
 
     if debug:
         log.warning('phony debug run!')
+
+    if offline:
+        log.warning('offline run!')
 
     # bert-large-cased: hidden size 1024
     # bert-base-cased: hidden size 768
@@ -268,6 +272,7 @@ def train_from_cli(
         wandb_args=dict(
             project='ryn-text',
             log_model=False,
+            offline=offline,
         ),
 
         trainer_args=dict(
