@@ -1,6 +1,7 @@
 data/*
 lib/*
 wandb/
+lightning_logs
 
 # EMACS
 
