@@ -7,18 +7,12 @@ from ryn.text.config import Config
 from ryn.common import helper
 from ryn.common import logging
 
-import torch.optim
-import torch.utils.data as torch_data
 import pytorch_lightning as pl
 # import horovod.torch as hvd
 
-import gc
 import pathlib
 import dataclasses
 from datetime import datetime
-
-from itertools import chain
-from itertools import repeat
 
 from typing import Optional
 
@@ -206,11 +200,11 @@ def train_from_cli(
     # --------------------
 
     # 24G 30 ctxs batch sizes:
-    batch_sizes = dict(
-        training=70,
-        validation=70,
-        inductive=40,
-    )
+    # batch_sizes = dict(
+    #     training=60,
+    #     validation=60,
+    #     inductive=30,
+    # )
 
     # batch_sizes = dict(
     #     training=90,
@@ -221,11 +215,11 @@ def train_from_cli(
     # --------------------
 
     # 11G 30 ctxs batch size:
-    # batch_sizes = dict(
-    #     training=30,
-    #     validation=30,
-    #     inductive=20,
-    # )
+    batch_sizes = dict(
+        training=25,
+        validation=25,
+        inductive=15,
+    )
 
     # 11G 2 ctxs batch size:
     # batch_sizes = dict(
@@ -287,10 +281,10 @@ def train_from_cli(
 
         # pytorch
         optimizer='adam',
-        optimizer_args=dict(lr=0.00001),
+        optimizer_args=dict(lr=0.000001),
 
         # ryn models
-        aggregator='cls 1',
+        aggregator='max 1',
 
         projector='affine 1',
         projector_args=dict(
