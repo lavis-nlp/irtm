@@ -93,9 +93,11 @@ class Config:
     # ---
 
     def save(self, path: Union[str, pathlib.Path]):
-        fname = 'config.json'
+        path = helper.path(path)
+        fname = path.name
+
         path = helper.path(
-            path, create=True,
+            path.parent, create=True,
             message=f'saving {fname} to {{path_abbrv}}')
 
         with (path / fname).open(mode='w') as fd:

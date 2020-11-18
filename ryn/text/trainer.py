@@ -20,6 +20,16 @@ log = logging.get('text.trainer')
 
 
 @helper.notnone
+def _load_from_config(*, config: Config = None):
+    upstream_models = data.Models.load(config=config)
+
+    datasets = data.Datasets.load(config=config, models=upstream_models)
+    rync = mapper.Components.create(config=config, models=upstream_models)
+
+    return datasets, rync
+
+
+@helper.notnone
 def _init_logger(
         debug: bool = None,
         timestamp: str = None,
@@ -28,6 +38,8 @@ def _init_logger(
         text_encoder_name: str = None,
         text_dataset_name: str = None,
 ):
+
+    # --
 
     logger = None
     name = f'{text_encoder_name}.{kgc_model_name}.{timestamp}'
@@ -67,6 +79,7 @@ def _init_trainer(
         config: Config = None,
         logger: Optional = None,
         debug: bool = False,
+        resume_from_checkpoint: Optional[str] = None,
 ) -> pl.Trainer:
 
     callbacks = []
@@ -79,6 +92,7 @@ def _init_trainer(
     trainer_args = dict(
         callbacks=callbacks,
         deterministic=True,
+        resume_from_checkpoint=resume_from_checkpoint,
     )
 
     if not debug:
@@ -101,16 +115,42 @@ def _init_trainer(
 
 
 @helper.notnone
+def _fit(
+        *,
+        trainer: pl.Trainer = None,
+        model: pl.LightningModule = None,
+        datasets: data.Datasets = None,
+        out: pathlib.Path = None,
+        debug: bool = None
+):
+    log.info('pape satan, pape satan aleppe')
+
+    try:
+        trainer.fit(model, datasets.text_train, datasets.text_valid)
+
+    except Exception as exc:
+        log.error(f'{exc}')
+        with (out / 'exception.txt').open(mode='w') as fd:
+            fd.write(f'Exception: {datetime.now()}\n\n')
+            fd.write(str(exc))
+
+        raise exc
+
+    if not debug:
+        with (out / 'profiler_summary.txt').open(mode='w') as fd:
+            fd.write(trainer.profiler.summary())
+
+
+@helper.notnone
 def train(*, config: Config = None, debug: bool = False):
     log.info('lasciate ogni speranza o voi che entrate')
 
-    upstream_models = data.Models.load(config=config)
-    datasets = data.Datasets.load(config=config, models=upstream_models)
+    datasets, rync = _load_from_config(config=config)
 
-    map_model = mapper.Mapper.create(
-        config=config,
+    map_model = mapper.Mapper(
         datasets=datasets,
-        models=upstream_models,
+        rync=rync,
+        freeze_text_encoder=config.freeze_text_encoder,
     )
 
     pl.seed_everything(datasets.split.cfg.seed)
@@ -127,7 +167,7 @@ def train(*, config: Config = None, debug: bool = False):
         datasets.text.dataset /
         datasets.text.database /
         datasets.text.model /
-        upstream_models.kgc_model_name
+        rync.kgc_model_name
     ))
 
     out = out_dir / timestamp
@@ -141,7 +181,7 @@ def train(*, config: Config = None, debug: bool = False):
         debug=debug,
         config=config,
         timestamp=timestamp,
-        kgc_model_name=upstream_models.kgc_model_name,
+        kgc_model_name=rync.kgc_model_name,
         text_encoder_name=datasets.text_encoder,
         text_dataset_name=datasets.text.name
     )
@@ -155,32 +195,24 @@ def train(*, config: Config = None, debug: bool = False):
     # hvd is initialized now
 
     if not debug:
-        config.save(out)
+        config.save(out / 'config.json')
 
     # if not debug and hvd.local_rank() == 0:
     #     config.save(out)
 
-    try:
-        log.info('pape satan, pape satan aleppe')
-        trainer.fit(map_model, datasets.text_train, datasets.text_valid)
-
-    except Exception as exc:
-        log.error(f'{exc}')
-        with (out / 'exception.txt').open(mode='w') as fd:
-            fd.write(f'Exception: {datetime.now()}\n\n')
-            fd.write(str(exc))
-
-        raise exc
-
-    if not debug:
-        with (out / 'profiler_summary.txt').open(mode='w') as fd:
-            fd.write(trainer.profiler.summary())
+    _fit(
+        trainer=trainer,
+        model=map_model,
+        datasets=datasets,
+        out=out,
+        debug=debug,
+    )
 
     log.info('training finished')
 
 
 @helper.notnone
-def train_from_cli(
+def train_from_kwargs(
         debug: bool = False,
         offline: bool = False,
         kgc_model: str = None,
@@ -302,3 +334,61 @@ def train_from_cli(
     )
 
     train(config=config, debug=debug)
+
+
+@helper.notnone
+def resume_from_kwargs(
+        path: str = None,
+        checkpoint: str = None,
+        debug: bool = None,
+        offline: bool = None,
+):
+
+    out = helper.path(path, exists=True)
+    config = Config.load(out / 'config.json')
+
+    config.out = out
+    config.wandb_args.update(dict(
+        offline=offline,
+    ))
+
+    datasets, rync = _load_from_config(config=config)
+
+    helper.path(
+        checkpoint, exists=True,
+        message='loading model checkpoint {path_abbrv}')
+
+    map_model = mapper.Mapper.load_from_checkpoint(
+        checkpoint,
+        datasets=datasets,
+        rync=rync,
+        freeze_text_encoder=config.freeze_text_encoder,
+    )
+
+    timestamp = out.name
+
+    logger = _init_logger(
+        debug=debug,
+        timestamp=timestamp,
+        config=config,
+        kgc_model_name=rync.kgc_model_name,
+        text_encoder_name=datasets.text_encoder,
+        text_dataset_name=datasets.text.name,
+    )
+
+    trainer = _init_trainer(
+        config=config,
+        logger=logger,
+        debug=debug,
+        resume_from_checkpoint=checkpoint,
+    )
+
+    _fit(
+        trainer=trainer,
+        model=map_model,
+        datasets=datasets,
+        out=out,
+        debug=debug,
+    )
+
+    log.info('resumed training finished')

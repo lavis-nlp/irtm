@@ -106,13 +106,24 @@ def train(**kwargs):
     """
     Train a mapper to align embeddings
     """
-    trainer.train_from_cli(**kwargs)
+    trainer.train_from_kwargs(**kwargs)
 
 
 @text.command()
+@click.option(
+    '--debug', is_flag=True,
+    help='only test a model and do not log')
+@click.option(
+    '--offline', is_flag=True,
+    help='run a complete training, but do so locally (wandb)')
+@click.option(
+    '--path', type=str, required=True,
+    help='path to model directory')
+@click.option(
+    '--checkpoint', type=str, required=True,
+    help='path to model checkpoint')
 def resume(**kwargs):
     """
     Resume training of a mapper
     """
-    raise NotImplementedError()
-    trainer.resume_from_cli(**kwargs)
+    trainer.resume_from_kwargs(**kwargs)

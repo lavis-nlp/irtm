@@ -238,6 +238,37 @@ class Components:
     # the projection target
     kgc_model: keen.Model
 
+    @property
+    def kgc_model_name(self) -> str:
+        return self.kgc_model.config.model.cls.lower()
+
+    @classmethod
+    @helper.notnone
+    def create(K, *, config: Config = None, models: data.Models = None):
+        aggregator = Aggregator.init(
+            name=config.aggregator,
+            **config.aggregator_args)
+
+        projector = Projector.init(
+            name=config.projector,
+            **config.projector_args)
+
+        comparator = Comparator.init(
+            name=config.comparator,
+            **config.comparator_args)
+
+        self = K(
+            Optimizer=OPTIMIZER[config.optimizer],
+            optimizer_args=config.optimizer_args,
+            text_encoder=models.text_encoder,
+            aggregator=aggregator,
+            projector=projector,
+            comparator=comparator,
+            kgc_model=models.kgc_model,
+        )
+
+        return self
+
 
 class Mapper(pl.LightningModule):
     """
@@ -283,12 +314,17 @@ class Mapper(pl.LightningModule):
 
     @helper.notnone
     def __init__(
-            self, *,
-            datasets: data.Datasets = None,
+            self,
             rync: Components = None,
+            datasets: data.Datasets = None,
             freeze_text_encoder: bool = False):
 
         super().__init__()
+
+        # this flag exists to prevent the kgc
+        # evaluation to be run after the model
+        # was restored from a checkpoint
+        self._has_trained = False
 
         # properties
 
@@ -546,14 +582,13 @@ class Mapper(pl.LightningModule):
     # HOOKS
     #
 
-    # this is not an official hook and executed from ont_train_epoch_start
-    def on_training_session_start(self):
+    def on_fit_start(self):
         log.info('running custom pre-training sanity check')
 
         # removing some memory because some cuda
         # allocated memory is not visible
         device_properties = torch.cuda.get_device_properties(self.device)
-        total_memory = int(device_properties.total_memory * 0.9)
+        total_memory = int(device_properties.total_memory * 0.8)
         log.info(
             f'checking {device_properties.name} with around '
             f' ~{total_memory // 1024**3}GB')
@@ -590,18 +625,19 @@ class Mapper(pl.LightningModule):
 
         log.info('finished custom pre-training check')
 
-    # def on_fit_start(self):
-        # log.info(f'! fitting - (horovod local rank: {hvd.local_rank()})')
-
     def on_train_epoch_start(self):
-        log.info(f'! starting new epoch; running on {self.device}')
+        log.info(
+            f'! starting epoch {self.current_epoch}'
+            f' (step={self.global_step});'
+            f' running on {self.device}')
+
         self._init_projections()
 
         assert not self.keen.entity_embeddings.weight.requires_grad
         assert not self.keen.relation_embeddings.weight.requires_grad
 
-        if self.global_step == 0:
-            self.on_training_session_start()
+    def on_train_epoch_end(self):
+        self._has_trained = True
 
     def on_validation_epoch_end(self):
         """
@@ -610,10 +646,13 @@ class Mapper(pl.LightningModule):
         with projected entity mappings (see Mapper docstring)
 
         """
-
-        if self.global_step == 0 and not self.trainer.fast_dev_run:
+        if any((
+            (self.global_step == 0 and not self.trainer.fast_dev_run),
+            (not self._has_trained)
+        )):
             # TODO run kgc evaluatIon as sanity check and for wandb
             # unless it's fast_dev_run
+            log.info('skipping kgc evaluation')
             return
 
         self._run_kgc_evaluations()
@@ -637,43 +676,3 @@ class Mapper(pl.LightningModule):
         #     self._run_kgc_evaluations()
 
     # ---
-
-    @classmethod
-    @helper.notnone
-    def create(
-            K, *,
-            config: Config = None,
-            models: data.Models = None,
-            datasets: data.Datasets = None,
-    ):
-        log.info('creating mapper from config')
-
-        aggregator = Aggregator.init(
-            name=config.aggregator,
-            **config.aggregator_args)
-
-        projector = Projector.init(
-            name=config.projector,
-            **config.projector_args)
-
-        comparator = Comparator.init(
-            name=config.comparator,
-            **config.comparator_args)
-
-        rync = Components(
-            Optimizer=OPTIMIZER[config.optimizer],
-            optimizer_args=config.optimizer_args,
-            text_encoder=models.text_encoder,
-            aggregator=aggregator,
-            projector=projector,
-            comparator=comparator,
-            kgc_model=models.kgc_model,
-        )
-
-        model = K(
-            datasets=datasets,
-            rync=rync,
-            freeze_text_encoder=config.freeze_text_encoder,
-        )
-
-        return model

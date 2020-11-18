@@ -780,10 +780,6 @@ class TorchDataset(torch_data.Dataset):
 @dataclass
 class Models:
 
-    @property
-    def kgc_model_name(self) -> str:
-        return self.kgc_model.config.model.cls.lower()
-
     tokenizer: Tokenizer
     kgc_model: keen.Model
     text_encoder: tf.BertModel
