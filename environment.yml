@@ -1,0 +1,21 @@
+name: ryn
+
+channels:
+  - nvidia
+  - pytorch
+  - conda-forge
+  - defaults
+
+dependencies:
+  - python=3.8
+  - cmake>=3.17
+  - cudatoolkit=11
+  - cudnn=8
+  - cxx-compiler=1.1
+  - mpi4py=3.0 # installs cuda-aware openmpi
+  - nccl=2.8
+  # - nvcc_linux-64=10.1
+  - pip=20
+  - pip:
+    - -r file:requirements.txt
+  - pytorch=1.7
