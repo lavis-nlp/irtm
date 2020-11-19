@@ -885,7 +885,10 @@ class Datasets:
             config=config,
             text_part=text_dataset.train | text_dataset.transductive,
             split_dataset=split_dataset,
-            split_part=split_dataset.cw_train | split_dataset.cw_valid,
+            # if you use cw_valid also, your transductive evaluation
+            # will also run on entities never seen while training
+            # split_part=split_dataset.cw_train | split_dataset.cw_valid,
+            split_part=split_dataset.cw_train,
             entities=split_dataset.cw_train.owe,
             entity_to_id=entity_to_id,
             relation_to_id=relation_to_id,
