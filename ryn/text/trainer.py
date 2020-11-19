@@ -8,7 +8,7 @@ from ryn.common import helper
 from ryn.common import logging
 
 import pytorch_lightning as pl
-# import horovod.torch as hvd
+import horovod.torch as hvd
 
 import pathlib
 import dataclasses
@@ -194,11 +194,8 @@ def train(*, config: Config = None, debug: bool = False):
 
     # hvd is initialized now
 
-    if not debug:
+    if not debug and hvd.local_rank() == 0:
         config.save(out / 'config.json')
-
-    # if not debug and hvd.local_rank() == 0:
-    #     config.save(out)
 
     _fit(
         trainer=trainer,
@@ -279,10 +276,12 @@ def train_from_kwargs(
 
         trainer_args=dict(
             gpus=1,
-            max_epochs=50,
+            max_epochs=200,
             fast_dev_run=debug,
             # check_val_every_n_epoch=10,
-            # distributed_backend='horovod',
+            distributed_backend='horovod',
+            accumulate_grad_batches=10,
+            gradient_clip_val=1,
         ),
 
         checkpoint_args=dict(
@@ -313,22 +312,22 @@ def train_from_kwargs(
 
         # pytorch
         optimizer='adam',
-        optimizer_args=dict(lr=0.000001),
+        optimizer_args=dict(lr=0.00001),
 
         # ryn models
-        aggregator='max 1',
+        aggregator='cls 1',
 
-        projector='affine 1',
-        projector_args=dict(
-            input_dims=768,
-            output_dims=450,
-        ),
-
-        # projector='mlp 1',
+        # projector='affine 1',
         # projector_args=dict(
         #     input_dims=768,
-        #     hidden_dims=500,
-        #     output_dims=450),
+        #     output_dims=450,
+        # ),
+
+        projector='mlp 1',
+        projector_args=dict(
+            input_dims=768,
+            hidden_dims=600,
+            output_dims=450),
 
         comparator='euclidean 1',
     )

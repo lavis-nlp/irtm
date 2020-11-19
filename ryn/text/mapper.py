@@ -13,7 +13,7 @@ import torch.optim
 from torch import nn
 import transformers as tf
 import pytorch_lightning as pl
-# import horovod.torch as hvd
+import horovod.torch as hvd
 
 # https://github.com/pykeen/pykeen/pull/132
 # from pykeen.nn import emb as keen_emb
@@ -35,6 +35,7 @@ TQDM_KWARGS = dict(
     position=2,
     ncols=80,
     leave=False,
+    disable=True,
     # disable=hvd.size() != 1,
 )
 
@@ -544,7 +545,7 @@ class Mapper(pl.LightningModule):
         return evaluation_result
 
     def _run_kgc_evaluations(self):
-        # assert hvd.local_rank() == 0
+        assert hvd.local_rank() == 0
 
         # TODO assert id mappings are equal for cw entities
         # and relations (self.rync.kgc_model.keen_dataset.training)
@@ -636,7 +637,7 @@ class Mapper(pl.LightningModule):
         assert not self.keen.entity_embeddings.weight.requires_grad
         assert not self.keen.relation_embeddings.weight.requires_grad
 
-    def on_train_epoch_end(self):
+    def on_train_epoch_end(self, outputs):
         self._has_trained = True
 
     def on_validation_epoch_end(self):
@@ -655,24 +656,20 @@ class Mapper(pl.LightningModule):
             log.info('skipping kgc evaluation')
             return
 
-        self._run_kgc_evaluations()
+        log.info(
+            f'[{hvd.local_rank()}] gathered'
+            f' {int(self.projections_counts.sum().item())}'
+            ' projections')
 
-        # re-enable after multi-gpu support is re-enabled
+        self.projections = hvd.allreduce(
+            self.projections,
+            op=hvd.Sum)
 
-        # log.info(
-        #     f'[{hvd.local_rank()}] gathered'
-        #     f' {int(self.projections_counts.sum().item())}'
-        #     ' projections')
+        self.projections_counts = hvd.allreduce(
+            self.projections_counts,
+            op=hvd.Sum)
 
-        # self.projections = hvd.allreduce(
-        #     self.projections,
-        #     op=hvd.Sum)
-
-        # self.projections_counts = hvd.allreduce(
-        #     self.projections_counts,
-        #     op=hvd.Sum)
-
-        # if hvd.local_rank() == 0:
-        #     self._run_kgc_evaluations()
+        if hvd.local_rank() == 0:
+            self._run_kgc_evaluations()
 
     # ---
