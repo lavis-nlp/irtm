@@ -2,12 +2,8 @@
 # -*- coding: utf-8 -*-
 
 
-from ryn.common import logging
-
 import click
-
-
-log = logging.get('cli')
+import pretty_errors  # noqa: F401
 
 
 @click.group()
@@ -15,6 +11,9 @@ def main():
     """
     RYN - working with texts and graphs
     """
+    from ryn.common import logging
+    log = logging.get('cli')
+
     log.info(' · RYN CLI ·')
     log.info(f'initialized path to ryn: {ryn.ENV.ROOT_DIR}')
 
@@ -22,6 +21,7 @@ def main():
 # registered modules (see their respective __init__.py)
 # not a super nice solution, but it works well
 
+import ryn.common  # noqa: F401, E402
 import ryn.app     # noqa: F401, E402
 import ryn.kgc     # noqa: F401, E402
 import ryn.text    # noqa: F401, E402
