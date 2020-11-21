@@ -112,6 +112,29 @@ class MaxPoolingAggregator_1(Aggregator):
 
 
 @Aggregator.module
+class MaxPoolingDropoutAggregator_1(Aggregator):
+
+    name = 'max dropout 1'
+
+    @dataclass
+    class Config(Base.Config):
+
+        p: float
+
+    def __init__(
+            self, *args,
+            config: 'MaxPoolingDropoutAggregator_1.Config',
+            **kwargs):
+
+        super().__init__(*args, config=config, **kwargs)
+        self.dropout = nn.Dropout(config.p)
+
+    # batch x tokens x text_dims -> batch x text_dims
+    def forward(self, X: torch.Tensor) -> torch.Tensor:
+        return self.dropout(X.max(axis=1).values)
+
+
+@Aggregator.module
 class CLSAggregator_1(Aggregator):
 
     name = 'cls 1'
@@ -119,6 +142,29 @@ class CLSAggregator_1(Aggregator):
     # batch x tokens x text_dims -> batch x text_dims
     def forward(self, X: torch.Tensor) -> torch.Tensor:
         return X[:, 0]
+
+
+@Aggregator.module
+class CLSDropoutAggregator_1(Aggregator):
+
+    name = 'cls dropout 1'
+
+    @dataclass
+    class Config(Base.Config):
+
+        p: float
+
+    def __init__(
+            self, *args,
+            config: 'CLSDropoutAggregator_1.Config',
+            **kwargs):
+
+        super().__init__(*args, config=config, **kwargs)
+        self.dropout = nn.Dropout(config.p)
+
+    # batch x tokens x text_dims -> batch x text_dims
+    def forward(self, X: torch.Tensor) -> torch.Tensor:
+        return self.dropout(X[:, 0])
 
 
 # --- PROJECTION
