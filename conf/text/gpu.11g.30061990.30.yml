@@ -1,0 +1,15 @@
+# 11GB GPU RAM configuration
+# - used for split 30061990 with 30 sentences
+# - tested with GTX 1080 TI
+
+dataloader_train_args:
+  # max sequence length: 287
+  batch_size: 25
+
+dataloader_valid_args:
+  # max sequence length: 285
+  batch_size: 25
+
+dataloader_inductive_args:
+  # max sequence length: 371
+  batch_size: 15

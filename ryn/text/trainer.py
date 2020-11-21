@@ -4,6 +4,7 @@ import ryn
 from ryn.text import data
 from ryn.text import mapper
 from ryn.text.config import Config
+from ryn.common import ryaml
 from ryn.common import helper
 from ryn.common import logging
 
@@ -14,6 +15,7 @@ import pathlib
 import dataclasses
 from datetime import datetime
 
+from typing import List
 from typing import Optional
 
 log = logging.get('text.trainer')
@@ -93,6 +95,7 @@ def _init_trainer(
         callbacks=callbacks,
         deterministic=True,
         resume_from_checkpoint=resume_from_checkpoint,
+        fast_dev_run=debug,
     )
 
     if not debug:
@@ -173,9 +176,11 @@ def train(*, config: Config = None, debug: bool = False):
     out = out_dir / timestamp
 
     if not debug:
-        config = dataclasses.replace(config, out=helper.path(
-            out, create=True,
-            message='writing model to {path_abbrv}'))
+        out = helper.path(
+            config.out or out, create=True,
+            message='writing model to {path_abbrv}')
+
+        config = dataclasses.replace(config, out=out)
 
     logger = _init_logger(
         debug=debug,
@@ -195,7 +200,7 @@ def train(*, config: Config = None, debug: bool = False):
     # hvd is initialized now
 
     if not debug and hvd.local_rank() == 0:
-        config.save(out / 'config.json')
+        dataclasses.replace(config, out=str(out)).save(out / 'config.yml')
 
     _fit(
         trainer=trainer,
@@ -212,126 +217,18 @@ def train(*, config: Config = None, debug: bool = False):
 def train_from_kwargs(
         debug: bool = False,
         offline: bool = False,
-        kgc_model: str = None,
-        text_dataset: str = None,
-        split_dataset: str = None,
+        config: List[str] = None,
+        **kwargs,
 ):
 
     if debug:
-        log.warning('phony debug run!')
+        log.warning('debug run')
 
     if offline:
-        log.warning('offline run!')
+        log.warning('offline run')
 
-    # bert-large-cased: hidden size 1024
-    # bert-base-cased: hidden size 768
-
-    # --------------------
-
-    # 24G 30 ctxs batch sizes:
-    # batch_sizes = dict(
-    #     training=60,
-    #     validation=60,
-    #     inductive=30,
-    # )
-
-    # batch_sizes = dict(
-    #     training=90,
-    #     validation=80,
-    #     inductive=50,
-    # )
-
-    # --------------------
-
-    # 11G 30 ctxs batch size:
-    batch_sizes = dict(
-        training=25,
-        validation=25,
-        inductive=15,
-    )
-
-    # 11G 2 ctxs batch size:
-    # batch_sizes = dict(
-    #     training=40,
-    #     validation=40,
-    #     inductive=25,
-    # )
-
-    # --------------------
-
-    config = Config(
-
-        # this is annoying to be declared explicitly
-        # but simplifies a lot down the line
-        text_encoder='bert-base-cased',
-
-        freeze_text_encoder=False,
-        valid_split=0.7,
-
-        wandb_args=dict(
-            project='ryn-text',
-            log_model=False,
-            offline=offline,
-        ),
-
-        trainer_args=dict(
-            gpus=1,
-            max_epochs=200,
-            fast_dev_run=debug,
-            # check_val_every_n_epoch=10,
-            distributed_backend='horovod',
-            accumulate_grad_batches=10,
-            gradient_clip_val=1,
-        ),
-
-        checkpoint_args=dict(
-            monitor='valid_loss_step',
-            save_top_k=10,
-        ),
-
-        dataloader_train_args=dict(
-            num_workers=0,
-            batch_size=batch_sizes['training'],
-            shuffle=True,
-        ),
-
-        dataloader_valid_args=dict(
-            num_workers=0,
-            batch_size=batch_sizes['validation'],
-        ),
-
-        dataloader_inductive_args=dict(
-            num_workers=0,
-            batch_size=batch_sizes['inductive'],
-        ),
-
-        # ryn upstream
-        kgc_model=kgc_model,
-        text_dataset=text_dataset,
-        split_dataset=split_dataset,
-
-        # pytorch
-        optimizer='adam',
-        optimizer_args=dict(lr=0.00001),
-
-        # ryn models
-        aggregator='cls 1',
-
-        # projector='affine 1',
-        # projector_args=dict(
-        #     input_dims=768,
-        #     output_dims=450,
-        # ),
-
-        projector='mlp 1',
-        projector_args=dict(
-            input_dims=768,
-            hidden_dims=600,
-            output_dims=450),
-
-        comparator='euclidean 1',
-    )
-
+    config_dict = ryaml.load(configs=config, **kwargs)
+    config = Config(**config_dict)
     train(config=config, debug=debug)
 
 

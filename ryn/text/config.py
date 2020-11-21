@@ -1,8 +1,9 @@
 # -*- coding: utf-8 -*-
 
+from ryn.common import ryaml
 from ryn.common import helper
 
-import json
+import yaml
 
 import pathlib
 import dataclasses
@@ -101,11 +102,8 @@ class Config:
             message=f'saving {fname} to {{path_abbrv}}')
 
         with (path / fname).open(mode='w') as fd:
-            json.dump(dataclasses.asdict(self), fd, indent=2, default=str)
+            yaml.dump(dataclasses.asdict(self), fd)
 
     @classmethod
     def load(K, path: Union[str, pathlib.Path]) -> 'Config':
-        with path.open(mode='r') as fd:
-            raw = json.load(fd)
-
-        return K(**raw)
+        return K(**ryaml.load(configs=[path]))
