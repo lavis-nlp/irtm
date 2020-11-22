@@ -4,18 +4,19 @@ import ryn
 from ryn.text import data
 from ryn.text import mapper
 from ryn.text.config import Config
-from ryn.common import ryaml
 from ryn.common import helper
 from ryn.common import logging
 
 import pytorch_lightning as pl
 import horovod.torch as hvd
 
+import os
 import pathlib
 import dataclasses
 from datetime import datetime
 
 from typing import List
+from typing import Union
 from typing import Optional
 
 log = logging.get('text.trainer')
@@ -39,6 +40,7 @@ def _init_logger(
         kgc_model_name: str = None,
         text_encoder_name: str = None,
         text_dataset_name: str = None,
+        resume: bool = None,
 ):
 
     # --
@@ -56,7 +58,8 @@ def _init_logger(
                 name=name,
                 save_dir=str(config.out),
             ),
-            **config.wandb_args, })
+            **config.wandb_args,
+        })
 
         log.info('initializating logger: '
                  f'{config.wandb_args["project"]}/{config.wandb_args["name"]}')
@@ -67,7 +70,7 @@ def _init_logger(
             'text_dataset': text_dataset_name,
             'text_encoder': text_encoder_name,
             'mapper_config': dataclasses.asdict(config),
-        })
+        }, allow_val_change=resume)
 
     else:
         log.info('! no wandb configuration found; falling back to csv')
@@ -188,7 +191,8 @@ def train(*, config: Config = None, debug: bool = False):
         timestamp=timestamp,
         kgc_model_name=rync.kgc_model_name,
         text_encoder_name=datasets.text_encoder,
-        text_dataset_name=datasets.text.name
+        text_dataset_name=datasets.text.name,
+        resume=False,
     )
 
     trainer = _init_trainer(
@@ -227,8 +231,7 @@ def train_from_kwargs(
     if offline:
         log.warning('offline run')
 
-    config_dict = ryaml.load(configs=config, **kwargs)
-    config = Config(**config_dict)
+    config = Config.create(configs=config, **kwargs)
     train(config=config, debug=debug)
 
 
@@ -238,10 +241,11 @@ def resume_from_kwargs(
         checkpoint: str = None,
         debug: bool = None,
         offline: bool = None,
+        **kwargs
 ):
 
     out = helper.path(path, exists=True)
-    config = Config.load(out / 'config.json')
+    config = Config.create(configs=[out / 'config.yml'], **kwargs)
 
     config.out = out
     config.wandb_args.update(dict(
@@ -250,18 +254,26 @@ def resume_from_kwargs(
 
     datasets, rync = _load_from_config(config=config)
 
-    helper.path(
+    checkpoint = helper.path(
         checkpoint, exists=True,
         message='loading model checkpoint {path_abbrv}')
 
     map_model = mapper.Mapper.load_from_checkpoint(
-        checkpoint,
+        str(checkpoint),
         datasets=datasets,
         rync=rync,
         freeze_text_encoder=config.freeze_text_encoder,
     )
 
     timestamp = out.name
+
+    # it is not possible to set resume=... for wandb.init
+    # with pytorch lightning - so we need to fumble around
+    # with os.environ...
+    # (see pytorch_lightning/loggers/wandb.py:127)
+    run_id = checkpoint.parent.parent.name
+    os.environ["WANDB_RUN_ID"] = run_id
+    log.info(f'! resuming from run id: {run_id}')
 
     logger = _init_logger(
         debug=debug,
@@ -270,13 +282,14 @@ def resume_from_kwargs(
         kgc_model_name=rync.kgc_model_name,
         text_encoder_name=datasets.text_encoder,
         text_dataset_name=datasets.text.name,
+        resume=True,
     )
 
     trainer = _init_trainer(
         config=config,
         logger=logger,
         debug=debug,
-        resume_from_checkpoint=checkpoint,
+        resume_from_checkpoint=str(checkpoint),
     )
 
     _fit(

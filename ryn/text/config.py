@@ -14,6 +14,7 @@ from typing import Any
 from typing import Dict
 from typing import Union
 from typing import Optional
+from typing import Sequence
 
 
 @dataclass
@@ -107,3 +108,12 @@ class Config:
     @classmethod
     def load(K, path: Union[str, pathlib.Path]) -> 'Config':
         return K(**ryaml.load(configs=[path]))
+
+    @classmethod
+    @helper.notnone
+    def create(
+            K,
+            configs: Sequence[Union[str, pathlib.Path]] = None,
+            **kwargs
+    ) -> 'Config':
+        return K(**ryaml.load(configs=configs, **kwargs))
