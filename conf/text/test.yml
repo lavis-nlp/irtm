@@ -2,56 +2,26 @@
 #          RYN TEXT MAPPER CONFIGURATION
 #    -----------------------------------------
 #
-# - use this file as a template to copy your own configuration
-# - you can provide multiple config files which are merged
-# - this is nice if you want to change gpus: simply mixin your batch sizes
+#        see the baseline.yml for comments
 
-# how many entities to retain to calculate the geometric
-# open-world validation loss for hyperparameter tuning
 valid_split: 0.7
-
-#
-#  TRAINING
-#
-
-# weights and biases configuration
-# see https://docs.wandb.com/integrations/lightning#wandblogger
-# the following attributes are set by ryn:
-#   - name
-#   - save_dir
-# the following attributes are set by ryn but can be overwritten:
-#   - offline
 wandb_args:
   project: ryn-text-proto
   log_model: False
 
-# pytorch lightning trainer
-# see https://pytorch-lightning.readthedocs.io/en/latest/trainer.html#trainer-class-api
-# the following attributes are set by ryn:
-#   - logger
-#   - profiler
-#   - weights_save_path
-#   - default_root_dir
-#   - deterministic
-#   - callbacks
-#   - fast_dev_run
 trainer_args:
   gpus: 1
-  max_epochs: 2
+  max_epochs: 1
   fast_dev_run: False
   distributed_backend: horovod
   accumulate_grad_batches: 1
   gradient_clip_val: 1
   log_every_n_steps: 1
 
-# checkpointing
-# see https://pytorch-lightning.readthedocs.io/en/latest/generated/pytorch_lightning.callbacks.ModelCheckpoint.html?highlight=ModelCheckpoint
 checkpoint_args:
   monitor: valid_loss_step
   save_top_k: 10
 
-# dataloader
-# batch sizes are set by gpu*.yml files
 dataloader_train_args:
   num_workers: 0
   shuffle: True
@@ -66,15 +36,9 @@ optimizer: adam
 optimizer_args:
   lr: 0.000005
 
-#
-#  MAPPER
-#
-
-# huggingface transformer implementation
 text_encoder: bert-base-cased
 freeze_text_encoder: False
 
-# look inside ryn/text/mapper.py to find module names
 aggregator: cls dropout 1
 aggregator_args:
   p: 0.5
@@ -85,16 +49,4 @@ projector_args:
   output_dims: 450
 
 comparator: euclidean 1
-
-#
-#  ADDITIONAL INFO
-#
-
-# you can also set the following things
-# (I usually provide them via command line args)
-# split_dataset: data/split/oke.fb15k237_30061990_50
-# kgc_model: data/kgc/oke.fb15k237_30061990_50/DistMult-2020-11-04_13:53:09.607026/trial-0063
-# text_dataset: data/text/data/oke.fb15k237_30061990_50/contexts-v7-enwiki-20200920-100-500.db/bert-base-cased.30.768.marked
-
-# the following items are set by ryn
-# out: /data/...
+out: data/test/{text_dataset}/
