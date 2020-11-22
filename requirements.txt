@@ -12,6 +12,7 @@ streamlit
 configobj
 gitpython
 transformers
+pretty-errors
 pytorch-lightning
 
 # make sure horovod is re-compiled if environment is re-built

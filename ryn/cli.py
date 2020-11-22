@@ -3,7 +3,14 @@
 
 
 import click
-import pretty_errors  # noqa: F401
+import pretty_errors
+
+
+pretty_errors.configure(
+    filename_display=pretty_errors.FILENAME_EXTENDED,
+    lines_after=2,
+    line_number_first=True,
+)
 
 
 @click.group()
