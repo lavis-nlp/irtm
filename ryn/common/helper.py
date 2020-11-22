@@ -111,7 +111,7 @@ class Cache:
 
     def __call__(self, *args, path: Union[str, pathlib.Path], **kwargs):
         path = pathlib.Path(path)
-        cache = path / self.filename
+        cache = path / self.filename.format(**kwargs)
         name = f'{path.name}/{cache.name}'
 
         if not self.invalid and cache.is_file():
