@@ -13,6 +13,33 @@ from typing import Dict
 from typing import Sequence
 
 
+def join(d1, d2):
+    for k, v in d2.items():
+        if v is None:
+            continue
+
+        if k not in d1 or type(v) is not dict:
+            d1[k] = v
+
+        else:
+            join(d1[k], d2[k])
+
+
+def dic_from_kwargs(**kwargs):
+    sep = '__'
+    dic = defaultdict(dict)
+
+    for k, v in kwargs.items():
+        if sep in k:
+            # only two levels deep
+            k_head, k_tail = k.split(sep)
+            dic[k_head][k_tail] = v
+        else:
+            dic[k] = v
+
+    return dic
+
+
 def load(*, configs: Sequence[str], **kwargs):
     """
 
@@ -29,37 +56,17 @@ def load(*, configs: Sequence[str], **kwargs):
 
     # first join all yaml configs into one dictionary;
     # later dictionaries overwrite earlier ones
-
-    def _update(d1, d2):
-        for k, v in d2.items():
-            if v is None:
-                continue
-
-            if k not in d1 or type(v) is not dict:
-                d1[k] = v
-
-            else:
-                _update(d1[k], d2[k])
-
     result = {}
     for path in map(as_path, configs):
         with path.open(mode='r') as fd:
-            _update(result, yaml.load(fd))
+            join(result, yaml.load(fd))
 
     # then join all kwargs;
     # this is practically the reverse of what
     # print_click_arguments does
-    sep = '__'
-    dic = defaultdict(dict)
-    for k, v in kwargs.items():
-        if sep in k:
-            # only two levels deep
-            k_head, k_tail = k.split(sep)
-            dic[k_head][k_tail] = v
-        else:
-            dic[k] = v
+    dic = dic_from_kwargs(**kwargs)
+    join(result, dic)
 
-    _update(result, dic)
     return result
 
 
