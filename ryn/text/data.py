@@ -638,12 +638,13 @@ class Dataset:
             '',
         ))
 
-        for part in (
-                self.cw_train,
-                self.ow_valid,
-                self.ow_test):
+        for name, part in (
+                ('train', self.train),
+                ('transductive', self.transductive),
+                ('inductive', self.inductive),
+                ('test', self.test)):
 
-            buf += textwrap.indent(str(part), '  ') + '\n'
+            buf += textwrap.indent(f'[{name.upper()}] {part}', '  ') + '\n'
 
         return buf
 
@@ -668,8 +669,13 @@ class Dataset:
 
     @classmethod
     @helper.notnone
-    @helper.cached('.cached.text.data.dataset.pkl')
-    def create(K, path: Union[str, pathlib.Path], ratio: float = None):
+    @helper.cached('.cached.text.data.dataset.{seed}.{ratio}.pkl')
+    def create(
+            K,
+            path: Union[str, pathlib.Path],
+            ratio: float = None,
+            seed: int = None):
+        helper.seed(seed)
 
         path = pathlib.Path(path)
         if not path.is_dir():
@@ -844,7 +850,6 @@ class Datasets:
             *,
             config: Config = None,
             entities: Set[int] = None,
-            text_part: Part = None,
             split_dataset: split.Dataset = None,
             split_part: split.Part = None,
             **kwargs,  # e2id and r2id
@@ -863,7 +868,6 @@ class Datasets:
     def _create_triples_factories(
             *,
             config: Config = None,
-            text_dataset: Dataset = None,
             keen_dataset: keen.Dataset = None,
             split_dataset: split.Dataset = None,
     ):
@@ -883,7 +887,6 @@ class Datasets:
 
         transductive = Datasets._create_triples(
             config=config,
-            text_part=text_dataset.train | text_dataset.transductive,
             split_dataset=split_dataset,
             # if you use cw_valid also, your transductive evaluation
             # will also run on entities never seen while training
@@ -896,7 +899,6 @@ class Datasets:
 
         inductive = Datasets._create_triples(
             config=config,
-            text_part=text_dataset.inductive,
             split_dataset=split_dataset,
             split_part=split_part_ow,
             entities=split_part_ow.owe,
@@ -974,6 +976,7 @@ class Datasets:
         text_dataset = Dataset.create(
             path=config.text_dataset,
             ratio=config.valid_split,
+            seed=split_dataset.cfg.seed
         )
 
         text = Datasets._create_dataloader(
@@ -983,7 +986,6 @@ class Datasets:
 
         kgc = Datasets._create_triples_factories(
             config=config,
-            text_dataset=text_dataset,
             keen_dataset=keen_dataset,
             split_dataset=split_dataset,
         )
