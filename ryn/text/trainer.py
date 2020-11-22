@@ -15,8 +15,8 @@ import pathlib
 import dataclasses
 from datetime import datetime
 
+from typing import Dict
 from typing import List
-from typing import Union
 from typing import Optional
 
 log = logging.get('text.trainer')
@@ -166,24 +166,26 @@ def train(*, config: Config = None, debug: bool = False):
 
     # --
 
+    out_fmt = config.out or (
+        f'{ryn.ENV.TEXT_DIR}/mapper/'
+        '{text_dataset}/{text_database}/'
+        '{text_model}/{kgc_model}')
+
+    out = helper.path(out_fmt.format(**dict(
+            text_dataset=datasets.text.dataset,
+            text_database=datasets.text.database,
+            text_model=datasets.text.model,
+            kgc_model=rync.kgc_model_name,
+    )))
+
     timestamp = datetime.now().strftime('%Y.%m.%d-%H.%M.%S')
+    out = helper.path(
+        out/timestamp, create=True,
+        message='writing model to {path_abbrv}')
 
-    out_dir = pathlib.Path((
-        ryn.ENV.TEXT_DIR / 'mapper' /
-        datasets.text.dataset /
-        datasets.text.database /
-        datasets.text.model /
-        rync.kgc_model_name
-    ))
+    config = dataclasses.replace(config, out=out)
 
-    out = out_dir / timestamp
-
-    if not debug:
-        out = helper.path(
-            config.out or out, create=True,
-            message='writing model to {path_abbrv}')
-
-        config = dataclasses.replace(config, out=out)
+    # --
 
     logger = _init_logger(
         debug=debug,

@@ -45,6 +45,9 @@ trainer_args:
 
 # checkpointing
 # see https://pytorch-lightning.readthedocs.io/en/latest/generated/pytorch_lightning.callbacks.ModelCheckpoint.html?highlight=ModelCheckpoint
+#
+# possible metrics:
+
 checkpoint_args:
   monitor: valid_loss_step
   save_top_k: 10
@@ -91,9 +94,20 @@ comparator: euclidean 1
 
 # you can also set the following things
 # (I usually provide them via command line args)
+
 # split_dataset: data/split/oke.fb15k237_30061990_50
 # kgc_model: data/kgc/oke.fb15k237_30061990_50/DistMult-2020-11-04_13:53:09.607026/trial-0063
 # text_dataset: data/text/data/oke.fb15k237_30061990_50/contexts-v7-enwiki-20200920-100-500.db/bert-base-cased.30.768.marked
 
-# the following items are set by ryn
-# out: /data/...
+# directory to write to:
+#   defaults to:
+#     ryn.ENV.TEXT_DIR /
+#     mapper /
+#     <text_dataset> /   # e.g. oke.fb15k237_30061990_50
+#     <text_database> /  # e.g. contexts-v7-enwiki-20200920-100-500.db
+#     <text_model> /     # e.g. bert-base-cased
+#     <kgc_model>        # e.g. distmult
+# there is always a timestamp appended to the path
+# you can reference these variables in your own format:
+
+# out: my/own/directory/{split_dataset}/{kgc_model}/
