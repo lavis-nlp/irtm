@@ -24,8 +24,16 @@ def text():
 
 
 @text.command()
-@click.argument('dataset')
-def cli(dataset: str = None):
+@click.option(
+    '--dataset', type=str, required=True,
+    help='path to ryn.text.data.Dataset')
+@click.option(
+    '--ratio', type=float, required=True,
+    help='train/valid ratio for mapper (usually 0.7)')
+@click.option(
+    '--seed', type=int, required=True,
+    help='seed for a deterministic split')
+def cli(dataset: str = None, ratio: float = None, seed: int = None):
     """
 
     Open an interactive python shell
@@ -33,7 +41,7 @@ def cli(dataset: str = None):
     dataset: path to text.data.Dataset directory
 
     """
-    ds = data.Dataset.load(path=dataset)
+    ds = data.Dataset.create(path=dataset, ratio=ratio, seed=seed)
     print(f'\n{ds}')
 
     banner = '\n'.join((
