@@ -499,6 +499,7 @@ class Mapper(pl.LightningModule):
 
         loss = self.loss(projected, target)
         self.log('valid_loss_step', loss)
+        self.log_dict(self._last_kgc_metrics)
 
         return loss
 
@@ -509,28 +510,6 @@ class Mapper(pl.LightningModule):
             triples: data.Triples = None):
 
         assert kind == 'transductive' or kind == 'inductive'
-
-        def _result_dict(name=None, result=None):
-
-            def _item(key, val):
-                return f'{name}.{key}', torch.Tensor([val])
-
-            return dict((k, v.item()) for k, v in (
-                _item('hits@10',
-                      result.metrics['hits_at_k']['both']['avg'][10]),
-                _item('hits@5',
-                      result.metrics['hits_at_k']['both']['avg'][5]),
-                _item('hits@1',
-                      result.metrics['hits_at_k']['both']['avg'][1]),
-                _item('mr',
-                      result.metrics['mean_rank']['both']['avg']),
-                _item('mrr',
-                      result.metrics['mean_reciprocal_rank']['both']['avg']),
-                _item('amr',
-                      result.metrics['adjusted_mean_rank']['both']),
-            ))
-
-        # --
 
         log.info(
             f'running {kind} evaluation'
@@ -572,23 +551,37 @@ class Mapper(pl.LightningModule):
 
         # -- /embedding shenanigans
 
+        def _result_dict(name=None, result=None):
+
+            def _item(key, val):
+                return f'{name}.{key}', torch.Tensor([val])
+
+            return dict((k, v.item()) for k, v in (
+                _item('hits@10',
+                      result.metrics['hits_at_k']['both']['avg'][10]),
+                _item('hits@5',
+                      result.metrics['hits_at_k']['both']['avg'][5]),
+                _item('hits@1',
+                      result.metrics['hits_at_k']['both']['avg'][1]),
+                _item('mr',
+                      result.metrics['mean_rank']['both']['avg']),
+                _item('mrr',
+                      result.metrics['mean_reciprocal_rank']['both']['avg']),
+                _item('amr',
+                      result.metrics['adjusted_mean_rank']['both']),
+            ))
+
         result_metrics = _result_dict(
             name=kind,
             result=evaluation_result
         )
-
-        # I still don't geht how self.log works...
-        # it won't update any metrics of the logger
-        #  - can this be used for early stopping then?
-        self.log_dict(result_metrics)
-        self.logger.log_metrics(result_metrics)
 
         log.info(
             f'! finished {kind} evaluation with'
             f' {evaluation_result.metrics["hits_at_k"]["both"]["avg"][10]:2.3f} hits@10'  # noqa: E501
             f' and {evaluation_result.metrics["mean_reciprocal_rank"]["both"]["avg"]:2.3f} MRR')  # noqa: E501
 
-        return evaluation_result
+        return result_metrics
 
     def _run_kgc_evaluations(self):
         assert hvd.local_rank() == 0
@@ -618,12 +611,38 @@ class Mapper(pl.LightningModule):
 
         # --
 
-        self._run_kgc_evaluation(
+        transductive_result = self._run_kgc_evaluation(
             kind='transductive', triples=self.datasets.kgc_transductive)
-        self._run_kgc_evaluation(
+        inductive_result = self._run_kgc_evaluation(
             kind='inductive', triples=self.datasets.kgc_inductive)
 
-        log.info('finished on validation epoch end hook')
+        log.info('updating kgc metrics')
+        self._last_kgc_metrics = {
+            **transductive_result,
+            **inductive_result,
+        }
+
+    def _mock_kgc_results(self):
+        log.info('mocking kgc evaluation results')
+
+        phony_results = {
+            f'{name}.{key}': torch.Tensor([val])
+            for name, triples in (
+                    ('inductive',
+                     self.datasets.kgc_inductive.factory.triples),
+                    ('transductive',
+                     self.datasets.kgc_transductive.factory.triples))
+            for key, val in ({
+                    'hits@10': 0.0,
+                    'hits@5': 0.0,
+                    'hits@1': 0.0,
+                    'mr': len(triples) // 2,
+                    'mrr': 0.0,
+                    'amr': 1.0,
+            }).items()
+        }
+
+        return phony_results
 
     #
     # HOOKS
@@ -686,6 +705,13 @@ class Mapper(pl.LightningModule):
     def on_train_epoch_end(self, outputs):
         self._has_trained = True
 
+    def on_validation_epoch_start(self):
+        # have not figured out to do it any other way
+        try:
+            self._last_kgc_metrics
+        except AttributeError:
+            self._last_kgc_metrics = self._mock_kgc_results()
+
     def on_validation_epoch_end(self):
         """
 
@@ -697,8 +723,6 @@ class Mapper(pl.LightningModule):
             (self.global_step == 0 and not self.trainer.fast_dev_run),
             (not self._has_trained)
         )):
-            # TODO run kgc evaluatIon as sanity check and for wandb
-            # unless it's fast_dev_run
             log.info('skipping kgc evaluation')
             return
 
