@@ -34,7 +34,11 @@ def _init_logging():
 
             opt = cp['handler_fileHandler']
             (fname, ) = eval(opt['args'])
-            fname = ryn.ENV.ROOT_DIR / fname
+
+            if ENV_RYN_LOG_OUT in os.environ:
+                fname = pathlib.Path(os.environ[ENV_RYN_LOG_OUT])
+            else:
+                fname = ryn.ENV.ROOT_DIR / fname
 
             fname.parent.mkdir(exist_ok=True, parents=True)
             fname.touch(exist_ok=True)
