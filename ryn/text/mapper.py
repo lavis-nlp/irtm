@@ -427,7 +427,7 @@ class Mapper(pl.LightningModule):
     def _update_projections(self, entities=None, projected=None):
         for e, v in zip(entities, projected):
             idx = self.datasets.ryn2keen[e]
-            self.projections[idx] = v
+            self.projections[idx] += v
             self.projections_counts[idx] += 1
 
     # ---
