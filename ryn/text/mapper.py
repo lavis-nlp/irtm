@@ -36,7 +36,6 @@ TQDM_KWARGS = dict(
     ncols=80,
     leave=False,
     disable=True,
-    # disable=hvd.size() != 1,
 )
 
 
@@ -393,6 +392,8 @@ class Mapper(pl.LightningModule):
         self.keen = rync.kgc_model.keen
         rync.kgc_model.freeze()
 
+        # buffer
+
         # this is a entities x kgc_dims buffer to
         # accumulate projections throughout training and
         # validation; they are later used for kgc validation
@@ -425,14 +426,14 @@ class Mapper(pl.LightningModule):
     #   SELF REALISATION
     #
 
-    def _init_projections(self):
+    def init_projections(self):
         log.info('clearing projections buffer')
         self.projections.zero_()
         self.projections_counts.zero_()
 
     @helper.notnone
-    def _update_projections(self, entities=None, projected=None):
-        for e, v in zip(entities, projected):
+    def update_projections(self, entities=None, projected=None):
+        for e, v in zip(entities, projected.detach()):
             idx = self.datasets.ryn2keen[e]
             self.projections[idx] += v
             self.projections_counts[idx] += 1
@@ -499,7 +500,7 @@ class Mapper(pl.LightningModule):
 
         # batch x kge_dims
         projected = self.forward(sentences=sentences)
-        self._update_projections(entities=entities, projected=projected)
+        self.update_projections(entities=entities, projected=projected)
 
         # batch x kge_dims
         target = self.forward_entities(entities)
@@ -511,12 +512,16 @@ class Mapper(pl.LightningModule):
         return loss
 
     @helper.notnone
-    def _run_kgc_evaluation(
+    def run_kgc_evaluation(
             self, *,
             kind: str = None,
             triples: data.Triples = None):
 
-        assert kind == 'transductive' or kind == 'inductive'
+        global TQDM_KWARGS
+        if hvd.size == 1:
+            TQDM_KWARGS['disable'] = False
+
+        assert kind in ['transductive', 'inductive', 'test']
 
         log.info(
             f'running {kind} evaluation'
@@ -601,7 +606,7 @@ class Mapper(pl.LightningModule):
         gen = self.datasets.text_inductive
         for (sentences, entities) in tqdm(gen, **TQDM_KWARGS):
             projected = self.forward(sentences=sentences.to(self.device))
-            self._update_projections(entities=entities, projected=projected)
+            self.update_projections(entities=entities, projected=projected)
 
             if self.trainer.fast_dev_run:
                 break
@@ -618,9 +623,9 @@ class Mapper(pl.LightningModule):
 
         # --
 
-        transductive_result = self._run_kgc_evaluation(
+        transductive_result = self.run_kgc_evaluation(
             kind='transductive', triples=self.datasets.kgc_transductive)
-        inductive_result = self._run_kgc_evaluation(
+        inductive_result = self.run_kgc_evaluation(
             kind='inductive', triples=self.datasets.kgc_inductive)
 
         log.info('updating kgc metrics')
@@ -651,26 +656,29 @@ class Mapper(pl.LightningModule):
 
         return phony_results
 
-    #
-    # HOOKS
-    #
-
-    def on_fit_start(self):
-        log.info('running custom pre-training sanity check')
-
+    def run_memcheck(self, test: bool = False):
         # removing some memory because some cuda
         # allocated memory is not visible
         device_properties = torch.cuda.get_device_properties(self.device)
-        total_memory = int(device_properties.total_memory * 0.8)
+        total_memory = int(device_properties.total_memory * 0.9)
         log.info(
             f'checking {device_properties.name} with around '
             f' ~{total_memory // 1024**3}GB')
 
-        for loader in (
-                self.datasets.text_train,
-                self.datasets.text_valid,
-                self.datasets.text_inductive,
-        ):
+        if not test:
+            trained = self.training
+            self.train()
+
+        loaders = [
+            self.datasets.text_train,
+            self.datasets.text_valid,
+            self.datasets.text_inductive,
+        ]
+
+        if test:
+            loaders.append(self.datasets.text_test)
+
+        for loader in loaders:
             # moving some noise with the shape of the largest
             # possible sample through the model to detect oom problems
 
@@ -687,8 +695,8 @@ class Mapper(pl.LightningModule):
             sentences = sentences.to(self.device)
             self.forward(sentences=sentences)
 
-            cached_memory = torch.cuda.memory_cached(self.device)
-            memory_usage = (cached_memory / total_memory) * 100
+            res_memory = torch.cuda.memory_reserved(self.device)
+            memory_usage = (res_memory / total_memory) * 100
             log.info(
                 f'! {loader.dataset.name} is using'
                 f' ~{int(memory_usage)}% memory')
@@ -696,7 +704,17 @@ class Mapper(pl.LightningModule):
             del sentences
             torch.cuda.empty_cache()
 
-        log.info('finished custom pre-training check')
+        log.info('finished memory check')
+        if not test and not trained:
+            self.eval()
+
+    #
+    # HOOKS
+    #
+
+    def on_fit_start(self):
+        log.info('running custom pre-training sanity check')
+        self.run_memcheck()
 
     def on_train_epoch_start(self):
         log.info(
@@ -704,7 +722,7 @@ class Mapper(pl.LightningModule):
             f' (step={self.global_step});'
             f' running on {self.device}')
 
-        self._init_projections()
+        self.init_projections()
 
         assert not self.keen.entity_embeddings.weight.requires_grad
         assert not self.keen.relation_embeddings.weight.requires_grad

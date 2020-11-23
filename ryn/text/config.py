@@ -55,6 +55,7 @@ class Config:
     dataloader_train_args: Dict[str, Any]
     dataloader_valid_args: Dict[str, Any]
     dataloader_inductive_args: Dict[str, Any]
+    dataloader_test_args: Dict[str, Any]
 
     # pytorch optimizer
     optimizer: str
@@ -107,7 +108,7 @@ class Config:
 
     @classmethod
     def load(K, path: Union[str, pathlib.Path]) -> 'Config':
-        return K(**ryaml.load(configs=[path]))
+        return K.create(configs=[path])
 
     @classmethod
     @helper.notnone
