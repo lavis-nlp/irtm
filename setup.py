@@ -2,7 +2,7 @@ from distutils.core import setup
 
 setup(
     name='RYN',
-    version='0.2',
+    version='0.3',
     packages=['ryn'],
     license='MIT',
     long_description=open('README.md').read(),

@@ -3,7 +3,7 @@
 import pathlib
 
 
-__version__ = '0.2'
+__version__ = '0.3'
 
 
 _root_path = pathlib.Path(__file__).parent.parent
