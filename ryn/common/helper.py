@@ -147,13 +147,17 @@ def path(
         name: Union[str, pathlib.Path],
         create: bool = False,
         exists: bool = False,
+        is_file: bool = False,
         message: str = None,
 ) -> pathlib.Path:
     # TODO describe message (see kgc.config)
     path = pathlib.Path(name)
 
-    if exists and not path.exists():
+    if (exists or is_file) and not path.exists():
         raise RynError(f'{path} does not exist')
+
+    if is_file and not path.is_file():
+        raise RynError(f'{path} exists but is not a file')
 
     if create:
         path.mkdir(exist_ok=True, parents=True)
