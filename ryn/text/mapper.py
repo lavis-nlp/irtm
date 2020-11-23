@@ -402,9 +402,16 @@ class Mapper(pl.LightningModule):
         )
 
         log.info(f'register "projections" buffer of shape {shape}')
-        self.register_buffer('projections', torch.zeros(shape))
-        self.register_buffer('projections_counts', torch.zeros(shape[0]))
-        self._init_projections()
+
+        self.register_buffer(
+            'projections',
+            torch.zeros(shape, requires_grad=False))
+
+        self.register_buffer(
+            'projections_counts',
+            torch.zeros(shape[0], requires_grad=False))
+
+        self.init_projections()
 
     def configure_optimizers(self):
         optim = self.rync.Optimizer(
@@ -473,7 +480,7 @@ class Mapper(pl.LightningModule):
 
         # batch x kge_dims
         projected = self.forward(sentences=sentences)
-        self._update_projections(entities=entities, projected=projected)
+        self.update_projections(entities=entities, projected=projected)
 
         # batch x kge_dims
         target = self.forward_entities(entities)
