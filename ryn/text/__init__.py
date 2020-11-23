@@ -3,6 +3,7 @@
 from ryn.cli import main
 from ryn.text import data
 from ryn.text import trainer
+from ryn.text import evaluator
 from ryn.graphs import split
 from ryn.common import logging
 
@@ -179,3 +180,23 @@ def resume(**kwargs):
     Resume training of a mapper
     """
     trainer.resume_from_kwargs(**kwargs)
+
+
+@text.command()
+@click.option(
+    '--path', type=str, required=True,
+    help='path to model directory')
+@click.option(
+    '--checkpoint', type=str, required=True,
+    help='path to model checkpoint')
+@click.option(
+    '-c', '--config', type=str, multiple=True,
+    help='one or more configuration files')
+@click.option(
+    '--debug', is_flag=True,
+    help='run everything fast, do not write anything')
+def evaluate(**kwargs):
+    """
+    Evaluate a mapper on the test split
+    """
+    evaluator.evaluate_from_kwargs(**kwargs)

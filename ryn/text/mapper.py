@@ -343,6 +343,19 @@ class Mapper(pl.LightningModule):
     """
 
     @property
+    def debug(self) -> bool:
+        try:
+            return self.trainer.fast_dev_run
+        except AttributeError:
+            return self._debug
+
+    @debug.setter
+    def debug(self, val):
+        assert not self.trainer, 'use lightning to control debug'
+        assert val is True or val is False
+        self._debug = val
+
+    @property
     def lr(self):
         return self._lr
 
@@ -366,6 +379,8 @@ class Mapper(pl.LightningModule):
             freeze_text_encoder: bool = False):
 
         super().__init__()
+        # overwritten by self.trainer.fast_dev_run if present
+        self._debug = False
 
         # this flag exists to prevent the kgc
         # evaluation to be run after the model
@@ -518,7 +533,7 @@ class Mapper(pl.LightningModule):
             triples: data.Triples = None):
 
         global TQDM_KWARGS
-        if hvd.size == 1:
+        if hvd.size() == 1:
             TQDM_KWARGS['disable'] = False
 
         assert kind in ['transductive', 'inductive', 'test']
@@ -547,7 +562,7 @@ class Mapper(pl.LightningModule):
             new_weights).to(self.device)
 
         mapped_triples = triples.factory.mapped_triples
-        if self.trainer.fast_dev_run:
+        if self.debug:
             mapped_triples = mapped_triples[:100]  # choice arbitrary
 
         evaluation_result = kgc_trainer.evaluate(
@@ -608,7 +623,7 @@ class Mapper(pl.LightningModule):
             projected = self.forward(sentences=sentences.to(self.device))
             self.update_projections(entities=entities, projected=projected)
 
-            if self.trainer.fast_dev_run:
+            if self.debug:
                 break
 
         # calculate averages over all projections
@@ -745,7 +760,7 @@ class Mapper(pl.LightningModule):
 
         """
         if any((
-            (self.global_step == 0 and not self.trainer.fast_dev_run),
+            (self.global_step == 0 and not self.debug),
             (not self._has_trained)
         )):
             log.info('skipping kgc evaluation')

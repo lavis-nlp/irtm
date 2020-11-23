@@ -15,7 +15,6 @@ import pathlib
 import dataclasses
 from datetime import datetime
 
-from typing import Dict
 from typing import List
 from typing import Optional
 
@@ -23,7 +22,7 @@ log = logging.get('text.trainer')
 
 
 @helper.notnone
-def _load_from_config(*, config: Config = None):
+def load_from_config(*, config: Config = None):
     upstream_models = data.Models.load(config=config)
 
     datasets = data.Datasets.load(config=config, models=upstream_models)
@@ -151,7 +150,7 @@ def _fit(
 def train(*, config: Config = None, debug: bool = False):
     log.info('lasciate ogni speranza o voi che entrate')
 
-    datasets, rync = _load_from_config(config=config)
+    datasets, rync = load_from_config(config=config)
 
     map_model = mapper.Mapper(
         datasets=datasets,
@@ -254,7 +253,7 @@ def resume_from_kwargs(
         offline=offline,
     ))
 
-    datasets, rync = _load_from_config(config=config)
+    datasets, rync = load_from_config(config=config)
 
     checkpoint = helper.path(
         checkpoint, exists=True,
