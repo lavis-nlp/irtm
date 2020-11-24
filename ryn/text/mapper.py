@@ -535,7 +535,7 @@ class Mapper(pl.LightningModule):
         projected = self.forward(sentences=sentences)
         self.update_projections(entities=entities, projected=projected)
 
-        if batch_idx == self._ow_validation_batches - 1:
+        if batch_idx == self._ow_validation_batches:
             self._run_kgc_evaluations()
 
     def validation_step(self, batch, batch_idx: int, dataloader_idx: int):
@@ -648,6 +648,7 @@ class Mapper(pl.LightningModule):
     def _run_kgc_evaluations(self):
         if self.global_step == 0 and not self.debug:
             log.info('skipping kgc evaluation')
+            self.log_dict(self._mock_kgc_results())
             return
 
         log.info(
@@ -664,9 +665,8 @@ class Mapper(pl.LightningModule):
             op=hvd.Sum)
 
         if hvd.local_rank() != 0:
-            log.info(
-                f'[{hvd.local_rank()}] servant process skips kgc evaluation'
-            )
+            log.info(f'[{hvd.local_rank()}] servant skips kgc evaluation')
+            self.log_dict(self._mock_kgc_results())
             return
 
         # calculate averages over all projections
@@ -692,6 +692,28 @@ class Mapper(pl.LightningModule):
             **transductive_result,
             **inductive_result,
         })
+
+    def _mock_kgc_results(self):
+        log.info('mocking kgc evaluation results')
+
+        phony_results = {
+            f'{name}.{key}': torch.Tensor([val])
+            for name, triples in (
+                    ('inductive',
+                     self.data.kgc.inductive.factory.triples),
+                    ('transductive',
+                     self.data.kgc.transductive.factory.triples))
+            for key, val in ({
+                    'hits@10': 0.0,
+                    'hits@5': 0.0,
+                    'hits@1': 0.0,
+                    'mr': len(triples) // 2,
+                    'mrr': 0.0,
+                    'amr': 1.0,
+            }).items()
+        }
+
+        return phony_results
 
     def run_memcheck(self, test: bool = False):
         # removing some memory because some cuda
@@ -749,7 +771,8 @@ class Mapper(pl.LightningModule):
     #
 
     def on_fit_start(self):
-        self._ow_validation_batches = len(self.data.val_dataloader()[2])
+        self._ow_validation_batches = int(
+            len(self.data.val_dataloader()[2]) / hvd.size())
 
         log.info('running custom pre-training sanity check')
         self.run_memcheck()
