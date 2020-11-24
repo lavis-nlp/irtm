@@ -8,7 +8,7 @@ from ryn.text.config import Config
 from ryn.common import helper
 from ryn.common import logging
 
-import torch as t
+import torch
 import torch.optim
 from torch import nn
 import transformers as tf
@@ -19,7 +19,6 @@ import horovod.torch as hvd
 # from pykeen.nn import emb as keen_emb
 
 import yaml
-from tqdm import tqdm
 
 from itertools import repeat
 from dataclasses import dataclass
@@ -263,7 +262,7 @@ OPTIMIZER = {
 @dataclass
 class Components:
 
-    Optimizer: t.optim.Optimizer
+    Optimizer: torch.optim.Optimizer
     optimizer_args: Dict[str, Any]
 
     # text encoder
@@ -368,30 +367,26 @@ class Mapper(pl.LightningModule):
         return self._rync
 
     @property
-    def datasets(self) -> data.Datasets:
-        return self._datasets
+    def data(self) -> data.DataModule:
+        return self._data
 
     @helper.notnone
     def __init__(
             self,
+            data=None,  # data.DataModule
             rync: Components = None,
-            datasets: data.Datasets = None,
             freeze_text_encoder: bool = False):
 
         super().__init__()
+
         # overwritten by self.trainer.fast_dev_run if present
         self._debug = False
 
-        # this flag exists to prevent the kgc
-        # evaluation to be run after the model
-        # was restored from a checkpoint
-        self._has_trained = False
-
         # properties
 
+        self._data = data
         self._rync = rync
         self._lr = self.rync.optimizer_args['lr']
-        self._datasets = datasets
 
         # parameters
 
@@ -407,13 +402,10 @@ class Mapper(pl.LightningModule):
         self.keen = rync.kgc_model.keen
         rync.kgc_model.freeze()
 
-        # buffer
+        # -- projections
 
-        # this is a entities x kgc_dims buffer to
-        # accumulate projections throughout training and
-        # validation; they are later used for kgc validation
         shape = (
-            len(self.datasets.ryn2keen),
+            len(self.data.kgc.ryn2keen),
             self.keen.entity_embeddings.embedding_dim,
         )
 
@@ -449,7 +441,7 @@ class Mapper(pl.LightningModule):
     @helper.notnone
     def update_projections(self, entities=None, projected=None):
         for e, v in zip(entities, projected.detach()):
-            idx = self.datasets.ryn2keen[e]
+            idx = self.data.kgc.ryn2keen[e]
             self.projections[idx] += v
             self.projections_counts[idx] += 1
 
@@ -502,16 +494,22 @@ class Mapper(pl.LightningModule):
         target = self.forward_entities(entities)
 
         loss = self.loss(projected, target)
-        self.log('train_loss_step', loss)
 
+        self.log('train_loss_step', loss)
         return loss
 
     #
     #   VALIDATION
     #
 
-    def validation_step(self, batch, batch_idx: int):
-        sentences, entities = batch
+    @helper.notnone
+    def _geometric_validation_step(
+            self,
+            sentences=None,
+            entities=None,
+            batch_idx=None,
+            dataloader_idx=None,
+    ):
 
         # batch x kge_dims
         projected = self.forward(sentences=sentences)
@@ -520,17 +518,50 @@ class Mapper(pl.LightningModule):
         # batch x kge_dims
         target = self.forward_entities(entities)
 
-        loss = self.loss(projected, target)
-        self.log('valid_loss_step', loss)
-        self.log_dict(self._last_kgc_metrics)
+        # batch
+        losses = self.loss(projected, target)
 
-        return loss
+        # partition losses into inductive and transductive
+        kind = 'transductive' if dataloader_idx == 0 else 'inductive'
+        self.log_dict({f'{kind}.valid_loss_step': losses})
+
+    @helper.notnone
+    def _kgc_validation_step(
+            self,
+            sentences=None,
+            entities=None,
+            batch_idx=None,
+    ):
+        projected = self.forward(sentences=sentences)
+        self.update_projections(entities=entities, projected=projected)
+
+        if batch_idx == self._ow_validation_batches - 1:
+            self._run_kgc_evaluations()
+
+    def validation_step(self, batch, batch_idx: int, dataloader_idx: int):
+        sentences, entities = batch
+
+        if dataloader_idx == 0 or dataloader_idx == 1:
+            self._geometric_validation_step(
+                sentences=sentences,
+                entities=entities,
+                batch_idx=batch_idx,
+                dataloader_idx=dataloader_idx,
+            )
+        elif dataloader_idx == 2:
+            self._kgc_validation_step(
+                sentences=sentences,
+                entities=entities,
+                batch_idx=batch_idx,
+            )
+        else:
+            assert False
 
     @helper.notnone
     def run_kgc_evaluation(
             self, *,
             kind: str = None,
-            triples: data.Triples = None):
+            triples=None):  # data.Triples
 
         global TQDM_KWARGS
         if hvd.size() == 1:
@@ -550,12 +581,16 @@ class Mapper(pl.LightningModule):
         original_weights = self.keen.entity_embeddings.weight.cpu()
 
         new_weights = torch.zeros((
-            len(self.datasets.ryn2keen),
+            len(self.data.kgc.ryn2keen),
             original_weights.shape[1],
         )).to(self.device)
 
         new_weights[:original_weights.shape[0]] = original_weights
-        idxs = list(map(lambda i: self.datasets.ryn2keen[i], triples.entities))
+        idxs = list(map(
+            lambda i: self.data.kgc.ryn2keen[i],
+            triples.entities
+        ))
+
         new_weights[idxs] = self.projections[idxs]
 
         self.keen.entity_embeddings = Embedding(
@@ -611,20 +646,28 @@ class Mapper(pl.LightningModule):
         return result_metrics
 
     def _run_kgc_evaluations(self):
-        assert hvd.local_rank() == 0
+        if self.global_step == 0 and not self.debug:
+            log.info('skipping kgc evaluation')
+            return
 
-        # TODO assert id mappings are equal for cw entities
-        # and relations (self.rync.kgc_model.keen_dataset.training)
-        log.info('running kgc evaluations')
+        log.info(
+            f'[{hvd.local_rank()}] gathered'
+            f' {int(self.projections_counts.sum().item())}'
+            ' projections')
 
-        # generate projections for the inductive scenario
-        gen = self.datasets.text_inductive
-        for (sentences, entities) in tqdm(gen, **TQDM_KWARGS):
-            projected = self.forward(sentences=sentences.to(self.device))
-            self.update_projections(entities=entities, projected=projected)
+        self.projections = hvd.allreduce(
+            self.projections,
+            op=hvd.Sum)
 
-            if self.debug:
-                break
+        self.projections_counts = hvd.allreduce(
+            self.projections_counts,
+            op=hvd.Sum)
+
+        if hvd.local_rank() != 0:
+            log.info(
+                f'[{hvd.local_rank()}] servant process skips kgc evaluation'
+            )
+            return
 
         # calculate averages over all projections
         mask = self.projections_counts != 0
@@ -639,37 +682,16 @@ class Mapper(pl.LightningModule):
         # --
 
         transductive_result = self.run_kgc_evaluation(
-            kind='transductive', triples=self.datasets.kgc_transductive)
+            kind='transductive', triples=self.data.kgc.transductive)
         inductive_result = self.run_kgc_evaluation(
-            kind='inductive', triples=self.datasets.kgc_inductive)
+            kind='inductive', triples=self.data.kgc.inductive)
 
         log.info('updating kgc metrics')
-        self._last_kgc_metrics = {
+
+        self.log_dict({
             **transductive_result,
             **inductive_result,
-        }
-
-    def _mock_kgc_results(self):
-        log.info('mocking kgc evaluation results')
-
-        phony_results = {
-            f'{name}.{key}': torch.Tensor([val])
-            for name, triples in (
-                    ('inductive',
-                     self.datasets.kgc_inductive.factory.triples),
-                    ('transductive',
-                     self.datasets.kgc_transductive.factory.triples))
-            for key, val in ({
-                    'hits@10': 0.0,
-                    'hits@5': 0.0,
-                    'hits@1': 0.0,
-                    'mr': len(triples) // 2,
-                    'mrr': 0.0,
-                    'amr': 1.0,
-            }).items()
-        }
-
-        return phony_results
+        })
 
     def run_memcheck(self, test: bool = False):
         # removing some memory because some cuda
@@ -685,13 +707,12 @@ class Mapper(pl.LightningModule):
             self.train()
 
         loaders = [
-            self.datasets.text_train,
-            self.datasets.text_valid,
-            self.datasets.text_inductive,
+            self.data.train_dataloader(),
+            self.data.val_dataloader()[0],
+            self.data.val_dataloader()[1],
+            self.data.val_dataloader()[2],
+            self.data.test_dataloader(),
         ]
-
-        if test:
-            loaders.append(self.datasets.text_test)
 
         for loader in loaders:
             # moving some noise with the shape of the largest
@@ -728,6 +749,8 @@ class Mapper(pl.LightningModule):
     #
 
     def on_fit_start(self):
+        self._ow_validation_batches = len(self.data.val_dataloader()[2])
+
         log.info('running custom pre-training sanity check')
         self.run_memcheck()
 
@@ -741,45 +764,3 @@ class Mapper(pl.LightningModule):
 
         assert not self.keen.entity_embeddings.weight.requires_grad
         assert not self.keen.relation_embeddings.weight.requires_grad
-
-    def on_train_epoch_end(self, outputs):
-        self._has_trained = True
-
-    def on_validation_epoch_start(self):
-        # have not figured out to do it any other way
-        try:
-            self._last_kgc_metrics
-        except AttributeError:
-            self._last_kgc_metrics = self._mock_kgc_results()
-
-    def on_validation_epoch_end(self):
-        """
-
-        Transductive and inductive knowledge graph completion
-        with projected entity mappings (see Mapper docstring)
-
-        """
-        if any((
-            (self.global_step == 0 and not self.debug),
-            (not self._has_trained)
-        )):
-            log.info('skipping kgc evaluation')
-            return
-
-        log.info(
-            f'[{hvd.local_rank()}] gathered'
-            f' {int(self.projections_counts.sum().item())}'
-            ' projections')
-
-        self.projections = hvd.allreduce(
-            self.projections,
-            op=hvd.Sum)
-
-        self.projections_counts = hvd.allreduce(
-            self.projections_counts,
-            op=hvd.Sum)
-
-        if hvd.local_rank() == 0:
-            self._run_kgc_evaluations()
-
-    # ---

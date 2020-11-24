@@ -26,7 +26,7 @@ log = logging.get('text.evaluator')
 def evaluate(
         *,
         model: mapper.Mapper = None,
-        datasets: data.Datasets = None,
+        data: data.DataModule = None,
         out: Union[str, pathlib.Path] = None,
         debug: bool = None,
 ):

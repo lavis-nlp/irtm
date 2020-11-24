@@ -6,12 +6,8 @@
 dataloader_train_args:
   batch_size: 25
 
-# max sequence length: 285
-dataloader_valid_args:
-  batch_size: 25
-
 # max sequence length: 371
-dataloader_inductive_args:
+dataloader_valid_args:
   batch_size: 15
 
 # max sequence length: 237

@@ -31,6 +31,7 @@ import torch
 import torch.utils.data as torch_data
 from torch.nn.utils.rnn import pad_sequence
 from pykeen import triples as keen_triples
+import pytorch_lightning as pl
 import transformers as tf
 
 from typing import IO
@@ -462,37 +463,32 @@ class Part:
         _deep_check(self.id2sents, self.id2idxs)
 
     @helper.notnone
-    def split_by_entity(self, *, ratio: float = None):
-        n = int(len(self.id2idxs) * ratio)
+    def split_by_entity(
+            self, *,
+            ratio: float = None,
+            retained_entities: Set[int] = None):
+
+        n = int(len(self.id2idxs) * ratio) - len(retained_entities)
+        candidates = list(set(self.id2ent) - retained_entities)
+        a, b = candidates[:n], candidates[n:]
 
         log.info(
             f'split {self.name} by entity at '
             f'{n}/{len(self.id2idxs)} ({ratio=})')
 
-        def _split_dic(dic: Dict) -> Tuple[Dict]:
-            lis = list(dic.items())
-            return dict(lis[:n]), dict(lis[n:])
+        def _dic_subset(dic, keys):
+            return {k: v for k, v in dic.items() if k in keys}
 
-        kwargs_split = dict(
-            id2toks=_split_dic(self.id2toks),
-            id2idxs=_split_dic(self.id2idxs),
-            id2sents=_split_dic(self.id2sents),
-        )
+        def _split_by_entities(entities):
+            return dict(
+                id2toks=_dic_subset(self.id2toks, entities),
+                id2idxs=_dic_subset(self.id2idxs, entities),
+                id2sents=_dic_subset(self.id2sents, entities),
+                id2ent=_dic_subset(self.id2ent, entities)
+            )
 
-        kwargs_a = {k: v[0] for k, v in kwargs_split.items()}
-        kwargs_b = {k: v[1] for k, v in kwargs_split.items()}
-
-        def _refine_kwargs(kwargs, suffix: str):
-            return {
-                **kwargs,
-                **dict(
-                    name=self.name + suffix,
-                    id2ent={e: self.id2ent[e] for e in kwargs['id2idxs']}
-                )
-            }
-
-        p1 = Part(**_refine_kwargs(kwargs_a, '-entity_split_a'))
-        p2 = Part(**_refine_kwargs(kwargs_b, '-entity_split_b'))
+        p1 = Part(name='-entity_split_a', **_split_by_entities(a))
+        p2 = Part(name='-entity_split_b', **_split_by_entities(b))
 
         p1.check()
         p2.check()
@@ -590,7 +586,7 @@ class Part:
 
 
 @dataclass
-class Dataset:
+class TextDataset:
     """
 
     Tokenized text data ready to be used by a model
@@ -618,10 +614,24 @@ class Dataset:
     max_sentence_count: int
     max_token_count: int
 
-    train: Part
-    inductive: Part
-    transductive: Part
-    test: Part
+    # --- closed world part of ryn.split.Dataset
+
+    # for training projections and transductive
+    # knowledge graph completion
+    cw_train: Part
+    # validate projections for known entities
+    # but unknown contexts
+    cw_transductive: Part
+    # validate projections for unknown entities
+    # and unknown contexts
+    cw_inductive: Part
+
+    # --- open world part of ryn.split.Dataset
+
+    # for inductive knowledge graph completion
+    ow_valid: Part
+    # final test set for inductive kgc
+    ow_test: Part
 
     @property
     def name(self) -> str:
@@ -638,34 +648,24 @@ class Dataset:
             '',
         ))
 
-        for name, part in (
-                ('train', self.train),
-                ('transductive', self.transductive),
-                ('inductive', self.inductive),
-                ('test', self.test)):
+        cw = set(self.cw_train.id2ent)
 
-            buf += textwrap.indent(f'[{name.upper()}] {part}', '  ') + '\n'
+        for name, part in (
+                ('cw.train', self.cw_train),
+                ('cw.transductive', self.cw_transductive),
+                ('cw.inductive', self.cw_inductive),
+                ('ow.valid', self.ow_valid),
+                ('ow.test', self.ow_test)):
+
+            ow = set(part.id2ent) - cw
+            cw |= ow
+
+            buf += textwrap.indent(
+                f'[{name.upper()}] {part}\n'
+                f'  open world entities: {len(ow)}',
+                '  ') + '\n'
 
         return buf
-
-    def check(self):
-        log.info(f'running self check for {self.name}')
-
-        def _disjoint(a, b):
-            return not (len(set(a) & set(b)) > 0)
-
-        assert _disjoint(self.train.id2ent, self.inductive.id2ent)
-        assert _disjoint(self.train.id2toks, self.inductive.id2toks)
-        assert _disjoint(self.train.id2idxs, self.inductive.id2idxs)
-        assert _disjoint(self.train.id2sents, self.inductive.id2sents)
-
-        def _sub(a, b):
-            return set(a).issubset(set(b))
-
-        assert _sub(self.transductive.id2ent, self.train.id2ent)
-        assert _sub(self.transductive.id2toks, self.train.id2toks)
-        assert _sub(self.transductive.id2idxs, self.train.id2idxs)
-        assert _sub(self.transductive.id2sents, self.train.id2sents)
 
     @classmethod
     @helper.notnone
@@ -673,8 +673,10 @@ class Dataset:
     def create(
             K,
             path: Union[str, pathlib.Path],
+            retained_entities: Set[int] = None,
             ratio: float = None,
             seed: int = None):
+
         helper.seed(seed)
 
         path = pathlib.Path(path)
@@ -685,13 +687,21 @@ class Dataset:
             info = json.load(fd)
 
         # create splits
-        train = Part.load(name='cw.train', path=path)
-        train, transductive = train.split_text_contexts(ratio=ratio)
-        inductive = Part.load(name='ow.valid', path=path)
-        test = Part.load(name='ow.test', path=path)
-        # inductive, test = inductive.split_by_entity(ratio=ratio)
 
-        self = Dataset(
+        cw_train = Part.load(name='cw.train', path=path)
+
+        # first set aside some entities to measure
+        # inductive validation loss
+        cw_train, cw_inductive = cw_train.split_by_entity(
+            ratio=ratio,
+            retained_entities=retained_entities
+        )
+
+        # and then split the text contexts for the remaining
+        # closed world entities to measure transductive projection loss
+        cw_train, cw_transductive = cw_train.split_text_contexts(ratio=ratio)
+
+        self = TextDataset(
             ratio=ratio,
 
             # update
@@ -706,22 +716,117 @@ class Dataset:
             max_token_count=info['tokens'],
 
             # create
-            train=train,
-            inductive=inductive,
-            transductive=transductive,
-            test=test,
+            cw_train=cw_train,
+            cw_transductive=cw_transductive,
+            cw_inductive=cw_inductive,
+
+            ow_valid=Part.load(name='ow.valid', path=path),
+            ow_test=Part.load(name='ow.test', path=path),
         )
 
-        self.check()
-
-        log.info(f'obtained {self.name}')
+        log.info(f'obtained {self}')
         return self
+
+
+@dataclass
+class Triples:
+
+    entities: Set[int]
+    factory: keen_triples.TriplesFactory
+
+    @classmethod
+    def create(
+            K, *,
+            split_dataset: split.Dataset = None,
+            split_part: split.Part = None,
+            **kwargs,  # e2id and r2id
+    ):
+        # kgc
+        triples = keen.triples_to_ndarray(split_dataset.g, split_part.triples)
+        factory = keen_triples.TriplesFactory(triples=triples, **kwargs)
+
+        return K(
+            entities=split_part.owe,
+            factory=factory,
+        )
+
+
+@dataclass
+class KGCDataset:
+
+    ryn2keen: Dict[int, int]
+    inductive: Triples
+    transductive: Triples
+    test: Triples
+
+    @classmethod
+    def create(
+            K, *,
+            config: Config = None,
+            keen_dataset: keen.Dataset = None,
+            split_dataset: split.Dataset = None,
+    ):
+        # create triple factories usable by pykeen
+        # re-use original id-mapping and extend this with own ids
+        relation_to_id = keen_dataset.relation_to_id
+        entity_to_id = keen_dataset.entity_to_id
+        owe = (split_dataset.ow_valid | split_dataset.ow_test).owe
+
+        # add owe entities to the entity mapping
+        entity_to_id.update({
+            keen.e2s(split_dataset.g, e): idx
+            for e, idx in zip(owe, count(len(entity_to_id)))
+        })
+
+        log.info(f'added {len(owe)} ow entities to mapping')
+
+        transductive = Triples.create(
+            split_dataset=split_dataset,
+            split_part=split_dataset.cw_train | split_dataset.cw_valid,
+            entity_to_id=entity_to_id,
+            relation_to_id=relation_to_id,
+        )
+
+        inductive = Triples.create(
+            split_dataset=split_dataset,
+            split_part=split_dataset.ow_valid,
+            entity_to_id=entity_to_id,
+            relation_to_id=relation_to_id,
+        )
+
+        test = Triples.create(
+            split_dataset=split_dataset,
+            split_part=split_dataset.ow_test,
+            entity_to_id=entity_to_id,
+            relation_to_id=relation_to_id,
+        )
+
+        log.info('created datasets triples factories')
+
+        ryn2keen = {}
+        for factory in (transductive.factory, inductive.factory, test.factory):
+            ryn2keen.update({
+                int(name.split(':', maxsplit=1)[0]): keen_id
+                for name, keen_id in factory.entity_to_id.items()
+            })
+
+        log.info(f'initialized ryn2keen mapping with {len(ryn2keen)} ids')
+
+        return K(
+            ryn2keen=ryn2keen,
+            transductive=transductive,
+            inductive=inductive,
+            test=test
+        )
 
 
 # --- for mapper training
 
 
 class TorchDataset(torch_data.Dataset):
+
+    text_dataset: TextDataset
+    kgc_dataset: KGCDataset
 
     @property
     def name(self):
@@ -816,210 +921,127 @@ class Models:
         )
 
 
-@dataclass
-class Triples:
-
-    entities: Set[int]
-    factory: keen_triples.TriplesFactory
-
-
-@dataclass
-class Datasets:
+class DataModule(pl.LightningDataModule):
 
     @property
-    def text_encoder(self):
-        return self.text.model.lower()
+    def config(self) -> Config:
+        return self._config
 
-    text: Dataset
-    keen: keen.Dataset
-    split: split.Dataset
+    @property
+    def split(self) -> split.Dataset:
+        return self._split
 
-    # mapper training (closed world)
-    text_train: torch_data.DataLoader
-    text_valid: torch_data.DataLoader
-    text_inductive: torch_data.DataLoader
-    text_test: torch_data.DataLoader
+    @property
+    def text(self) -> TextDataset:
+        return self._text
 
-    # kgc for mapper validation (closed/open world)
-    ryn2keen: Dict[int, int]
-    kgc_inductive: Triples
-    kgc_transductive: Triples
-    kgc_test: Triples
+    @property
+    def keen(self) -> keen.Dataset:
+        return self._keen
 
-    @staticmethod
+    @property
+    def kgc(self) -> KGCDataset:
+        return self._kgc
+
     @helper.notnone
-    def _create_triples(
-            *,
-            split_dataset: split.Dataset = None,
-            split_part: split.Part = None,
-            **kwargs,  # e2id and r2id
-    ):
-        # kgc
-        triples = keen.triples_to_ndarray(split_dataset.g, split_part.triples)
-        factory = keen_triples.TriplesFactory(triples=triples, **kwargs)
-
-        return Triples(
-            entities=split_part.owe,
-            factory=factory,
-        )
-
-    @staticmethod
-    @helper.notnone
-    def _create_triples_factories(
-            *,
+    def __init__(
+            self, *,
             config: Config = None,
-            keen_dataset: keen.Dataset = None,
-            split_dataset: split.Dataset = None,
+            keen_dataset=None,
+            split_dataset=None,
     ):
-        # create triple factories usable by pykeen
-        # re-use original id-mapping and extend this with own ids
-        relation_to_id = keen_dataset.relation_to_id
-        entity_to_id = keen_dataset.entity_to_id
-        owe = (split_dataset.ow_valid | split_dataset.ow_test).owe
+        super().__init__()
 
-        # add owe entities to the entity mapping
-        entity_to_id.update({
-            keen.e2s(split_dataset.g, e): idx
-            for e, idx in zip(owe, count(len(entity_to_id)))
-        })
+        self._config = config
+        self._split = split_dataset
+        self._keen = keen_dataset
 
-        log.info(f'added {len(owe)} ow entities to mapping')
-
-        # if you use cw_valid also, your transductive evaluation
-        # will also run on entities never seen while training
-        # split_part=split_dataset.cw_train | split_dataset.cw_valid,
-        transductive = Datasets._create_triples(
-            split_dataset=split_dataset,
-            split_part=split_dataset.cw_train,
-            entity_to_id=entity_to_id,
-            relation_to_id=relation_to_id,
+        self._text = TextDataset.create(
+            path=self._config.text_dataset,
+            retained_entities=self.split.concepts,
+            ratio=self._config.valid_split,
+            seed=self.split.cfg.seed
         )
 
-        inductive = Datasets._create_triples(
-            split_dataset=split_dataset,
-            split_part=split_dataset.ow_valid,
-            entity_to_id=entity_to_id,
-            relation_to_id=relation_to_id,
-        )
-
-        test = Datasets._create_triples(
-            split_dataset=split_dataset,
-            split_part=split_dataset.ow_test,
-            entity_to_id=entity_to_id,
-            relation_to_id=relation_to_id,
-        )
-
-        log.info('created datasets triples factories')
-
-        ryn2keen = {}
-        for factory in (transductive.factory, inductive.factory, test.factory):
-            ryn2keen.update({
-                int(name.split(':', maxsplit=1)[0]): keen_id
-                for name, keen_id in factory.entity_to_id.items()
-            })
-
-        log.info(f'initialized ryn2keen mapping with {len(ryn2keen)} ids')
-        return transductive, inductive, test, ryn2keen
-
-    @staticmethod
-    @helper.notnone
-    def _create_dataloader(
-            *,
-            config: Config = None,
-            text_dataset: Dataset = None
-    ):
-
-        # training and validation operate on reference embeddings
-        # of the kgc model and thus no inductive part can be used here
-
-        training_set = TorchDataset(
-            name='training',
-            part=text_dataset.train,
-        )
-        train = torch_data.DataLoader(
-            training_set,
-            collate_fn=TorchDataset.collate_fn,
-            **config.dataloader_train_args,
-        )
-
-        validation_set = TorchDataset(
-            name='validation',
-            part=text_dataset.transductive,
-        )
-        valid = torch_data.DataLoader(
-            validation_set,
-            collate_fn=TorchDataset.collate_fn,
-            **config.dataloader_valid_args,
-        )
-
-        test_set = TorchDataset(
-            name='test',
-            part=text_dataset.test,
-        )
-        test = torch_data.DataLoader(
-            test_set,
-            collate_fn=TorchDataset.collate_fn,
-            **config.dataloader_test_args,
-        )
-
-        # the inductive dataloader is used to create projections
-        # for inductive kgc in the kgc validation
-
-        inductive_set = TorchDataset(
-            name='inductive',
-            part=text_dataset.inductive,
-        )
-        inductive = torch_data.DataLoader(
-            inductive_set,
-            collate_fn=TorchDataset.collate_fn,
-            **config.dataloader_inductive_args
-        )
-
-        log.info('created train/valid/inductive/test dataloaders')
-        return train, valid, inductive, test
-
-    @classmethod
-    @helper.notnone
-    def load(K, config: Config = None, models: Models = None):
-        log.info('loading datasets')
-
-        keen_dataset = models.kgc_model.keen_dataset
-        split_dataset = models.kgc_model.split_dataset
-
-        text_dataset = Dataset.create(
-            path=config.text_dataset,
-            ratio=config.valid_split,
-            seed=split_dataset.cfg.seed
-        )
-
-        text = Datasets._create_dataloader(
+        self._kgc = KGCDataset.create(
             config=config,
-            text_dataset=text_dataset,
+            keen_dataset=self.keen,
+            split_dataset=self.split,
         )
 
-        kgc = Datasets._create_triples_factories(
-            config=config,
-            keen_dataset=keen_dataset,
-            split_dataset=split_dataset,
+    def prepare_data(self):
+        # called once on master for multi-gpu setups
+        # do not set any state here
+        pass
+
+    def setup(self, arg):
+
+        self._train_set = TorchDataset(
+            name='cw.train',
+            part=self.text.cw_train,
         )
 
-        text_train, text_valid, text_inductive, text_test = text
-        kgc_transductive, kgc_inductive, kgc_test, ryn2keen = kgc
-
-        return K(
-            text=text_dataset,
-            keen=keen_dataset,
-            split=split_dataset,
-
-            # mapper
-            text_train=text_train,
-            text_valid=text_valid,
-            text_inductive=text_inductive,
-            text_test=text_test,
-
-            # kgc
-            ryn2keen=ryn2keen,
-            kgc_inductive=kgc_inductive,
-            kgc_transductive=kgc_transductive,
-            kgc_test=kgc_test,
+        self._valid_sets = (
+            TorchDataset(
+                name='cw.valid.transductive',
+                part=self.text.cw_transductive,
+            ),
+            TorchDataset(
+                name='cw.valid.inductive',
+                part=self.text.cw_inductive,
+            ),
+            TorchDataset(
+                name='ow.valid',
+                part=self.text.ow_valid,
+            ),
         )
+
+        self._test_set = TorchDataset(
+            name='ow.test',
+            part=self.text.ow_test,
+        )
+
+    # FOR LIGHTNING
+
+    def train_dataloader(self) -> torch_data.DataLoader:
+        log.info('requesting train dataloader')
+        return torch_data.DataLoader(
+            self._train_set,
+            collate_fn=TorchDataset.collate_fn,
+            **self.config.dataloader_train_args,
+        )
+
+    def val_dataloader(self) -> torch_data.DataLoader:
+        log.info('requesting val dataloader')
+        return [torch_data.DataLoader(
+            dataset,
+            collate_fn=TorchDataset.collate_fn,
+            **self.config.dataloader_valid_args,
+        ) for dataset in self._valid_sets]
+
+    def test_dataloader(self) -> torch_data.DataLoader:
+        # see evaluator.py
+        log.info('requesting ow test dataloader')
+        return torch_data.DataLoader(
+            self._test_set,
+            collate_fn=TorchDataset.collate_fn,
+            **self.config.dataloader_test_args,
+        )
+
+    # FOR KGC
+
+    @property
+    def ryn2keen(self) -> Dict[int, int]:
+        return self._ryn2keen
+
+    @property
+    def kgc_transductive(self) -> Triples:
+        return self._kgc_inductive
+
+    @property
+    def kgc_inductive(self) -> Triples:
+        return self._kgc_inductive
+
+    @property
+    def kgc_test(self) -> Triples:
+        return self._kgc_inductive

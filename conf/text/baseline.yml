@@ -10,7 +10,7 @@
 # open-world validation loss for hyperparameter tuning
 # (for deterministic splits, the seed of the provided
 # split_dataset is re-used)
-valid_split: 0.7
+valid_split: 0.9
 
 #
 #  TRAINING
@@ -76,7 +76,7 @@ dataloader_train_args:
 dataloader_valid_args:
   num_workers: 0
 
-dataloader_inductive_args:
+dataloader_test_args:
   num_workers: 0
 
 optimizer: adam

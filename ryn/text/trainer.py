@@ -25,10 +25,18 @@ log = logging.get('text.trainer')
 def load_from_config(*, config: Config = None):
     upstream_models = data.Models.load(config=config)
 
-    datasets = data.Datasets.load(config=config, models=upstream_models)
-    rync = mapper.Components.create(config=config, models=upstream_models)
+    datamodule = data.DataModule(
+        config=config,
+        keen_dataset=upstream_models.kgc_model.keen_dataset,
+        split_dataset=upstream_models.kgc_model.split_dataset,
+    )
 
-    return datasets, rync
+    rync = mapper.Components.create(
+        config=config,
+        models=upstream_models
+    )
+
+    return datamodule, rync
 
 
 @helper.notnone
@@ -124,14 +132,14 @@ def _fit(
         *,
         trainer: pl.Trainer = None,
         model: pl.LightningModule = None,
-        datasets: data.Datasets = None,
+        datamodule: data.DataModule = None,
         out: pathlib.Path = None,
         debug: bool = None
 ):
     log.info('pape satan, pape satan aleppe')
 
     try:
-        trainer.fit(model, datasets.text_train, datasets.text_valid)
+        trainer.fit(model, datamodule=datamodule)
 
     except Exception as exc:
         log.error(f'{exc}')
@@ -150,18 +158,15 @@ def _fit(
 def train(*, config: Config = None, debug: bool = False):
     log.info('lasciate ogni speranza o voi che entrate')
 
-    datasets, rync = load_from_config(config=config)
+    datamodule, rync = load_from_config(config=config)
 
     map_model = mapper.Mapper(
-        datasets=datasets,
         rync=rync,
+        data=datamodule,
         freeze_text_encoder=config.freeze_text_encoder,
     )
 
-    pl.seed_everything(datasets.split.cfg.seed)
-
-    assert config.text_encoder == datasets.text.model
-    assert datasets.text.ratio == config.valid_split, 'old cache file?'
+    pl.seed_everything(datamodule.split.cfg.seed)
 
     # --
 
@@ -171,9 +176,9 @@ def train(*, config: Config = None, debug: bool = False):
         '{text_model}/{kgc_model}')
 
     out = helper.path(out_fmt.format(**dict(
-            text_dataset=datasets.text.dataset,
-            text_database=datasets.text.database,
-            text_model=datasets.text.model,
+            text_dataset=datamodule.text.dataset,
+            text_database=datamodule.text.database,
+            text_model=datamodule.text.model,
             kgc_model=rync.kgc_model_name,
     )))
 
@@ -191,8 +196,8 @@ def train(*, config: Config = None, debug: bool = False):
         config=config,
         timestamp=timestamp,
         kgc_model_name=rync.kgc_model_name,
-        text_encoder_name=datasets.text_encoder,
-        text_dataset_name=datasets.text.name,
+        text_encoder_name=config.text_encoder,
+        text_dataset_name=datamodule.text.name,
         resume=False,
     )
 
@@ -210,7 +215,7 @@ def train(*, config: Config = None, debug: bool = False):
     _fit(
         trainer=trainer,
         model=map_model,
-        datasets=datasets,
+        datamodule=datamodule,
         out=out,
         debug=debug,
     )

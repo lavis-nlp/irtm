@@ -4,7 +4,7 @@
 #
 #        see the baseline.yml for comments
 
-valid_split: 0.7
+valid_split: 0.9
 wandb_args:
   project: ryn-text-proto
   log_model: False
@@ -19,7 +19,7 @@ trainer_args:
   log_every_n_steps: 1
 
 checkpoint_args:
-  monitor: inductive.hits@10
+  monitor: inductive.hits@10/dataloader_idx_2
   save_top_k: 2
 
 dataloader_train_args:
@@ -29,7 +29,7 @@ dataloader_train_args:
 dataloader_valid_args:
   num_workers: 0
 
-dataloader_inductive_args:
+dataloader_test_args:
   num_workers: 0
 
 optimizer: adam
