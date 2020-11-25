@@ -40,6 +40,8 @@ from typing import List
 from typing import Dict
 from typing import Union
 from typing import Tuple
+from typing import Optional
+
 
 log = logging.get('text.data')
 
@@ -901,18 +903,25 @@ class Models:
             K, *,
             config: Config = None, ):
 
-        text_encoder = tf.BertModel.from_pretrained(
-            config.text_encoder,
-            cache_dir=ryn.ENV.CACHE_DIR / 'lib.transformers')
+        text_encoder = None
+        tokenizer = None
+        if config.text_encoder:
+            text_encoder = tf.BertModel.from_pretrained(
+                config.text_encoder,
+                cache_dir=ryn.ENV.CACHE_DIR / 'lib.transformers')
 
-        tokenizer = Tokenizer.load(config.text_dataset)
+            tokenizer = Tokenizer.load(config.text_dataset)
 
-        log.info(f'resizing token embeddings to {len(tokenizer.base)}')
-        text_encoder.resize_token_embeddings(len(tokenizer.base))
+            log.info(f'resizing token embeddings to {len(tokenizer.base)}')
+            text_encoder.resize_token_embeddings(len(tokenizer.base))
 
-        kgc_model = keen.Model.load(
-            config.kgc_model,
-            split_dataset=config.split_dataset)
+        # --
+
+        kgc_model = None
+        if config.kgc_model and config.split_dataset:
+            kgc_model = keen.Model.load(
+                config.kgc_model,
+                split_dataset=config.split_dataset)
 
         return K(
             tokenizer=tokenizer,
@@ -932,15 +941,15 @@ class DataModule(pl.LightningDataModule):
         return self._split
 
     @property
-    def text(self) -> TextDataset:
+    def text(self) -> Optional[TextDataset]:
         return self._text
 
     @property
-    def keen(self) -> keen.Dataset:
+    def keen(self) -> Optional[keen.Dataset]:
         return self._keen
 
     @property
-    def kgc(self) -> KGCDataset:
+    def kgc(self) -> Optional[KGCDataset]:
         return self._kgc
 
     @helper.notnone
@@ -954,20 +963,25 @@ class DataModule(pl.LightningDataModule):
 
         self._config = config
         self._split = split_dataset
-        self._keen = keen_dataset
 
-        self._text = TextDataset.create(
-            path=self._config.text_dataset,
-            retained_entities=self.split.concepts,
-            ratio=self._config.valid_split,
-            seed=self.split.cfg.seed
-        )
+        self._text = None
+        if self.config.text_dataset:
+            self._text = TextDataset.create(
+                path=self.config.text_dataset,
+                retained_entities=self.split.concepts,
+                ratio=self.config.valid_split,
+                seed=self.split.cfg.seed
+            )
 
-        self._kgc = KGCDataset.create(
-            config=config,
-            keen_dataset=self.keen,
-            split_dataset=self.split,
-        )
+        self._keen = None
+        self._kgc = None
+        if keen_dataset:
+            self._keen = keen_dataset
+            self._kgc = KGCDataset.create(
+                config=config,
+                keen_dataset=self.keen,
+                split_dataset=self.split,
+            )
 
     def prepare_data(self):
         # called once on master for multi-gpu setups

@@ -1,0 +1,120 @@
+#
+#          RYN TEXT MAPPER CONFIGURATION
+#    -----------------------------------------
+#
+# - use this file as a template to copy your own configuration
+# - you can provide multiple config files which are merged
+# - this is nice if you want to change gpus: simply mixin your batch sizes
+
+# how many entities to retain to calculate the geometric
+# open-world validation loss for hyperparameter tuning
+# (for deterministic splits, the seed of the provided
+# split_dataset is re-used)
+valid_split: null
+
+#
+#  TRAINING
+#
+
+# weights and biases configuration
+# see https://docs.wandb.com/integrations/lightning#wandblogger
+# the following attributes are set by ryn:
+#   - name
+#   - save_dir
+# the following attributes are set by ryn but can be overwritten:
+#   - offline
+wandb_args:
+  project: null
+  log_model: False
+
+trainer_args:
+  gpus: null
+  max_epochs: null
+  fast_dev_run: null
+  distributed_backend: null
+  accumulate_grad_batches: null
+  gradient_clip_val: null
+
+# checkpointing
+# see https://pytorch-lightning.readthedocs.io/en/latest/generated/pytorch_lightning.callbacks.ModelCheckpoint.html?highlight=ModelCheckpoint
+#
+# possible metrics:
+#    valid_loss_step
+#    transductive.hits@1
+#    transductive.hits@5
+#    transductive.hits@10
+#    transductive.mr
+#    transductive.mrr
+#    transductive.amr
+#    inductive.hits@1
+#    inductive.hits@5
+#    inductive.hits@10
+#    inductive.mr
+#    inductive.mrr
+#    inductive.amr
+#
+checkpoint_args:
+  monitor: null
+  save_top_k: null
+
+# dataloader
+# batch sizes are set by gpu*.yml files
+dataloader_train_args:
+  batch_size: null
+  num_workers: null
+  shuffle: True
+
+dataloader_valid_args:
+  batch_size: null
+  num_workers: null
+
+dataloader_test_args:
+  batch_size: null
+  num_workers: null
+
+optimizer: null
+optimizer_args:
+  lr: null
+
+#
+#  MAPPER
+#
+
+# huggingface transformer implementation
+text_encoder: null
+freeze_text_encoder: null
+
+# look inside ryn/text/mapper.py to find module names
+aggregator: null
+projector: null
+comparator: null
+
+#
+#  ADDITIONAL INFO
+#
+
+# you can also set the following things
+# (I usually provide them via command line args)
+
+split_dataset: null
+# split_dataset: data/split/oke.fb15k237_30061990_50
+
+kgc_model: null
+# kgc_model: data/kgc/oke.fb15k237_30061990_50/DistMult-2020-11-04_13:53:09.607026/trial-0063
+
+text_dataset: null
+# text_dataset: data/text/data/oke.fb15k237_30061990_50/contexts-v7-enwiki-20200920-100-500.db/bert-base-cased.30.768.marked
+
+
+out: null
+# directory to write to:
+#   defaults to:
+#     ryn.ENV.TEXT_DIR /
+#     mapper /
+#     <text_dataset> /   # e.g. oke.fb15k237_30061990_50
+#     <text_database> /  # e.g. contexts-v7-enwiki-20200920-100-500.db
+#     <text_model> /     # e.g. bert-base-cased
+#     <kgc_model>        # e.g. distmult
+# there is always a timestamp appended to the path
+# you can reference these variables in your own format:
+# out: my/own/directory/{split_dataset}/{kgc_model}/

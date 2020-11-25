@@ -200,3 +200,26 @@ def evaluate(**kwargs):
     Evaluate a mapper on the test split
     """
     evaluator.evaluate_from_kwargs(**kwargs)
+
+
+@text.command()
+@click.option(
+    '-c', '--config', type=str, multiple=True,
+    help='one or more configuration files')
+@click.option(
+    '--kgc-model', type=str, required=True,
+    help='path to ryn.kgc.keen.Model')
+@click.option(
+    '--split-dataset', type=str, required=True,
+    help='path to ryn.graphs.split.Dataset')
+@click.option(
+    '--out', type=str, required=True,
+    help='where to write the results to')
+@click.option(
+    '--debug', is_flag=True,
+    help='run everything fast, do not write anything')
+def evaluate_baseline(**kwargs):
+    """
+    Evaluate a mapper where all projections are [1., ...]
+    """
+    evaluator.evaluate_baseline(**kwargs)

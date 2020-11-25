@@ -15,7 +15,7 @@ from typing import Sequence
 
 def join(d1, d2):
     for k, v in d2.items():
-        if v is None:
+        if k in d1 and v is None:
             continue
 
         if k not in d1 or type(v) is not dict:

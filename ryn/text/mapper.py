@@ -76,6 +76,9 @@ class Base(nn.Module):
     def init(Child, *, name: str = None, **kwargs):
 
         try:
+            if name is None:
+                name = 'noop'
+
             A = Base.registered[Child.__name__][name]
         except KeyError:
             dicrep = yaml.dump(Base.registered, default_flow_style=False)
@@ -251,6 +254,21 @@ class EuclideanComparator_1(Comparator):
         return torch.dist(X, Y, p=2) / X.shape[0]
 
 
+# --- NOOP
+
+
+# used as drop in if no model.forward is needed
+@Aggregator.module
+@Projector.module
+@Comparator.module
+class Noop(Base):
+
+    name = 'noop'
+
+    def forward(self, *args, **kwargs):
+        assert False, 'noop cannot forward'
+
+
 # --- WIRING
 
 
@@ -302,8 +320,13 @@ class Components:
             name=config.comparator,
             **config.comparator_args)
 
+        if all((
+                config.optimizer is not None,
+                config.optimizer not in OPTIMIZER)):
+            raise ryn.RynError(f'unknown optimizer "{config.optimizer}"')
+
         self = K(
-            Optimizer=OPTIMIZER[config.optimizer],
+            Optimizer=OPTIMIZER.get(config.optimizer),
             optimizer_args=config.optimizer_args,
             text_encoder=models.text_encoder,
             aggregator=aggregator,
@@ -728,13 +751,11 @@ class Mapper(pl.LightningModule):
             trained = self.training
             self.train()
 
-        loaders = [
-            self.data.train_dataloader(),
-            self.data.val_dataloader()[0],
-            self.data.val_dataloader()[1],
-            self.data.val_dataloader()[2],
-            self.data.test_dataloader(),
-        ]
+        loaders = (
+            [self.data.train_dataloader()] +
+            self.data.val_dataloader() +
+            [self.data.test_dataloader()]
+        )
 
         for loader in loaders:
             # moving some noise with the shape of the largest
