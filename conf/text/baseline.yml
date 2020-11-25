@@ -64,7 +64,7 @@ trainer_args:
 #    inductive.amr
 #
 checkpoint_args:
-  monitor: inductive.hits@10
+  monitor: inductive.hits@10/dataloader_idx_2
   save_top_k: 10
 
 # dataloader
@@ -92,7 +92,7 @@ text_encoder: bert-base-cased
 freeze_text_encoder: False
 
 # look inside ryn/text/mapper.py to find module names
-aggregator: cls 1
+aggregator: max 1
 projector: affine 1
 projector_args:
   input_dims: 768
