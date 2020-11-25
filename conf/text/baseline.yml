@@ -2,96 +2,46 @@
 #          RYN TEXT MAPPER CONFIGURATION
 #    -----------------------------------------
 #
-# - use this file as a template to copy your own configuration
-# - you can provide multiple config files which are merged
-# - this is nice if you want to change gpus: simply mixin your batch sizes
-
-# how many entities to retain to calculate the geometric
-# open-world validation loss for hyperparameter tuning
-# (for deterministic splits, the seed of the provided
-# split_dataset is re-used)
+#        see the default.yml for comments
+#
 valid_split: 0.9
 
-#
-#  TRAINING
-#
-
-# weights and biases configuration
-# see https://docs.wandb.com/integrations/lightning#wandblogger
-# the following attributes are set by ryn:
-#   - name
-#   - save_dir
-# the following attributes are set by ryn but can be overwritten:
-#   - offline
 wandb_args:
   project: ryn-text
   log_model: False
 
-# pytorch lightning trainer
-# see https://pytorch-lightning.readthedocs.io/en/latest/trainer.html#trainer-class-api
-# the following attributes are set by ryn:
-#   - logger
-#   - profiler
-#   - weights_save_path
-#   - default_root_dir
-#   - deterministic
-#   - callbacks
-#   - fast_dev_run
 trainer_args:
   gpus: 1
-  max_epochs: 100
+  max_epochs: 50
   fast_dev_run: False
   distributed_backend: horovod
-  accumulate_grad_batches: 10
+  accumulate_grad_batches: 5
   gradient_clip_val: 1
 
-# checkpointing
-# see https://pytorch-lightning.readthedocs.io/en/latest/generated/pytorch_lightning.callbacks.ModelCheckpoint.html?highlight=ModelCheckpoint
-#
-# possible metrics:
-#    valid_loss_step
-#    transductive.hits@1
-#    transductive.hits@5
-#    transductive.hits@10
-#    transductive.mr
-#    transductive.mrr
-#    transductive.amr
-#    inductive.hits@1
-#    inductive.hits@5
-#    inductive.hits@10
-#    inductive.mr
-#    inductive.mrr
-#    inductive.amr
-#
 checkpoint_args:
   monitor: inductive.hits@10/dataloader_idx_2
   save_top_k: 10
 
-# dataloader
-# batch sizes are set by gpu*.yml files
 dataloader_train_args:
+  batch_size: 200
   num_workers: 0
   shuffle: True
 
 dataloader_valid_args:
+  batch_size: 225
   num_workers: 0
 
 dataloader_test_args:
+  batch_size: 250
   num_workers: 0
 
 optimizer: adam
 optimizer_args:
   lr: 0.00001
 
-#
-#  MAPPER
-#
-
-# huggingface transformer implementation
 text_encoder: bert-base-cased
-freeze_text_encoder: False
+freeze_text_encoder: True
 
-# look inside ryn/text/mapper.py to find module names
 aggregator: max 1
 projector: affine 1
 projector_args:
@@ -99,27 +49,3 @@ projector_args:
   output_dims: 450
 
 comparator: euclidean 1
-
-#
-#  ADDITIONAL INFO
-#
-
-# you can also set the following things
-# (I usually provide them via command line args)
-
-# split_dataset: data/split/oke.fb15k237_30061990_50
-# kgc_model: data/kgc/oke.fb15k237_30061990_50/DistMult-2020-11-04_13:53:09.607026/trial-0063
-# text_dataset: data/text/data/oke.fb15k237_30061990_50/contexts-v7-enwiki-20200920-100-500.db/bert-base-cased.30.768.marked
-
-# directory to write to:
-#   defaults to:
-#     ryn.ENV.TEXT_DIR /
-#     mapper /
-#     <text_dataset> /   # e.g. oke.fb15k237_30061990_50
-#     <text_database> /  # e.g. contexts-v7-enwiki-20200920-100-500.db
-#     <text_model> /     # e.g. bert-base-cased
-#     <kgc_model>        # e.g. distmult
-# there is always a timestamp appended to the path
-# you can reference these variables in your own format:
-
-# out: my/own/directory/{split_dataset}/{kgc_model}/
