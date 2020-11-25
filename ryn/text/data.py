@@ -1027,21 +1027,3 @@ class DataModule(pl.LightningDataModule):
             collate_fn=TorchDataset.collate_fn,
             **self.config.dataloader_test_args,
         )
-
-    # FOR KGC
-
-    @property
-    def ryn2keen(self) -> Dict[int, int]:
-        return self._ryn2keen
-
-    @property
-    def kgc_transductive(self) -> Triples:
-        return self._kgc_inductive
-
-    @property
-    def kgc_inductive(self) -> Triples:
-        return self._kgc_inductive
-
-    @property
-    def kgc_test(self) -> Triples:
-        return self._kgc_inductive

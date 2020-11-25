@@ -26,8 +26,7 @@ log = logging.get('text.evaluator')
 def evaluate(
         *,
         model: mapper.Mapper = None,
-        data: data.DataModule = None,
-        out: Union[str, pathlib.Path] = None,
+        datamodule: data.DataModule = None,
         debug: bool = None,
 ):
     print('''
@@ -41,32 +40,24 @@ def evaluate(
     print('producing projections\n')
 
     hvd.init()
+    assert hvd.local_rank() == 0, 'no multi gpu support so far'
 
     model.init_projections()
     model.run_memcheck(test=True)
     model.debug = debug
     model.eval()
 
-    work = {
-        'transductive': (
-            datasets.text_train,
-            datasets.kgc_transductive),
-        'inductive': (
-            datasets.text_inductive,
-            datasets.kgc_inductive,
-        ),
-        'test': (
-            datasets.text_test,
-            datasets.kgc_test,
-        )
-    }
-
-    tqdm = partial(_tqdm, ncols=80, unit='batches')
+    loaders = (
+        [datamodule.train_dataloader()] +
+        datamodule.val_dataloader() +
+        [datamodule.test_dataloader()]
+    )
 
     print('\nrunning kgc evaluation\n')
 
+    tqdm = partial(_tqdm, ncols=80, unit='batches')
     with torch.no_grad():
-        for loader, _ in work.values():
+        for loader in loaders:
             gen = tqdm(
                 enumerate(loader),
                 total=len(loader),
@@ -86,23 +77,63 @@ def evaluate(
                 if debug:
                     break
 
+    triplesens = {
+        'transductive': datamodule.kgc.transductive,
+        'inductive': datamodule.kgc.inductive,
+        'test': datamodule.kgc.test,
+    }
+
     results = {}
-    for kind, (_, triples) in work.items():
+    for kind, triples in triplesens.items():
         results[kind] = model.run_kgc_evaluation(
             kind=kind,
             triples=triples
         )
 
-    out = helper.path(out, message='write results to {path_abbrv}')
-    helper.path(out.parent, create=True)
-    yamlized = yaml.dump(results)
+    return results
 
-    if not debug:
-        with out.open(mode='w') as fd:
-            fd.write(yamlized)
 
-    print('\n\nfinished! uwu\n')
-    print(yamlized)
+@helper.notnone
+def _evaluation_uncached(
+        out: pathlib.Path = None,
+        config: List[str] = None,
+        checkpoint: pathlib.Path = None,
+        debug: bool = None,
+):
+
+    config = Config.create(configs=[out / 'config.yml'] + list(config))
+    datamodule, rync = trainer.load_from_config(config=config)
+
+    datamodule.prepare_data()
+    datamodule.setup('test')
+
+    model = mapper.Mapper.load_from_checkpoint(
+        str(checkpoint),
+        data=datamodule,
+        rync=rync,
+        freeze_text_encoder=config.freeze_text_encoder
+    )
+
+    model = model.to(device='cuda')
+
+    results = evaluate(
+        model=model,
+        datamodule=datamodule,
+        debug=debug,
+    )
+
+    return results
+
+
+@helper.notnone
+@helper.cached('.cached.text.evaluator.result.{checkpoint_name}.pkl')
+def _evaluation_cached(
+        *,
+        path: pathlib.Path = None,
+        checkpoint_name: str = None,
+        **kwargs,
+):
+    return _evaluation_uncached(**kwargs)
 
 
 @helper.notnone
@@ -113,6 +144,7 @@ def evaluate_from_kwargs(
         config: List[str] = None,
         debug: bool = None,
 ):
+
     path = helper.path(
         path, exists=True,
         message='loading data from {path_abbrv}')
@@ -121,20 +153,35 @@ def evaluate_from_kwargs(
         checkpoint, exists=True,
         message='loading checkpoint from {path_abbrv}')
 
-    config = Config.create(configs=[path / 'config.yml'] + list(config))
-    datasets, rync = trainer.load_from_config(config=config)
+    ryn_dir = path / 'ryn'
+    helper.path(ryn_dir, create=True)
 
-    model = mapper.Mapper.load_from_checkpoint(
-        str(checkpoint),
-        datasets=datasets,
-        rync=rync,
-        freeze_text_encoder=config.freeze_text_encoder
-    )
+    if not debug:
+        results = _evaluation_cached(
+            # helper.cached
+            path=ryn_dir,
+            checkpoint_name=checkpoint.name,
+            # evaluate
+            out=path,
+            config=config,
+            checkpoint=checkpoint,
+            debug=debug,
+        )
+    else:
+        results = _evaluation_uncached(
+            # evaluate
+            out=path,
+            config=config,
+            checkpoint=checkpoint,
+            debug=debug,
+        )
 
-    model = model.to(device='cuda')
-    evaluate(
-        model=model,
-        datasets=datasets,
-        out=path/'evaluation.yml',
-        debug=debug
-    )
+    yml_path = ryn_dir / 'evaluation.yml'
+    yml_str = yaml.dump(results)
+
+    if not debug:
+        with yml_path.open(mode='w') as fd:
+            fd.write(yml_str)
+
+    print('\n\nfinished!\n')
+    print(yml_str)
