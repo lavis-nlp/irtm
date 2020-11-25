@@ -419,8 +419,10 @@ class Mapper(pl.LightningModule):
         self.loss = rync.comparator
 
         if freeze_text_encoder:
-            log.info('freezing text encoder')
-            raise NotImplementedError()
+            log.info('! freezing text encoder')
+            self.encode.requires_grad_(False)
+            # for param in self.encode:
+            #     param.requires_grad = False
 
         self.keen = rync.kgc_model.keen
         rync.kgc_model.freeze()
