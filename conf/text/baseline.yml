@@ -37,7 +37,7 @@ optimizer_args:
   lr: 0.00001
 
 text_encoder: bert-base-cased
-freeze_text_encoder: True
+freeze_text_encoder: False
 
 aggregator: max dropout 1
 aggregator_args:
