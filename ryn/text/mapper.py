@@ -394,12 +394,33 @@ class Mapper(pl.LightningModule):
     def data(self) -> data.DataModule:
         return self._data
 
-    @helper.notnone
+    @property
+    def projection_aggregation(self) -> str:
+        return self._projection_aggregation
+
+    @projection_aggregation.setter
+    def projection_aggregation(self, projection_aggregation):
+        if not any((
+            projection_aggregation == 'max',
+            projection_aggregation == 'avg',
+            projection_aggregation == 'last',
+        )):
+            raise ryn.RynError(
+                'unknown projection aggregation:'
+                f' {projection_aggregation}')
+
+        self._projection_aggregation = projection_aggregation
+
     def __init__(
             self,
             data=None,  # data.DataModule
             rync: Components = None,
-            freeze_text_encoder: bool = False):
+            freeze_text_encoder: bool = False,
+            # supported are: avg, max, last
+            projection_aggregation: str = 'avg',
+    ):
+        assert data is not None
+        assert rync is not None
 
         super().__init__()
 
@@ -411,6 +432,7 @@ class Mapper(pl.LightningModule):
         self._data = data
         self._rync = rync
         self._lr = self.rync.optimizer_args['lr']
+        self.projection_aggregation = projection_aggregation
 
         # parameters
 
@@ -422,8 +444,6 @@ class Mapper(pl.LightningModule):
         if freeze_text_encoder:
             log.info('! freezing text encoder')
             self.encode.requires_grad_(False)
-            # for param in self.encode:
-            #     param.requires_grad = False
 
         self.keen = rync.kgc_model.keen
         rync.kgc_model.freeze()
@@ -468,8 +488,20 @@ class Mapper(pl.LightningModule):
     def update_projections(self, entities=None, projected=None):
         for e, v in zip(entities, projected.detach()):
             idx = self.data.kgc.ryn2keen[e]
-            self.projections[idx] += v
-            self.projections_counts[idx] += 1
+
+            if self.projection_aggregation == 'max':
+                self.projections[idx] = torch.max(
+                    self.projections[idx], v
+                )
+                self.projections_counts[idx] = 1
+
+            if self.projection_aggregation == 'avg':
+                self.projections[idx] += v
+                self.projections_counts[idx] += 1
+
+            if self.projection_aggregation == 'last':
+                self.projections[idx] = v
+                self.projections_counts = 1
 
     # ---
 
@@ -672,7 +704,7 @@ class Mapper(pl.LightningModule):
 
     def _run_kgc_evaluations(self):
         if self.global_step == 0 and not self.debug:
-            log.info('skipping kgc evaluation')
+            log.info('skipping kgc evaluation; logging phony kgc result')
             self.log_dict(self._mock_kgc_results())
             return
 
@@ -690,7 +722,10 @@ class Mapper(pl.LightningModule):
             op=hvd.Sum)
 
         if hvd.local_rank() != 0:
-            log.info(f'[{hvd.local_rank()}] servant skips kgc evaluation')
+            log.info(
+                f'[{hvd.local_rank()}] servant skips kgc evaluation;'
+                ' logging phony kgc result')
+
             self.log_dict(self._mock_kgc_results())
             return
 
@@ -711,8 +746,7 @@ class Mapper(pl.LightningModule):
         inductive_result = self.run_kgc_evaluation(
             kind='inductive', triples=self.data.kgc.inductive)
 
-        log.info('updating kgc metrics')
-
+        log.info('logging kgc result')
         self.log_dict({
             **transductive_result,
             **inductive_result,
@@ -799,6 +833,12 @@ class Mapper(pl.LightningModule):
 
         self._ow_validation_batches = math.ceil(
             len(self.data.val_dataloader()[2]) / hvd.size())
+
+        if hvd.size() != 1 and self.projection_aggregation == 'max':
+            raise ryn.RynError(
+                'max pooling is not supported for multi-gpu setups')
+
+        # --
 
         log.info('running custom pre-training sanity check')
         self.run_memcheck()
