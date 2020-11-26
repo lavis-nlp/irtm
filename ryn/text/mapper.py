@@ -8,6 +8,7 @@ from ryn.text.config import Config
 from ryn.common import helper
 from ryn.common import logging
 
+import math
 import torch
 import torch.optim
 from torch import nn
@@ -559,8 +560,7 @@ class Mapper(pl.LightningModule):
     ):
         projected = self.forward(sentences=sentences)
         self.update_projections(entities=entities, projected=projected)
-
-        if batch_idx == self._ow_validation_batches:
+        if batch_idx == self._ow_validation_batches - 1:
             self._run_kgc_evaluations()
 
     def validation_step(self, batch, batch_idx: int, dataloader_idx: int):
@@ -794,7 +794,10 @@ class Mapper(pl.LightningModule):
     #
 
     def on_fit_start(self):
-        self._ow_validation_batches = int(
+
+        # hvd is initialized now
+
+        self._ow_validation_batches = math.ceil(
             len(self.data.val_dataloader()[2]) / hvd.size())
 
         log.info('running custom pre-training sanity check')
