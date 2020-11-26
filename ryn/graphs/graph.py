@@ -30,16 +30,17 @@ from typing import Union
 from typing import NewType
 
 
-log = logging.get('graphs.graph')
+log = logging.get("graphs.graph")
 
 
-Triple = NewType('Triple', Tuple[int, int, int])
+Triple = NewType("Triple", Tuple[int, int, int])
 
 
 class PartitionConstraintError(Exception):
     """
     Thrown for violated constraints in Graph.partition.
     """
+
     pass
 
 
@@ -126,7 +127,7 @@ def connecting_edges(g_nx, nodes: Tuple[int] = None):
       Sequence of nodes to be visited
 
     """
-    assert False, 'deprecated!'
+    assert False, "deprecated!"
 
     assert nodes is not None
     assert type(nodes) is tuple, type(nodes)
@@ -138,7 +139,7 @@ def connecting_edges(g_nx, nodes: Tuple[int] = None):
     # retrieve all neighbours for each node on the path
     # each cand[i]: (int, int, int) = (h, t, r)
     edges = g_nx.edges(nodes, data=True)
-    trips = map(lambda t: (t[0], t[1], t[2]['rid']), edges)
+    trips = map(lambda t: (t[0], t[1], t[2]["rid"]), edges)
 
     # only consider those strictly following the path
     # (i.e. no transitive shortcuts, no wrong direction)
@@ -154,7 +155,6 @@ def connecting_edges(g_nx, nodes: Tuple[int] = None):
 
 
 class frozendict(dict):
-
     def __init__(self, *args, **kwargs):
         super().__init__(*args)
         self._frozen = True
@@ -167,7 +167,7 @@ class frozendict(dict):
             super().__setitem__(*args, **kwargs)
             return
 
-        raise FrozenInstanceError('mapping is frozen')
+        raise FrozenInstanceError("mapping is frozen")
 
     def __getstate__(self):
         return self.__dict__
@@ -215,7 +215,7 @@ class GraphImport:
             self._e2id
         except AttributeError:
             rev = frozendict({v: k for k, v in self.ents.items()})
-            self._set('_e2id', rev)
+            self._set("_e2id", rev)
 
         return self._e2id
 
@@ -225,7 +225,7 @@ class GraphImport:
             self._r2id
         except AttributeError:
             rev = frozendict({v: k for k, v in self.ents.items()})
-            self._set('_r2id', rev)
+            self._set("_r2id", rev)
 
         return self._r2id
 
@@ -235,9 +235,9 @@ class GraphImport:
         object.__setattr__(self, prop, *args, **kwargs)
 
     def _set_all(self, triples, ents, rels):
-        self._set('triples', frozenset(triples))
-        self._set('ents', frozendict(ents))
-        self._set('rels', frozendict(rels))
+        self._set("triples", frozenset(triples))
+        self._set("ents", frozendict(ents))
+        self._set("rels", frozendict(rels))
 
     def _resolve(self, idx: int, d: Dict[int, str]):
         if idx not in d:
@@ -256,7 +256,7 @@ class GraphImport:
 
     # --
 
-    def join(self, other: 'GraphImport') -> 'GraphImport':
+    def join(self, other: "GraphImport") -> "GraphImport":
         ents = {**self.ents, **other.ents}
         rels = {**self.rels, **other.rels}
         triples = self.triples | other.triples
@@ -266,7 +266,7 @@ class GraphImport:
     # ---
 
     @classmethod
-    def induce(C, g: 'Graph', triples: Set[Triple]):
+    def induce(C, g: "Graph", triples: Set[Triple]):
         if len(triples):
             heads, tails, rels = map(set, zip(*triples))
         else:
@@ -274,12 +274,11 @@ class GraphImport:
 
         return C(
             triples=triples,
-            rels={
-                k: v for k, v in g.source.rels.items()
-                if k in rels},
+            rels={k: v for k, v in g.source.rels.items() if k in rels},
             ents={
-                k: v for k, v in g.source.ents.items()
-                if k in heads | tails}, )
+                k: v for k, v in g.source.ents.items() if k in heads | tails
+            },
+        )
 
 
 @dataclass
@@ -297,7 +296,7 @@ class Path:
     """
 
     depth: int
-    g: 'Graph'
+    g: "Graph"
 
     ents: Tuple[int]  # sequence of connected nodes
     rels: Tuple[int]  # sequence of edge kinds
@@ -307,14 +306,14 @@ class Path:
 
     def __str__(self):
         zipped = zip(self.ents, self.rels)
-        s = '-'.join([f'({t[0]})-[{t[1]}]' for t in zipped])
-        return s + f'-({self.ents[-1]})'
+        s = "-".join([f"({t[0]})-[{t[1]}]" for t in zipped])
+        return s + f"-({self.ents[-1]})"
 
 
 @dataclass
 class WalkAggregator:
 
-    walk:    List[int]
+    walk: List[int]
     pattern: List[int]
 
     visited: Counter = field(default_factory=Counter)
@@ -327,9 +326,8 @@ class WalkAggregator:
     def unpack(data):
         walk, pattern, visited = data
         return WalkAggregator(
-            walk=walk,
-            pattern=pattern,
-            visited=Counter(visited))
+            walk=walk, pattern=pattern, visited=Counter(visited)
+        )
 
 
 Grounds = Dict[Tuple[int], Set[Tuple[int]]]
@@ -344,9 +342,9 @@ class Stroll:
     basic assumption (memory-wise): len(patterns) << len(walks)
 
     """
+
     # pattern -> walks
-    grounds: Grounds = field(
-        default_factory=lambda: defaultdict(set))
+    grounds: Grounds = field(default_factory=lambda: defaultdict(set))
 
     @property
     def walks(self) -> Set[Tuple[int]]:
@@ -361,11 +359,11 @@ class Stroll:
 
     def add(self, agg: WalkAggregator):
         for i in range(len(agg.pattern)):
-            pattern = tuple(agg.pattern[:i+1])
-            walk = tuple(agg.walk[:i+2])
+            pattern = tuple(agg.pattern[: i + 1])
+            walk = tuple(agg.walk[: i + 2])
             self.grounds[pattern].add(walk)
 
-    def to(self, t: int) -> 'Stroll':
+    def to(self, t: int) -> "Stroll":
         stroll = Stroll()
 
         for pattern, walks in self.grounds.items():
@@ -380,8 +378,7 @@ class Stroll:
     @property
     def packed(self):
         return tuple(
-            (pattern, tuple(walks))
-            for pattern, walks in self.grounds.items()
+            (pattern, tuple(walks)) for pattern, walks in self.grounds.items()
         )
 
     @staticmethod
@@ -455,10 +452,10 @@ class Graph:
     @property
     def str_stats(self) -> str:
         s = (
-            f'ryn graph: {self.name}\n'
-            f'  nodes: {self.nx.number_of_nodes()}\n'
-            f'  edges: {self.nx.number_of_edges()}'
-            f' ({len(self.source.rels)} types)\n'
+            f"ryn graph: {self.name}\n"
+            f"  nodes: {self.nx.number_of_nodes()}\n"
+            f"  edges: {self.nx.number_of_edges()}"
+            f" ({len(self.source.rels)} types)\n"
         )
 
         # statistical values
@@ -466,32 +463,34 @@ class Graph:
         try:
             degrees = np.array(list(self.nx.degree()))[:, 1]
             s += (
-                f'  degree:\n'
-                f'    mean {np.mean(degrees):.2f}\n'
-                f'    median {int(np.median(degrees)):d}\n'
+                f"  degree:\n"
+                f"    mean {np.mean(degrees):.2f}\n"
+                f"    median {int(np.median(degrees)):d}\n"
             )
         except IndexError:
-            s += '  cannot measure degree\n'
+            s += "  cannot measure degree\n"
 
         return s
 
     # --
 
     def __str__(self) -> str:
-        return f'ryn.graph: [{self.name}] ({len(self.source.ents)} entities)'
+        return f"ryn.graph: [{self.name}] ({len(self.source.ents)} entities)"
 
-    def __init__(self,
-                 name: str = None,
-                 source: GraphImport = None,
-                 freeze: bool = False):
+    def __init__(
+        self,
+        name: str = None,
+        source: GraphImport = None,
+        freeze: bool = False,
+    ):
 
-        assert type(name) is str if name is not None else True, f'{name=}'
+        assert type(name) is str if name is not None else True, f"{name=}"
 
         # properties
         self._nx = networkx.MultiDiGraph()
         self._edges = defaultdict(set)
 
-        self._name = 'unknown' if name is None else name
+        self._name = "unknown" if name is None else name
 
         # GraphImport
         if source is not None:
@@ -500,19 +499,20 @@ class Graph:
         else:
             self._source = GraphImport(triples=[])
 
-        log.debug(f'created graph: \n{self.str_stats}\n')
+        log.debug(f"created graph: \n{self.str_stats}\n")
 
         if freeze:
-            log.debug('freezing graph')
+            log.debug("freezing graph")
             networkx.freeze(self.nx)
 
     # --
 
     def select(
-            self,
-            heads: Set[int] = None,
-            tails: Set[int] = None,
-            edges: Set[int] = None, ):
+        self,
+        heads: Set[int] = None,
+        tails: Set[int] = None,
+        edges: Set[int] = None,
+    ):
         """
 
         Select edges from the graph.
@@ -580,10 +580,11 @@ class Graph:
     # --
 
     def find(
-            self,
-            heads: Set[int] = None,
-            tails: Set[int] = None,
-            edges: Set[int] = None, ) -> Set[Triple]:
+        self,
+        heads: Set[int] = None,
+        tails: Set[int] = None,
+        edges: Set[int] = None,
+    ) -> Set[Triple]:
         """
         Find edges from the graph.
 
@@ -644,9 +645,8 @@ class Graph:
     # --
 
     def partition(
-            self,
-            prefix: str = None,
-            **ents: Set[int]) -> Dict[str, 'Graph']:
+        self, prefix: str = None, **ents: Set[int]
+    ) -> Dict[str, "Graph"]:
         """
 
         Partition graph into a disjoint union of graphs.
@@ -678,27 +678,27 @@ class Graph:
         """
         if len(ents) < 2:
             raise PartitionConstraintError(
-                'provide at least two named entity sets')
+                "provide at least two named entity sets"
+            )
         if any(len(e) < 2 for e in ents.values()):
-            raise PartitionConstraintError(
-                'provided node subset too small')
+            raise PartitionConstraintError("provided node subset too small")
         if len(set.intersection(*ents.values())):
             raise PartitionConstraintError(
-                'provided node sets are not disjunctive')
+                "provided node sets are not disjunctive"
+            )
         if set.union(*ents.values()) != set(self.nx.nodes):
-            raise PartitionConstraintError(
-                'provided nodes are incomplete')
+            raise PartitionConstraintError("provided nodes are incomplete")
 
         ret = {}
         for name, part_ents in ents.items():
             triples = self.select(heads=part_ents, tails=part_ents)
             if not triples:
-                raise PartitionConstraintError('subgraph has lone nodes')
+                raise PartitionConstraintError("subgraph has lone nodes")
 
             part_source = GraphImport.induce(self, triples)
 
             ret[name] = Graph(
-                name=f'{(prefix or self.name)}-{name}',
+                name=f"{(prefix or self.name)}-{name}",
                 source=part_source,
                 freeze=networkx.is_frozen(self.nx),
             )
@@ -707,7 +707,7 @@ class Graph:
 
     # --
 
-    def induce(self, triples: Set[Triple], name: str = None) -> 'Graph':
+    def induce(self, triples: Set[Triple], name: str = None) -> "Graph":
         """
 
         Induce new graphs based on the provided triples.
@@ -719,16 +719,15 @@ class Graph:
 
         """
         return Graph(
-            name=name or f'{self.name}-induction',
+            name=name or f"{self.name}-induction",
             source=GraphImport.induce(self, triples),
-            freeze=networkx.is_frozen(self.nx))
+            freeze=networkx.is_frozen(self.nx),
+        )
 
     # --
 
     def connecting_edges(self, trail: Tuple[int] = None):
-        """
-
-        """
+        """"""
         assert trail is not None
 
         acc = []
@@ -739,13 +738,10 @@ class Graph:
 
     # --
 
-    def _safe_add(self,
-                  target: 'Graph',
-                  source: 'Graph',
-                  edge):
+    def _safe_add(self, target: "Graph", source: "Graph", edge):
 
         h, t, data = edge
-        r = data['rid']
+        r = data["rid"]
 
         try:
             # Check whether the relation already exists. Adding new
@@ -757,10 +753,7 @@ class Graph:
             target.nx.add_edge(h, t, r, **source.nx.edges[h, t, r])
             target.nx.add_node(t, **source.nx.nodes[t])  # idempotent
 
-    def _bf_safe_add(self,
-                     subg: 'Graph',
-                     edge,
-                     outermost: bool = False):
+    def _bf_safe_add(self, subg: "Graph", edge, outermost: bool = False):
 
         h, t, _ = edge
 
@@ -775,7 +768,7 @@ class Graph:
 
         self._safe_add(subg, self, edge)
 
-    def _bf_create(self, nid: int, depth: int) -> 'Graph':
+    def _bf_create(self, nid: int, depth: int) -> "Graph":
         subg = Graph()
         subg.nx.add_node(nid, **self.nx.nodes[nid])
 
@@ -798,10 +791,9 @@ class Graph:
 
         return subg
 
-    def sample_subgraph(self,
-                        depth: int = None,
-                        start: int = None) -> (
-                            Tuple[int, 'Graph']):
+    def sample_subgraph(
+        self, depth: int = None, start: int = None
+    ) -> (Tuple[int, "Graph"]):
         """
         Sample a new graph using a breadth-first approach.
         The new graph will not have a .source.
@@ -827,8 +819,8 @@ class Graph:
         N = self.nx.number_of_nodes()
         nid = np.random.randint(0, N) if start is None else start
 
-        log.debug(f'sampling subgraph of depth {depth}')
-        log.debug(f'selecting node {nid} of {N} nodes')
+        log.debug(f"sampling subgraph of depth {depth}")
+        log.debug(f"selecting node {nid} of {N} nodes")
 
         subg = self._bf_create(nid, depth)
         subg._source = self.source
@@ -840,31 +832,25 @@ class Graph:
 
     # ---
 
-    def _annotate_path(self,
-                       ents: Tuple[int],
-                       rels: Tuple[int]) -> (
-                           'Graph'):
+    def _annotate_path(self, ents: Tuple[int], rels: Tuple[int]) -> ("Graph"):
 
-        k = 'kind'
+        k = "kind"
 
-        self.nx.nodes[ents[0]][k] = 'head'
-        self.nx.nodes[ents[-1]][k] = 'tail'
+        self.nx.nodes[ents[0]][k] = "head"
+        self.nx.nodes[ents[-1]][k] = "tail"
         for ent in ents[1:-1]:
-            self.nx.nodes[ent][k] = 'path'
+            self.nx.nodes[ent][k] = "path"
 
         #   ents          rels              edges
         # [0, 1, 2] and [10, 20] -> [(0, 1, 10), (1, 2, 20)]
         for edge in zip(ents, ents[1:], rels):
-            self.nx.edges[edge][k] = 'path'
+            self.nx.edges[edge][k] = "path"
 
         return self
 
-    def find_paths(self,
-                   h: int = None,
-                   t: int = None,
-                   depth: int = 0,
-                   cutoff: int = 5) -> (
-                       Path):
+    def find_paths(
+        self, h: int = None, t: int = None, depth: int = 0, cutoff: int = 5
+    ) -> (Path):
         """
 
         Returns all paths connecting h with t as subgraphs.
@@ -899,7 +885,8 @@ class Graph:
         assert t is not None
 
         gen = networkx.all_simple_paths(
-            self.nx, source=h, target=t, cutoff=cutoff)
+            self.nx, source=h, target=t, cutoff=cutoff
+        )
 
         visited = set()
         for nodes in map(tuple, gen):
@@ -908,7 +895,7 @@ class Graph:
 
             # ---------------------------------------- sub-graph
 
-            g = Graph(name=f'{self.name}.p{h}-{t}_{cutoff}.{depth}')
+            g = Graph(name=f"{self.name}.p{h}-{t}_{cutoff}.{depth}")
             for node in nodes:
                 _, subg = self.sample_subgraph(start=node, depth=depth)
                 g.join(subg)
@@ -962,17 +949,17 @@ class Graph:
             visited = agg.visited.copy()
             visited[t] += 1
 
-            aggs.append(WalkAggregator(
-                walk=agg.walk + [t],
-                pattern=agg.pattern + [r],
-                visited=visited,
-            ))
+            aggs.append(
+                WalkAggregator(
+                    walk=agg.walk + [t],
+                    pattern=agg.pattern + [r],
+                    visited=visited,
+                )
+            )
 
         return aggs
 
-    def stroll(self,
-               center: int = None,
-               cutoff: int = None) -> Stroll:
+    def stroll(self, center: int = None, cutoff: int = None) -> Stroll:
         """
 
         Samples all walks, patterns and grounds around a given graph center.
@@ -1037,7 +1024,7 @@ class Graph:
     # --- | GRAPH-LEVEL OPERATIONS (in-place)
     #
 
-    def join(self, other: 'Graph') -> 'Graph':
+    def join(self, other: "Graph") -> "Graph":
         """
 
         Add other graphs to this graph.
@@ -1054,7 +1041,7 @@ class Graph:
         self._nx = networkx.compose(self.nx, other.nx)
         return self
 
-    def clone(self) -> 'Graph':
+    def clone(self) -> "Graph":
         g = Graph(name=self.name)
 
         g._source = self._source
@@ -1066,23 +1053,24 @@ class Graph:
     # --- | GRAPH-LEVEL OPERATIONS (in-place)
     #
 
-    def __or__(self, other: 'Graph') -> 'Graph':
+    def __or__(self, other: "Graph") -> "Graph":
 
         a, b = self.source, other.source
 
         return Graph(
-            name=f'{self.name}|{other.name}',
+            name=f"{self.name}|{other.name}",
             source=GraphImport(
                 triples=a.triples | b.triples,
                 rels={**a.rels, **b.rels},
                 ents={**a.ents, **b.ents},
-            ))
+            ),
+        )
 
     #
     # --- | EXTERNAL SOURCES
     #
 
-    def add(self, source: GraphImport) -> 'Graph':
+    def add(self, source: GraphImport) -> "Graph":
         """
 
         Add data to the current graph by using a GraphImport instance
@@ -1104,7 +1092,7 @@ class Graph:
         self._rnx = self.nx.reverse()
         return self
 
-    def save(self, path: Union[str, pathlib.Path]) -> 'Graph':
+    def save(self, path: Union[str, pathlib.Path]) -> "Graph":
         """
 
         Persist graph to file.
@@ -1118,13 +1106,13 @@ class Graph:
         """
         path = pathlib.Path(path)
 
-        with path.open(mode='wb') as fd:
+        with path.open(mode="wb") as fd:
             pickle.dump(self, fd)
 
         return self
 
     @staticmethod
-    def load(path: Union[str, pathlib.Path]) -> 'Graph':
+    def load(path: Union[str, pathlib.Path]) -> "Graph":
         """
 
         Load graph from file
@@ -1137,9 +1125,9 @@ class Graph:
 
         """
         path = pathlib.Path(path)
-        log.info(f'loading graph from {path}')
+        log.info(f"loading graph from {path}")
 
-        with path.open(mode='rb') as fd:
+        with path.open(mode="rb") as fd:
             return pickle.load(fd)
 
     #
@@ -1151,17 +1139,17 @@ class Graph:
 
         src = self.source
 
-        rows = [(
-            h, src.ents[h],
-            t, src.ents[t],
-            r, src.rels[r])
-                for h, t, r in triples]
+        rows = [
+            (h, src.ents[h], t, src.ents[t], r, src.rels[r])
+            for h, t, r in triples
+        ]
 
-        return tabulate(rows, headers=('', 'head', '', 'tail', '', 'relation'))
+        return tabulate(rows, headers=("", "head", "", "tail", "", "relation"))
 
     def str_triple(self, triple):
         h, t, r = triple
         return (
-            f'{self.source.ents[h]} | '
-            f'{self.source.ents[t]} | '
-            f'{self.source.rels[r]}')
+            f"{self.source.ents[h]} | "
+            f"{self.source.ents[t]} | "
+            f"{self.source.rels[r]}"
+        )

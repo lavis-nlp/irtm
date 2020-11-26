@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+# fmt: off
 
 import ryn
 from ryn.cli import main

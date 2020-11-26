@@ -43,16 +43,16 @@ from typing import Tuple
 from typing import Optional
 
 
-log = logging.get('text.data')
+log = logging.get("text.data")
 
 
-SEP = ' | '
+SEP = " | "
 
 
 class Tokenizer:
 
-    TOK_MENTION_START = '[MENTION_START]'
-    TOK_MENTION_END = '[MENTION_END]'
+    TOK_MENTION_START = "[MENTION_START]"
+    TOK_MENTION_END = "[MENTION_END]"
 
     @property
     def base(self):
@@ -64,34 +64,34 @@ class Tokenizer:
         return {v: k for k, v in self.base.vocab.items()}
 
     def __init__(
-            self,
-            model: str = None,
-            path: Union[str, pathlib.Path] = None):
+        self, model: str = None, path: Union[str, pathlib.Path] = None
+    ):
 
-        assert not (model and path), 'cannot do both'
+        assert not (model and path), "cannot do both"
 
         if model:
-            cache_dir = str(ryn.ENV.CACHE_DIR / 'lib.transformers')
+            cache_dir = str(ryn.ENV.CACHE_DIR / "lib.transformers")
             self._base = tf.BertTokenizer.from_pretrained(
                 model,
                 cache_dir=cache_dir,
                 additional_special_tokens=[
                     Tokenizer.TOK_MENTION_START,
                     Tokenizer.TOK_MENTION_END,
-                ]
+                ],
             )
 
         if path:
             self._base = tf.BertTokenizer.from_pretrained(str(path))
 
     def save(self, path: Union[str, pathlib.Path]):
-        path = helper.path(path) / 'tokenizer'
+        path = helper.path(path) / "tokenizer"
         self.base.save_pretrained(str(path))
 
     @classmethod
     def load(K, path: Union[str, pathlib.Path]):
-        path = helper.path(path) / 'tokenizer'
+        path = helper.path(path) / "tokenizer"
         return K(path=path)
+
 
 # ---
 
@@ -114,37 +114,33 @@ class TransformContext:
 
 
 # this matches masked sequences of the upstream sqlite context dbs
-RE_MASKS = re.compile('#+')
-MARKED = (
-    Tokenizer.TOK_MENTION_START +
-    ' {mention} ' +
-    Tokenizer.TOK_MENTION_END
-)
+RE_MASKS = re.compile("#+")
+MARKED = Tokenizer.TOK_MENTION_START + " {mention} " + Tokenizer.TOK_MENTION_END
 
 
 def _transform_result(
-        result,
-        *,
-        e: int = None,
-        amount: int = None,
-        masked: bool = None,
-        marked: bool = None,
-        tokenizer: Tokenizer = None,
+    result,
+    *,
+    e: int = None,
+    amount: int = None,
+    masked: bool = None,
+    marked: bool = None,
+    tokenizer: Tokenizer = None,
 ):
 
     entities, mentions, blobs, blobs_masked = zip(*result)
     assert all(e == db_entity for db_entity in entities)
 
     def _flatten(nested):
-        return [sent for blob in nested for sent in blob.split('\n')]
+        return [sent for blob in nested for sent in blob.split("\n")]
 
     sentences = _flatten(blobs_masked) if masked else _flatten(blobs)
 
     if masked:
         assert not marked
         sentences = [
-            RE_MASKS.sub(tokenizer.base.mask_token, s)
-            for s in sentences]
+            RE_MASKS.sub(tokenizer.base.mask_token, s) for s in sentences
+        ]
 
     if marked:
         assert not masked
@@ -157,19 +153,20 @@ def _transform_result(
 
     return tuple(
         # remove unnecessary whitespace
-        ' '.join(sentence.split()) for sentence in
-        sentences[:amount])
+        " ".join(sentence.split())
+        for sentence in sentences[:amount]
+    )
 
 
 def _transform_split(
-        wid: int,
-        ctx: TransformContext,
-        part: split.Part,
-        masked: bool = False,
-        marked: bool = False):
+    wid: int,
+    ctx: TransformContext,
+    part: split.Part,
+    masked: bool = False,
+    marked: bool = False,
+):
 
-    log.info(f'! transforming split {part.name} '
-             f'({masked=}, {marked=})')
+    log.info(f"! transforming split {part.name} " f"({masked=}, {marked=})")
 
     # ---
 
@@ -177,14 +174,16 @@ def _transform_split(
 
     # init text files
 
-    ctx.fd_indexes.write(
-        f'# Format: <ID>{SEP}<INDEX1> <INDEX2> ...\n'.encode())
+    ctx.fd_indexes.write(f"# Format: <ID>{SEP}<INDEX1> <INDEX2> ...\n".encode())
     ctx.fd_sentences.write(
-        f'# Format: <ID>{SEP}<NAME>{SEP}<SENTENCE>\n'.encode())
+        f"# Format: <ID>{SEP}<NAME>{SEP}<SENTENCE>\n".encode()
+    )
     ctx.fd_tokens.write(
-        f'# Format: <ID>{SEP}<NAME>{SEP}<TOKEN1> <TOKEN2> ...\n'.encode())
+        f"# Format: <ID>{SEP}<NAME>{SEP}<TOKEN1> <TOKEN2> ...\n".encode()
+    )
     ctx.fd_nocontext.write(
-        f'# Format: <ID>{SEP}<NAME>{SEP}<TRIPLES>\n'.encode())
+        f"# Format: <ID>{SEP}<NAME>{SEP}<TRIPLES>\n".encode()
+    )
 
     ents = list(part.owe)
     shape = len(ents), ctx.sentences, 3, ctx.tokens
@@ -192,11 +191,11 @@ def _transform_split(
     # iterate entities
 
     def _ints2str(lis: List[int]):
-        return ' '.join(map(str, lis))
+        return " ".join(map(str, lis))
 
     def _write(fd, s: str):
-        assert '\n' not in s, s
-        fd.write((s + '\n').encode())
+        assert "\n" not in s, s
+        fd.write((s + "\n").encode())
 
     gen = list((i, e, ctx.dataset.id2ent[e]) for i, e in enumerate(ents))
     assert (len(gen) == shape[0]) and (shape[0] == len(ents))
@@ -206,7 +205,8 @@ def _transform_split(
         position=wid,
         desc=part.name,
         leave=True,
-        unit=' entities',)
+        unit=" entities",
+    )
 
     no_context_triples = set()
     for i, e, name in bar(gen):
@@ -219,9 +219,9 @@ def _transform_split(
             count = len(triples)
 
             no_context_triples |= triples
-            _write(ctx.fd_nocontext, f'{e}{SEP}{name}{SEP}{count}')
+            _write(ctx.fd_nocontext, f"{e}{SEP}{name}{SEP}{count}")
 
-            msg = f'! no context for {e}: {name} ({count} triples)'
+            msg = f"! no context for {e}: {name} ({count} triples)"
             log.info(msg)
 
         if not result:
@@ -240,45 +240,42 @@ def _transform_split(
 
         if not sentences:
             _no_ctx()
-            log.error('no contexts after transformation')
+            log.error("no contexts after transformation")
             continue
 
         # tokenize and map to vocabulary ids
 
         indexes = ctx.tokenizer.base(
-            sentences,
-            padding=False,
-            max_length=ctx.tokens,
-            truncation=True)['input_ids']
+            sentences, padding=False, max_length=ctx.tokens, truncation=True
+        )["input_ids"]
 
         # write clear text
         # you cannot use 'decoded' for is_tokenized=True
 
-        assert len(indexes) == len(sentences), (
-            f'{len(indexes)=} != {len(sentences)=}')
+        assert len(indexes) == len(
+            sentences
+        ), f"{len(indexes)=} != {len(sentences)=}"
 
         convert_ids_to_tokens = ctx.tokenizer.base.convert_ids_to_tokens
         gen = zip(sentences, indexes)
         for sentence, idx_list in gen:
-            tokens = ' '.join(convert_ids_to_tokens(idx_list))
-            idxstr = ' '.join(map(str, idx_list))
+            tokens = " ".join(convert_ids_to_tokens(idx_list))
+            idxstr = " ".join(map(str, idx_list))
 
             if not all((sentence, tokens, idxstr)):
-                log.error(f'skipping empty sentence of {e} ({name})')
+                log.error(f"skipping empty sentence of {e} ({name})")
                 continue
 
-            _write(ctx.fd_sentences,
-                   f'{e}{SEP}{name}{SEP}{sentence}')
-            _write(ctx.fd_tokens,
-                   f'{e}{SEP}{name}{SEP}{tokens}')
-            _write(ctx.fd_indexes,
-                   f'{e}{SEP}{idxstr}')
+            _write(ctx.fd_sentences, f"{e}{SEP}{name}{SEP}{sentence}")
+            _write(ctx.fd_tokens, f"{e}{SEP}{name}{SEP}{tokens}")
+            _write(ctx.fd_indexes, f"{e}{SEP}{idxstr}")
 
-    log.info(f'finished processing {part.name}')
+    log.info(f"finished processing {part.name}")
     if len(no_context_triples):
         log.error(
-            f'{part.name}: {len(no_context_triples)}'
-            f'/{len(part.triples)} triples without context')
+            f"{part.name}: {len(no_context_triples)}"
+            f"/{len(part.triples)} triples without context"
+        )
 
 
 @dataclass
@@ -294,22 +291,24 @@ class WorkerArgs:
 
 
 def _transform_get_ctx(stack, split: str, args: WorkerArgs):
-    gopen = partial(gzip.open, mode='wb')
+    gopen = partial(gzip.open, mode="wb")
 
     ctx = TransformContext(
-
         fd_tokens=stack.enter_context(
-            gopen(str(args.p_out / f'{split}-tokens.txt.gz'))),
+            gopen(str(args.p_out / f"{split}-tokens.txt.gz"))
+        ),
         fd_sentences=stack.enter_context(
-            gopen(str(args.p_out / f'{split}-sentences.txt.gz'))),
+            gopen(str(args.p_out / f"{split}-sentences.txt.gz"))
+        ),
         fd_indexes=stack.enter_context(
-            gopen(str(args.p_out / f'{split}-indexes.txt.gz'))),
+            gopen(str(args.p_out / f"{split}-indexes.txt.gz"))
+        ),
         fd_nocontext=stack.enter_context(
-            gopen(str(args.p_out / f'{split}-nocontext.txt.gz'))),
-
+            gopen(str(args.p_out / f"{split}-nocontext.txt.gz"))
+        ),
         select=stack.enter_context(
-            loader.SQLite(database=args.database, to_memory=True)),
-
+            loader.SQLite(database=args.database, to_memory=True)
+        ),
         tokenizer=Tokenizer(model=args.model),
         dataset=args.dataset,
         sentences=args.sentences,
@@ -323,7 +322,7 @@ def _transform_worker(packed):
     wid, split, args, kwargs = packed
 
     with contextlib.ExitStack() as stack:
-        log.info(f'! dispatching worker #{wid} for {split}')
+        log.info(f"! dispatching worker #{wid} for {split}")
 
         part = args.dataset[split]
         ctx = _transform_get_ctx(stack, split, args)
@@ -332,16 +331,16 @@ def _transform_worker(packed):
 
 
 def transform(
-        *,
-        dataset: split.Dataset = None,
-        database: str = None,
-        sentences: int = None,
-        tokens: int = None,
-        model: str = None,
-        masked: bool = None,
-        marked: bool = None,
-        # optional
-        suffix: str = None,
+    *,
+    dataset: split.Dataset = None,
+    database: str = None,
+    sentences: int = None,
+    tokens: int = None,
+    model: str = None,
+    masked: bool = None,
+    marked: bool = None,
+    # optional
+    suffix: str = None,
 ):
     """
 
@@ -352,7 +351,7 @@ def transform(
     """
 
     if masked and marked:
-        raise ryn.RynError('both masking and marking does not make sense')
+        raise ryn.RynError("both masking and marking does not make sense")
 
     # cannot save that to a csv
     _conflicts = set(name for name in dataset.id2ent.values() if SEP in name)
@@ -362,23 +361,23 @@ def transform(
     # ---
 
     if masked:
-        _mode = 'masked'
+        _mode = "masked"
     elif marked:
-        _mode = 'marked'
+        _mode = "marked"
     else:
-        _mode = 'clean'
+        _mode = "clean"
 
-    name = f'{model}.{sentences}.{tokens}.{_mode}'
+    name = f"{model}.{sentences}.{tokens}.{_mode}"
     if suffix:
-        name = f'{name}-{suffix}'
+        name = f"{name}-{suffix}"
 
     ds_name = dataset.name
     db_name = pathlib.Path(database).name
 
-    p_out = ryn.ENV.TEXT_DIR / 'data' / ds_name / db_name / name
+    p_out = ryn.ENV.TEXT_DIR / "data" / ds_name / db_name / name
     p_out.mkdir(exist_ok=True, parents=True)
 
-    with (p_out / 'info.json').open(mode='w') as fd:
+    with (p_out / "info.json").open(mode="w") as fd:
 
         info = dict(
             created=datetime.now().isoformat(),
@@ -405,11 +404,14 @@ def transform(
         )
 
         kwargs = dict(masked=masked, marked=marked)
-        pool.map(_transform_worker, [
-            (1, 'cw.train', args, kwargs),
-            (2, 'ow.valid', args, kwargs),
-            (3, 'ow.test', args, kwargs),
-        ])
+        pool.map(
+            _transform_worker,
+            [
+                (1, "cw.train", args, kwargs),
+                (2, "ow.valid", args, kwargs),
+                (3, "ow.test", args, kwargs),
+            ],
+        )
 
 
 @dataclass
@@ -427,9 +429,9 @@ class Part:
 
     id2ent: Dict[int, str] = field(default_factory=dict)
 
-    def __or__(self, other: 'Part') -> 'Part':
+    def __or__(self, other: "Part") -> "Part":
         return Part(
-            name=f'{self.name}|{other.name}',
+            name=f"{self.name}|{other.name}",
             id2sents={**self.id2sents, **other.id2sents},
             id2toks={**self.id2toks, **other.id2toks},
             id2idxs={**self.id2idxs, **other.id2idxs},
@@ -440,43 +442,49 @@ class Part:
         summed = sum(len(sents) for sents in self.id2sents.values())
         avg = (summed / len(self.id2sents)) if len(self.id2sents) else 0
 
-        return '\n'.join((
-            f'Part: {self.name}',
-            f'  total entities: {len(self.id2ent)}',
-            f'  average sentences per entity: {avg:2.2f}',
-        ))
+        return "\n".join(
+            (
+                f"Part: {self.name}",
+                f"  total entities: {len(self.id2ent)}",
+                f"  average sentences per entity: {avg:2.2f}",
+            )
+        )
 
     def check(self):
-        log.info(f'running self check for {self.name}')
+        log.info(f"running self check for {self.name}")
 
-        assert len(self.id2sents) == len(self.id2ent), (
-            f'{len(self.id2sents)=} != {len(self.id2ent)=}')
-        assert len(self.id2sents) == len(self.id2toks), (
-            f'{len(self.id2sents)=} != {len(self.id2toks)=}')
-        assert len(self.id2sents) == len(self.id2idxs), (
-            f'{len(self.id2sents)=} != {len(self.id2idxs)=}')
+        assert len(self.id2sents) == len(
+            self.id2ent
+        ), f"{len(self.id2sents)=} != {len(self.id2ent)=}"
+        assert len(self.id2sents) == len(
+            self.id2toks
+        ), f"{len(self.id2sents)=} != {len(self.id2toks)=}"
+        assert len(self.id2sents) == len(
+            self.id2idxs
+        ), f"{len(self.id2sents)=} != {len(self.id2idxs)=}"
 
         def _deep_check(d1: Dict[int, List], d2: Dict[int, List]):
             for e in d1:
-                assert len(d1[e]) == len(d2[e]), (
-                    f'{len(d1[e])=} != {len(d2[e])=}')
+                assert len(d1[e]) == len(
+                    d2[e]
+                ), f"{len(d1[e])=} != {len(d2[e])=}"
 
         _deep_check(self.id2sents, self.id2toks)
         _deep_check(self.id2sents, self.id2idxs)
 
     @helper.notnone
     def split_by_entity(
-            self, *,
-            ratio: float = None,
-            retained_entities: Set[int] = None):
+        self, *, ratio: float = None, retained_entities: Set[int] = None
+    ):
 
         n = int(len(self.id2idxs) * ratio) - len(retained_entities)
         candidates = list(set(self.id2ent) - retained_entities)
         a, b = candidates[:n], candidates[n:]
 
         log.info(
-            f'split {self.name} by entity at '
-            f'{n}/{len(self.id2idxs)} ({ratio=})')
+            f"split {self.name} by entity at "
+            f"{n}/{len(self.id2idxs)} ({ratio=})"
+        )
 
         def _dic_subset(dic, keys):
             return {k: v for k, v in dic.items() if k in keys}
@@ -486,11 +494,11 @@ class Part:
                 id2toks=_dic_subset(self.id2toks, entities),
                 id2idxs=_dic_subset(self.id2idxs, entities),
                 id2sents=_dic_subset(self.id2sents, entities),
-                id2ent=_dic_subset(self.id2ent, entities)
+                id2ent=_dic_subset(self.id2ent, entities),
             )
 
-        p1 = Part(name='-entity_split_a', **_split_by_entities(a))
-        p2 = Part(name='-entity_split_b', **_split_by_entities(b))
+        p1 = Part(name="-entity_split_a", **_split_by_entities(a))
+        p2 = Part(name="-entity_split_b", **_split_by_entities(b))
 
         p1.check()
         p2.check()
@@ -499,10 +507,10 @@ class Part:
 
     @helper.notnone
     def split_text_contexts(self, *, ratio: float = None):
-        log.info(f'split {self.name} text contexts ({ratio=})')
+        log.info(f"split {self.name} text contexts ({ratio=})")
 
-        p1 = Part(name=self.name + '-context_split_a')
-        p2 = Part(name=self.name + '-context_split_b')
+        p1 = Part(name=self.name + "-context_split_a")
+        p2 = Part(name=self.name + "-context_split_b")
 
         def _split(lis):
             if len(lis) == 1:
@@ -516,7 +524,7 @@ class Part:
             id2idxs = _split(self.id2idxs[e])
             id2sents = _split(self.id2sents[e])
 
-            assert len(id2toks[0]), f'{e}: {self.id2toks[e]}'
+            assert len(id2toks[0]), f"{e}: {self.id2toks[e]}"
 
             p1.id2toks[e] = id2toks[0]
             p1.id2idxs[e] = id2idxs[0]
@@ -533,15 +541,15 @@ class Part:
         p2.check()
 
         _n = len(p1.id2ent) - len(p2.id2ent)
-        log.info(f'finished split: {_n} have no validation contexts')
+        log.info(f"finished split: {_n} have no validation contexts")
         return p1, p2
 
     # ---
 
     @staticmethod
     def _read(path, fname):
-        with gzip.open(str(path / fname), mode='r') as fd:
-            log.info(f'reading {path.name}/{fname}')
+        with gzip.open(str(path / fname), mode="r") as fd:
+            log.info(f"reading {path.name}/{fname}")
             fd.readline()  # consume head comment
 
             for line in map(bytes.decode, fd.readlines()):
@@ -551,37 +559,38 @@ class Part:
     @classmethod
     @helper.notnone
     def load(K, *, name: str = None, path: pathlib.Path = None):
-        log.info(f'loading dataset from {path}')
+        log.info(f"loading dataset from {path}")
 
         read = partial(Part._read, path)
         id2ent = {}
 
         # sentences
         id2sents = defaultdict(list)
-        for e, blob in read(f'{name}-sentences.txt.gz'):
+        for e, blob in read(f"{name}-sentences.txt.gz"):
             e_name, sentence = blob.split(SEP, maxsplit=1)
             id2sents[e].append(sentence)
             id2ent[e] = e_name
 
         # tokens
         id2toks = defaultdict(list)
-        for e, blob in read(f'{name}-tokens.txt.gz'):
+        for e, blob in read(f"{name}-tokens.txt.gz"):
             _, tokens = blob.split(SEP, maxsplit=1)
             id2toks[e].append(tuple(tokens.split()))
 
         # # indexes
         id2idxs = defaultdict(list)
-        for e, blob in read(f'{name}-indexes.txt.gz'):
+        for e, blob in read(f"{name}-indexes.txt.gz"):
             id2idxs[e].append(tuple(map(int, blob.split())))
 
-        log.info(f'obtained data for {len(id2ent)} distinct entities')
+        log.info(f"obtained data for {len(id2ent)} distinct entities")
 
         part = K(
             name=name,
             id2ent=id2ent,
             id2toks=id2toks,
             id2idxs=id2idxs,
-            id2sents=id2sents, )
+            id2sents=id2sents,
+        )
 
         part.check()
         return part
@@ -638,65 +647,73 @@ class TextDataset:
     @property
     def name(self) -> str:
         return (
-            f'{self.dataset}/{self.database}/{self.model}'
-            f'.{self.max_sentence_count}.{self.max_token_count}')
+            f"{self.dataset}/{self.database}/{self.model}"
+            f".{self.max_sentence_count}.{self.max_token_count}"
+        )
 
     def __str__(self) -> str:
-        buf = '\n'.join((
-            'ryn.text.data.Dataset',
-            f'{self.name}',
-            f'created: {self.created}',
-            f'git_hash: {self.git_hash}',
-            '',
-        ))
+        buf = "\n".join(
+            (
+                "ryn.text.data.Dataset",
+                f"{self.name}",
+                f"created: {self.created}",
+                f"git_hash: {self.git_hash}",
+                "",
+            )
+        )
 
         cw = set(self.cw_train.id2ent)
 
         for name, part in (
-                ('cw.train', self.cw_train),
-                ('cw.transductive', self.cw_transductive),
-                ('cw.inductive', self.cw_inductive),
-                ('ow.valid', self.ow_valid),
-                ('ow.test', self.ow_test)):
+            ("cw.train", self.cw_train),
+            ("cw.transductive", self.cw_transductive),
+            ("cw.inductive", self.cw_inductive),
+            ("ow.valid", self.ow_valid),
+            ("ow.test", self.ow_test),
+        ):
 
             ow = set(part.id2ent) - cw
             cw |= ow
 
-            buf += textwrap.indent(
-                f'[{name.upper()}] {part}\n'
-                f'  open world entities: {len(ow)}',
-                '  ') + '\n'
+            buf += (
+                textwrap.indent(
+                    f"[{name.upper()}] {part}\n"
+                    f"  open world entities: {len(ow)}",
+                    "  ",
+                )
+                + "\n"
+            )
 
         return buf
 
     @classmethod
     @helper.notnone
-    @helper.cached('.cached.text.data.dataset.{seed}.{ratio}.pkl')
+    @helper.cached(".cached.text.data.dataset.{seed}.{ratio}.pkl")
     def create(
-            K,
-            path: Union[str, pathlib.Path],
-            retained_entities: Set[int] = None,
-            ratio: float = None,
-            seed: int = None):
+        K,
+        path: Union[str, pathlib.Path],
+        retained_entities: Set[int] = None,
+        ratio: float = None,
+        seed: int = None,
+    ):
 
         helper.seed(seed)
 
         path = pathlib.Path(path)
         if not path.is_dir():
-            raise ryn.RynError(f'Dataset cannot be found: {path}')
+            raise ryn.RynError(f"Dataset cannot be found: {path}")
 
-        with (path / 'info.json').open(mode='r') as fd:
+        with (path / "info.json").open(mode="r") as fd:
             info = json.load(fd)
 
         # create splits
 
-        cw_train = Part.load(name='cw.train', path=path)
+        cw_train = Part.load(name="cw.train", path=path)
 
         # first set aside some entities to measure
         # inductive validation loss
         cw_train, cw_inductive = cw_train.split_by_entity(
-            ratio=ratio,
-            retained_entities=retained_entities
+            ratio=ratio, retained_entities=retained_entities
         )
 
         # and then split the text contexts for the remaining
@@ -705,28 +722,24 @@ class TextDataset:
 
         self = TextDataset(
             ratio=ratio,
-
             # update
             created=datetime.now().isoformat(),
             git_hash=helper.git_hash(),
-
             # copy
-            model=info['model'],
-            dataset=info['dataset'],
-            database=info['database'],
-            max_sentence_count=info['sentences'],
-            max_token_count=info['tokens'],
-
+            model=info["model"],
+            dataset=info["dataset"],
+            database=info["database"],
+            max_sentence_count=info["sentences"],
+            max_token_count=info["tokens"],
             # create
             cw_train=cw_train,
             cw_transductive=cw_transductive,
             cw_inductive=cw_inductive,
-
-            ow_valid=Part.load(name='ow.valid', path=path),
-            ow_test=Part.load(name='ow.test', path=path),
+            ow_valid=Part.load(name="ow.valid", path=path),
+            ow_test=Part.load(name="ow.test", path=path),
         )
 
-        log.info(f'obtained {self}')
+        log.info(f"obtained {self}")
         return self
 
 
@@ -738,10 +751,11 @@ class Triples:
 
     @classmethod
     def create(
-            K, *,
-            split_dataset: split.Dataset = None,
-            split_part: split.Part = None,
-            **kwargs,  # e2id and r2id
+        K,
+        *,
+        split_dataset: split.Dataset = None,
+        split_part: split.Part = None,
+        **kwargs,  # e2id and r2id
     ):
         # kgc
         triples = keen.triples_to_ndarray(split_dataset.g, split_part.triples)
@@ -763,10 +777,11 @@ class KGCDataset:
 
     @classmethod
     def create(
-            K, *,
-            config: Config = None,
-            keen_dataset: keen.Dataset = None,
-            split_dataset: split.Dataset = None,
+        K,
+        *,
+        config: Config = None,
+        keen_dataset: keen.Dataset = None,
+        split_dataset: split.Dataset = None,
     ):
         # create triple factories usable by pykeen
         # re-use original id-mapping and extend this with own ids
@@ -775,12 +790,14 @@ class KGCDataset:
         owe = (split_dataset.ow_valid | split_dataset.ow_test).owe
 
         # add owe entities to the entity mapping
-        entity_to_id.update({
-            keen.e2s(split_dataset.g, e): idx
-            for e, idx in zip(owe, count(len(entity_to_id)))
-        })
+        entity_to_id.update(
+            {
+                keen.e2s(split_dataset.g, e): idx
+                for e, idx in zip(owe, count(len(entity_to_id)))
+            }
+        )
 
-        log.info(f'added {len(owe)} ow entities to mapping')
+        log.info(f"added {len(owe)} ow entities to mapping")
 
         transductive = Triples.create(
             split_dataset=split_dataset,
@@ -803,22 +820,24 @@ class KGCDataset:
             relation_to_id=relation_to_id,
         )
 
-        log.info('created datasets triples factories')
+        log.info("created datasets triples factories")
 
         ryn2keen = {}
         for factory in (transductive.factory, inductive.factory, test.factory):
-            ryn2keen.update({
-                int(name.split(':', maxsplit=1)[0]): keen_id
-                for name, keen_id in factory.entity_to_id.items()
-            })
+            ryn2keen.update(
+                {
+                    int(name.split(":", maxsplit=1)[0]): keen_id
+                    for name, keen_id in factory.entity_to_id.items()
+                }
+            )
 
-        log.info(f'initialized ryn2keen mapping with {len(ryn2keen)} ids')
+        log.info(f"initialized ryn2keen mapping with {len(ryn2keen)} ids")
 
         return K(
             ryn2keen=ryn2keen,
             transductive=transductive,
             inductive=inductive,
-            test=test
+            test=test,
         )
 
 
@@ -856,16 +875,18 @@ class TorchDataset(torch_data.Dataset):
         self._flat = [
             (torch.Tensor(idxs).to(dtype=torch.long), e)
             for e, idx_lists in part.id2idxs.items()
-            for idxs in idx_lists]
+            for idxs in idx_lists
+        ]
 
         lens = np.array([len(idxs) for idxs, _ in self._flat])
         self._max_idx = np.argmax(lens)
         self._max_len = lens[self.max_sequence_idx]
 
         log.info(
-            f'initialized torch dataset {name}: '
-            f'samples={len(self)}, '
-            f'max sequence length: {self.max_sequence_length}')
+            f"initialized torch dataset {name}: "
+            f"samples={len(self)}, "
+            f"max sequence length: {self.max_sequence_length}"
+        )
 
     @property
     def collator(self):
@@ -878,7 +899,7 @@ class TorchDataset(torch_data.Dataset):
             padded = pad_sequence(idxs, batch_first=True)
             shape = padded.shape[0], max_len
             bowl = torch.zeros(shape).to(dtype=torch.long)
-            bowl[:, :padded.shape[1]] = padded
+            bowl[:, : padded.shape[1]] = padded
 
             return bowl, ents
 
@@ -900,19 +921,22 @@ class Models:
     @classmethod
     @helper.notnone
     def load(
-            K, *,
-            config: Config = None, ):
+        K,
+        *,
+        config: Config = None,
+    ):
 
         text_encoder = None
         tokenizer = None
         if config.text_encoder:
             text_encoder = tf.BertModel.from_pretrained(
                 config.text_encoder,
-                cache_dir=ryn.ENV.CACHE_DIR / 'lib.transformers')
+                cache_dir=ryn.ENV.CACHE_DIR / "lib.transformers",
+            )
 
             tokenizer = Tokenizer.load(config.text_dataset)
 
-            log.info(f'resizing token embeddings to {len(tokenizer.base)}')
+            log.info(f"resizing token embeddings to {len(tokenizer.base)}")
             text_encoder.resize_token_embeddings(len(tokenizer.base))
 
         # --
@@ -920,8 +944,8 @@ class Models:
         kgc_model = None
         if config.kgc_model and config.split_dataset:
             kgc_model = keen.Model.load(
-                config.kgc_model,
-                split_dataset=config.split_dataset)
+                config.kgc_model, split_dataset=config.split_dataset
+            )
 
         return K(
             tokenizer=tokenizer,
@@ -931,7 +955,6 @@ class Models:
 
 
 class DataModule(pl.LightningDataModule):
-
     @property
     def config(self) -> Config:
         return self._config
@@ -954,10 +977,11 @@ class DataModule(pl.LightningDataModule):
 
     @helper.notnone
     def __init__(
-            self, *,
-            config: Config = None,
-            keen_dataset=None,
-            split_dataset=None,
+        self,
+        *,
+        config: Config = None,
+        keen_dataset=None,
+        split_dataset=None,
     ):
         super().__init__()
 
@@ -970,7 +994,7 @@ class DataModule(pl.LightningDataModule):
                 path=self.config.text_dataset,
                 retained_entities=self.split.concepts,
                 ratio=self.config.valid_split,
-                seed=self.split.cfg.seed
+                seed=self.split.cfg.seed,
             )
 
         self._keen = None
@@ -991,34 +1015,34 @@ class DataModule(pl.LightningDataModule):
     def setup(self, arg):
 
         self._train_set = TorchDataset(
-            name='cw.train',
+            name="cw.train",
             part=self.text.cw_train,
         )
 
         self._valid_sets = (
             TorchDataset(
-                name='cw.valid.transductive',
+                name="cw.valid.transductive",
                 part=self.text.cw_transductive,
             ),
             TorchDataset(
-                name='cw.valid.inductive',
+                name="cw.valid.inductive",
                 part=self.text.cw_inductive,
             ),
             TorchDataset(
-                name='ow.valid',
+                name="ow.valid",
                 part=self.text.ow_valid,
             ),
         )
 
         self._test_set = TorchDataset(
-            name='ow.test',
+            name="ow.test",
             part=self.text.ow_test,
         )
 
     # FOR LIGHTNING
 
     def train_dataloader(self) -> torch_data.DataLoader:
-        log.info('requesting train dataloader')
+        log.info("requesting train dataloader")
         return torch_data.DataLoader(
             self._train_set,
             collate_fn=TorchDataset.collate_fn,
@@ -1026,16 +1050,19 @@ class DataModule(pl.LightningDataModule):
         )
 
     def val_dataloader(self) -> torch_data.DataLoader:
-        log.info('requesting val dataloader')
-        return [torch_data.DataLoader(
-            dataset,
-            collate_fn=TorchDataset.collate_fn,
-            **self.config.dataloader_valid_args,
-        ) for dataset in self._valid_sets]
+        log.info("requesting val dataloader")
+        return [
+            torch_data.DataLoader(
+                dataset,
+                collate_fn=TorchDataset.collate_fn,
+                **self.config.dataloader_valid_args,
+            )
+            for dataset in self._valid_sets
+        ]
 
     def test_dataloader(self) -> torch_data.DataLoader:
         # see evaluator.py
-        log.info('requesting ow test dataloader')
+        log.info("requesting ow test dataloader")
         return torch_data.DataLoader(
             self._test_set,
             collate_fn=TorchDataset.collate_fn,

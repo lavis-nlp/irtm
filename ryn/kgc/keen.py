@@ -41,8 +41,8 @@ from typing import Optional
 from typing import Collection
 
 
-log = logging.get('kgc.keen')
-DATEFMT = '%Y.%m.%d.%H%M%S'
+log = logging.get("kgc.keen")
+DATEFMT = "%Y.%m.%d.%H%M%S"
 
 
 # ---
@@ -51,20 +51,20 @@ DATEFMT = '%Y.%m.%d.%H%M%S'
 # TODO use helper.cached
 def _cached_predictions(predict_all):
     def _inner(self: split.Dataset, e: int):
-        path = ryn.ENV.CACHE_DIR / 'kgc.keen'
+        path = ryn.ENV.CACHE_DIR / "kgc.keen"
         path.mkdir(exist_ok=True, parents=True)
-        path /= f'{self.uri}.{e}.pkl'
+        path /= f"{self.uri}.{e}.pkl"
 
-        log.info(f'looking for {path}')
+        log.info(f"looking for {path}")
         if path.is_file():
-            with path.open(mode='rb') as fd:
+            with path.open(mode="rb") as fd:
                 return pickle.load(fd)
 
-        log.info(f'! cache miss for {path}')
+        log.info(f"! cache miss for {path}")
         res = predict_all(self, e=e)
 
-        log.info(f'saving to {path}')
-        with path.open(mode='wb') as fd:
+        log.info(f"saving to {path}")
+        with path.open(mode="wb") as fd:
             pickle.dump(res, fd)
 
         return res
@@ -85,9 +85,13 @@ def _triples_to_set(t: torch.Tensor) -> Set[Tuple[int]]:
 
 
 TRIPLES_DF_COLUMNS = [
-    'head_id', 'head_label',
-    'relation_id', 'relation_label',
-    'tail_id', 'tail_label']
+    "head_id",
+    "head_label",
+    "relation_id",
+    "relation_label",
+    "tail_id",
+    "tail_label",
+]
 
 
 # self is a triples factory
@@ -108,27 +112,29 @@ def tensor_to_df(self, tensor: torch.LongTensor, **kwargs) -> pd.DataFrame:
     forbidden = additional_columns.intersection(TRIPLES_DF_COLUMNS)
     if len(forbidden) > 0:
         raise ValueError(
-            f'The key-words for additional arguments must not be in '
-            f'{TRIPLES_DF_COLUMNS}, but {forbidden} were '
-            f'used.'
+            f"The key-words for additional arguments must not be in "
+            f"{TRIPLES_DF_COLUMNS}, but {forbidden} were "
+            f"used."
         )
 
     # convert to numpy
     tensor = tensor.cpu().numpy()
-    data = dict(zip(['head_id', 'relation_id', 'tail_id'], tensor.T))
+    data = dict(zip(["head_id", "relation_id", "tail_id"], tensor.T))
 
     # vectorized label lookup
     entity_id_to_label = np.vectorize(
-        {v: k for k, v in self.entity_to_id.items()}.__getitem__)
+        {v: k for k, v in self.entity_to_id.items()}.__getitem__
+    )
     relation_id_to_label = np.vectorize(
-        {v: k for k, v in self.relation_to_id.items()}.__getitem__)
+        {v: k for k, v in self.relation_to_id.items()}.__getitem__
+    )
 
     for column, id_to_label in dict(
         head=entity_id_to_label,
         relation=relation_id_to_label,
         tail=entity_id_to_label,
     ).items():
-        data[f'{column}_label'] = id_to_label(data[f'{column}_id'])
+        data[f"{column}_label"] = id_to_label(data[f"{column}_id"])
 
     # Additional columns
     for key, values in kwargs.items():
@@ -142,7 +148,8 @@ def tensor_to_df(self, tensor: torch.LongTensor, **kwargs) -> pd.DataFrame:
 
     # Re-order columns
     columns = TRIPLES_DF_COLUMNS + sorted(
-        set(rv.columns).difference(TRIPLES_DF_COLUMNS))
+        set(rv.columns).difference(TRIPLES_DF_COLUMNS)
+    )
 
     return rv.loc[:, columns]
 
@@ -151,11 +158,11 @@ def tensor_to_df(self, tensor: torch.LongTensor, **kwargs) -> pd.DataFrame:
 
 
 def e2s(g: graph.Graph, e: int):
-    return f'{e}:{g.source.ents[e]}'
+    return f"{e}:{g.source.ents[e]}"
 
 
 def r2s(g: graph.Graph, r: int):
-    return f'{r}:{g.source.rels[r]}'
+    return f"{r}:{g.source.rels[r]}"
 
 
 def triple_to_str(g: graph.Graph, htr: Tuple[int]):
@@ -218,7 +225,7 @@ class Dataset(keen_datasets_base.DataSet):
 
     """
 
-    NAME = 'ryn'
+    NAME = "ryn"
 
     @property
     def name(self):
@@ -240,13 +247,15 @@ class Dataset(keen_datasets_base.DataSet):
 
     @helper.notnone
     def __init__(
-            self, *,
-            name: str = None,
-            # if this changes, also change Dataset.kwargs
-            split_dataset: split.Dataset = None,
-            training: keen_triples.TriplesFactory = None,
-            validation: keen_triples.TriplesFactory = None,
-            testing: keen_triples.TriplesFactory = None):
+        self,
+        *,
+        name: str = None,
+        # if this changes, also change Dataset.kwargs
+        split_dataset: split.Dataset = None,
+        training: keen_triples.TriplesFactory = None,
+        validation: keen_triples.TriplesFactory = None,
+        testing: keen_triples.TriplesFactory = None,
+    ):
 
         self._name = name
         self._split_dataset = split_dataset
@@ -257,51 +266,59 @@ class Dataset(keen_datasets_base.DataSet):
         self.testing = testing
 
     def __str__(self) -> str:
-        return f'keen: [{self.name}]: ' + (
-            ' | '.join(
-                f'{name}={factory.num_triples}' for name, factory
-                in zip(
-                    ('training', 'validation', 'testing'),
-                    (self.training, self.validation, self.testing), )))
+        return f"keen: [{self.name}]: " + (
+            " | ".join(
+                f"{name}={factory.num_triples}"
+                for name, factory in zip(
+                    ("training", "validation", "testing"),
+                    (self.training, self.validation, self.testing),
+                )
+            )
+        )
 
     @property
     def str_stats(self) -> str:
-        s = 'ryn pykeen dataset\n'
-        s += f'{self.name}\n'
+        s = "ryn pykeen dataset\n"
+        s += f"{self.name}\n"
 
         for name, factory in zip(
-                ('training', 'validation', 'testing'),
-                (self.training, self.validation, self.testing), ):
+            ("training", "validation", "testing"),
+            (self.training, self.validation, self.testing),
+        ):
 
             content = textwrap.indent(
-                f'entities: {factory.num_entities}\n'
-                f'relations: {factory.num_relations}\n'
-                f'triples: {factory.num_triples}\n'
-                '', '  ')
+                f"entities: {factory.num_entities}\n"
+                f"relations: {factory.num_relations}\n"
+                f"triples: {factory.num_triples}\n"
+                "",
+                "  ",
+            )
 
-            s += textwrap.indent(f'\n{name} triples factory:\n{content}', '  ')
+            s += textwrap.indent(f"\n{name} triples factory:\n{content}", "  ")
 
         return s
 
     def check(self):
         ds = self.split_dataset
-        log.info(f'! running self-check for {ds.path.name} TriplesFactories')
+        log.info(f"! running self-check for {ds.path.name} TriplesFactories")
 
-        assert self.validation.num_entities <= self.training.num_entities, (
-            f'{self.validation.num_entities=} > {self.training.num_entities=}')
-        assert self.testing.num_entities <= self.training.num_entities, (
-            f'{self.testing.num_entities=} > {self.validation.num_entities=}')
+        assert (
+            self.validation.num_entities <= self.training.num_entities
+        ), f"{self.validation.num_entities=} > {self.training.num_entities=}"
+        assert (
+            self.testing.num_entities <= self.training.num_entities
+        ), f"{self.testing.num_entities=} > {self.validation.num_entities=}"
 
         # all entities must be known at training time
         # (this implicitly checks if there are entities with the same name)
         n_train = self.training.num_entities
         n_dataset = len(self.split_dataset.cw_train.entities)
-        assert n_train == n_dataset, f'{n_train=} != {n_dataset=}'
+        assert n_train == n_dataset, f"{n_train=} != {n_dataset=}"
 
         # all known entities and relations are contained in the mappings
 
         entities = 0, 2
-        relations = 1,
+        relations = (1,)
 
         def _triples_to_set(triples, indexes):
             nonlocal ds
@@ -311,31 +328,37 @@ class Dataset(keen_datasets_base.DataSet):
         for factory in (self.training, self.validation, self.testing):
 
             _mapped = _triples_to_set(ds.cw_train.triples, entities)
-            assert len(factory.entity_to_id.keys() - _mapped) == 0, (
-                f'{(len(factory.entity_to_id.keys() - _mapped) != 0)=}')
+            assert (
+                len(factory.entity_to_id.keys() - _mapped) == 0
+            ), f"{(len(factory.entity_to_id.keys() - _mapped) != 0)=}"
 
             _mapped = _triples_to_set(ds.cw_train.triples, relations)
-            assert len(factory.relation_to_id.keys() - _mapped) == 0, (
-                f'{(len(factory.relation_to_id.keys() - _mapped) == 0)=}')
+            assert (
+                len(factory.relation_to_id.keys() - _mapped) == 0
+            ), f"{(len(factory.relation_to_id.keys() - _mapped) == 0)=}"
 
             _mapped = _triples_to_set(ds.cw_valid.triples, entities)
-            assert _mapped.issubset(factory.entity_to_id.keys()), (
-                f'{_mapped.issubset(factory.entity_to_id.keys())=}')
+            assert _mapped.issubset(
+                factory.entity_to_id.keys()
+            ), f"{_mapped.issubset(factory.entity_to_id.keys())=}"
 
             _mapped = _triples_to_set(ds.cw_valid.triples, relations)
-            assert _mapped.issubset(factory.relation_to_id.keys()), (
-                f'{_mapped.issubset(factory.relation_to_id.keys())=}')
+            assert _mapped.issubset(
+                factory.relation_to_id.keys()
+            ), f"{_mapped.issubset(factory.relation_to_id.keys())=}"
 
     @classmethod
-    @helper.cached('.cached.kgc.keen.dataset.pkl')
+    @helper.cached(".cached.kgc.keen.dataset.pkl")
     def create(
-            K, *,
-            # name is required for my version of the hpo pipeline
-            name: str = None,
-            # path is needed for helper.cached
-            # (you may want to use dataset.path)
-            path: pathlib.Path = None,
-            split_dataset: split.Dataset = None) -> 'Dataset':
+        K,
+        *,
+        # name is required for my version of the hpo pipeline
+        name: str = None,
+        # path is needed for helper.cached
+        # (you may want to use dataset.path)
+        path: pathlib.Path = None,
+        split_dataset: split.Dataset = None,
+    ) -> "Dataset":
         """
         Create a new pykeen dataset
 
@@ -368,7 +391,7 @@ class Dataset(keen_datasets_base.DataSet):
 
         """
 
-        log.info(f'creating triple factories {path}')
+        log.info(f"creating triple factories {path}")
 
         helper.seed(split_dataset.cfg.seed)
 
@@ -377,18 +400,21 @@ class Dataset(keen_datasets_base.DataSet):
         # keen uses its own internal indexing
         # so strip own indexes and create "translated" triple matrix
         train = keen_triples.TriplesFactory(
-            triples=to_a(split_dataset.cw_train.triples), )
+            triples=to_a(split_dataset.cw_train.triples),
+        )
 
         # default split is 80/20
         training, validation = train.split(
             split_dataset.cfg.train_split,
-            random_state=split_dataset.cfg.seed, )
+            random_state=split_dataset.cfg.seed,
+        )
 
         # re-use existing entity/relation mappings
         testing = keen_triples.TriplesFactory(
             triples=to_a(split_dataset.cw_valid.triples),
             entity_to_id=train.entity_to_id,
-            relation_to_id=train.relation_to_id, )
+            relation_to_id=train.relation_to_id,
+        )
 
         # ---
 
@@ -397,7 +423,8 @@ class Dataset(keen_datasets_base.DataSet):
             split_dataset=split_dataset,
             training=training,
             validation=validation,
-            testing=testing)
+            testing=testing,
+        )
 
         self.check()
         return self
@@ -407,7 +434,8 @@ class Dataset(keen_datasets_base.DataSet):
         return Dataset.create(
             name=split_dataset.name,
             path=split_dataset.path,
-            split_dataset=split_dataset)
+            split_dataset=split_dataset,
+        )
 
 
 # TODO unused?
@@ -451,49 +479,52 @@ class Model:
     def uri(self) -> str:
         # assuming the timestamp is unique...
         return (
-            f'{self.split_dataset.name}/'
-            f'{self.name}/'
-            f'{self.timestamp.strftime(DATEFMT)}')
+            f"{self.split_dataset.name}/"
+            f"{self.name}/"
+            f"{self.timestamp.strftime(DATEFMT)}"
+        )
 
     @property
     def keen(self) -> keen_models_base.Model:  # a torch.nn.Module
         return self.training_result.model
 
     def freeze(self):
-        log.info('! freezing kgc model')
+        log.info("! freezing kgc model")
         self.keen.requires_grad_(False)
 
     def unfreeze(self):
-        log.info('! un-freezing kgc model')
+        log.info("! un-freezing kgc model")
         self.keen.requires_grad_(True)
 
     @property
     @lru_cache
     def metrics(self) -> pd.DataFrame:
-        metrics = self.test_results['metrics']
-        hits_at_k = metrics['hits_at_k']['both']
+        metrics = self.test_results["metrics"]
+        hits_at_k = metrics["hits_at_k"]["both"]
 
         data = {}
         for i in (1, 3, 5, 10):
-            data[f'hits@{i}'] = {
-                kind: hits_at_k[kind][f'{i}']
-                for kind in ('avg', 'best', 'worst')
+            data[f"hits@{i}"] = {
+                kind: hits_at_k[kind][f"{i}"]
+                for kind in ("avg", "best", "worst")
             }
 
-        data['MR'] = metrics['mean_rank']['both']
-        data['MRR'] = metrics['mean_reciprocal_rank']['both']
+        data["MR"] = metrics["mean_rank"]["both"]
+        data["MRR"] = metrics["mean_reciprocal_rank"]["both"]
 
         return pd.DataFrame(data)
 
     # ---
 
     def __str__(self) -> str:
-        title = f'\nKGC Model {self.name}-{self.dimensions}\n'
+        title = f"\nKGC Model {self.name}-{self.dimensions}\n"
 
         return title + textwrap.indent(
             f'Trained: {self.timestamp.strftime("%d.%m.%Y %H:%M")}\n'
-            f'Dataset: {self.split_dataset.name}\n\n'
-            f'{self.metrics}\n', '  ')
+            f"Dataset: {self.split_dataset.name}\n\n"
+            f"{self.metrics}\n",
+            "  ",
+        )
 
     def __hash__(self) -> int:
         return hash(self.uri)
@@ -550,9 +581,8 @@ class Model:
 
     @helper.notnone
     def embeddings(
-            self, *,
-            entities: Collection[int] = None,
-            device: torch.device = None):
+        self, *, entities: Collection[int] = None, device: torch.device = None
+    ):
 
         mapped = tuple(map(self.e2id, entities))
         indexes = torch.Tensor(mapped).to(dtype=torch.long, device=device)
@@ -579,7 +609,7 @@ class Model:
         Scores in the order of the associated triples
 
         """
-        assert self.split_dataset, 'no dataset loaded'
+        assert self.split_dataset, "no dataset loaded"
 
         array = triples_to_ndarray(self.split_dataset.g, triples)
         batch = self.keen.triples_factory.map_triples_to_id(array)
@@ -589,10 +619,8 @@ class Model:
         return [float(t) for t in scores]
 
     def predict_heads(
-            self, *,
-            t: int = None,
-            r: int = None,
-            **kwargs) -> pd.DataFrame:
+        self, *, t: int = None, r: int = None, **kwargs
+    ) -> pd.DataFrame:
         """
 
         See keen_base.Model.predict_heads.
@@ -611,10 +639,8 @@ class Model:
         return self.keen.predict_heads(rstr, tstr, **kwargs)
 
     def predict_tails(
-            self, *,
-            h: int = None,
-            r: int = None,
-            **kwargs) -> pd.DataFrame:
+        self, *, h: int = None, r: int = None, **kwargs
+    ) -> pd.DataFrame:
         """
 
         See keen_base.Model.predict_tails
@@ -671,7 +697,7 @@ class Model:
         n = len(rids) * len(eids)
         res = res.view(n, 3)
 
-        print('containment')
+        print("containment")
 
         # check split the triples occur in
         def _is_in(ref):
@@ -691,15 +717,20 @@ class Model:
         ow = ds.ow_valid.triples | ds.ow_test.triples
         in_ow = _is_in(set(self.triples2id(ow)))
 
-        print('df construction')
+        print("df construction")
 
         df = tensor_to_df(
-            self.keen.triples_factory, res,
-            scores=y.view((n, )),
-            cw=in_cw, ow=in_ow,
-            train=in_train, valid=in_valid, test=in_test, )
+            self.keen.triples_factory,
+            res,
+            scores=y.view((n,)),
+            cw=in_cw,
+            ow=in_ow,
+            train=in_train,
+            valid=in_valid,
+            test=in_test,
+        )
 
-        df = df.sort_values(by='scores', ascending=False)
+        df = df.sort_values(by="scores", ascending=False)
         return df
 
     def predict_all_tails(self, *, h: int = None) -> pd.DataFrame:
@@ -736,15 +767,18 @@ class Model:
 
     @classmethod
     def load(
-            K, path: Union[str, pathlib.Path], *,
-            split_dataset: str = None,
-            load_model: bool = True, ):
+        K,
+        path: Union[str, pathlib.Path],
+        *,
+        split_dataset: str = None,
+        load_model: bool = True,
+    ):
 
         assert split_dataset
 
         path = helper.path(
-            path, exists=True,
-            message='loading keen model from {path_abbrv}')
+            path, exists=True, message="loading keen model from {path_abbrv}"
+        )
 
         config = Config.load(path)
         training_result = data.TrainingResult.load(path)
@@ -762,8 +796,8 @@ class Model:
         # TODO different triple split?
         # __import__("pdb").set_trace()
         assert keen_dataset.training.mapped_triples.equal(
-            training_result.model.triples_factory.mapped_triples), (
-                'cannot reproduce triple split')
+            training_result.model.triples_factory.mapped_triples
+        ), "cannot reproduce triple split"
 
         return K(
             path=path,

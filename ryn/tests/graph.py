@@ -33,14 +33,14 @@ test_graph_rels = GraphImport(
         (6, 3, 0),
     ),
     rels={
-        0: 'multi',
-        1: 'reflexive',
-        2: 'symmetric',
-        3: 'transitive',
+        0: "multi",
+        1: "reflexive",
+        2: "symmetric",
+        3: "transitive",
     },
     ents={
-        0: 'center',
-    }
+        0: "center",
+    },
 )
 
 
@@ -66,11 +66,10 @@ test_graph_paths = GraphImport(
 
 
 class BasicGraphTests(unittest.TestCase):
-
     def test_empty(self):
-        g = Graph(name='test_empty')
+        g = Graph(name="test_empty")
 
-        self.assertEqual(g.name, 'test_empty')
+        self.assertEqual(g.name, "test_empty")
         self.assertEqual(len(g.source.rels), 0)
 
         self.assertEqual(g.source.triples, set())
@@ -87,16 +86,18 @@ class BasicGraphTests(unittest.TestCase):
         """
 
         triples = [(0, 0, 0)]
-        s = GraphImport(triples, )
-        one = Graph(name='one_reflexive', source=s)
+        s = GraphImport(
+            triples,
+        )
+        one = Graph(name="one_reflexive", source=s)
 
         self.assertEqual(one.source.triples, set(triples))
 
         self.assertEqual(len(one.source.rels), 1)
         self.assertEqual(one.nx.number_of_edges(), 1)
         self.assertEqual(one.nx.number_of_nodes(), 1)
-        self.assertEqual(one.nx.nodes[0], {'label': '0'})
-        self.assertEqual(one.nx.edges[0, 0, 0], {'rid': 0, 'label': '0'})
+        self.assertEqual(one.nx.nodes[0], {"label": "0"})
+        self.assertEqual(one.nx.edges[0, 0, 0], {"rid": 0, "label": "0"})
 
     def test_two(self):
         """
@@ -106,11 +107,11 @@ class BasicGraphTests(unittest.TestCase):
 
         """
         triples = [(0, 1, 0), (1, 0, 0)]
-        s = GraphImport(triples=triples,
-                        rels={0: 'custom_rel'},
-                        ents={0: 'custom_ent'})
+        s = GraphImport(
+            triples=triples, rels={0: "custom_rel"}, ents={0: "custom_ent"}
+        )
 
-        two = Graph(name='two', source=s)
+        two = Graph(name="two", source=s)
 
         self.assertEqual(two.source.triples, set(triples))
 
@@ -118,14 +119,16 @@ class BasicGraphTests(unittest.TestCase):
         self.assertEqual(two.nx.number_of_edges(), 2)
         self.assertEqual(two.nx.number_of_nodes(), 2)
 
-        self.assertEqual(two.nx.nodes[0], {'label': 'custom_ent'})
-        self.assertEqual(two.nx.nodes[1], {'label': '1'})
+        self.assertEqual(two.nx.nodes[0], {"label": "custom_ent"})
+        self.assertEqual(two.nx.nodes[1], {"label": "1"})
 
-        self.assertEqual(two.nx.edges[0, 1, 0],
-                         {'rid': 0, 'label': 'custom_rel'})
+        self.assertEqual(
+            two.nx.edges[0, 1, 0], {"rid": 0, "label": "custom_rel"}
+        )
 
-        self.assertEqual(two.nx.edges[1, 0, 0],
-                         {'rid': 0, 'label': 'custom_rel'})
+        self.assertEqual(
+            two.nx.edges[1, 0, 0], {"rid": 0, "label": "custom_rel"}
+        )
 
         two.str_stats
 
@@ -137,7 +140,7 @@ class BasicGraphTests(unittest.TestCase):
         graph properties.
 
         """
-        m = Graph(name='multi', source=test_graph_rels)
+        m = Graph(name="multi", source=test_graph_rels)
 
         self.assertEqual(len(m.source.rels), 4)
         self.assertEqual(len(m.source.ents), 8)
@@ -145,11 +148,11 @@ class BasicGraphTests(unittest.TestCase):
         self.assertEqual(set(m.source.rels.keys()), set(range(4)))
         self.assertEqual(set(m.source.ents.keys()), set(range(8)))
 
-        self.assertEqual(m.source.rels[0], 'multi')
-        self.assertEqual(m.source.rels[1], 'reflexive')
-        self.assertEqual(m.source.rels[2], 'symmetric')
-        self.assertEqual(m.source.rels[3], 'transitive')
-        self.assertEqual(m.source.ents[0], 'center')
+        self.assertEqual(m.source.rels[0], "multi")
+        self.assertEqual(m.source.rels[1], "reflexive")
+        self.assertEqual(m.source.rels[2], "symmetric")
+        self.assertEqual(m.source.rels[3], "transitive")
+        self.assertEqual(m.source.ents[0], "center")
 
         self.assertEqual(m.nx.number_of_edges(), 13)
         self.assertEqual(m.nx.number_of_nodes(), 8)
@@ -158,7 +161,6 @@ class BasicGraphTests(unittest.TestCase):
 
 
 class SelectTests(unittest.TestCase):
-
     def test_edge(self):
         g = Graph(source=test_graph_rels)
         sel = g.select(tails={2, 4}, edges={3})
@@ -201,10 +203,7 @@ class SelectTests(unittest.TestCase):
 
     def test_combination(self):
         g = Graph(source=test_graph_rels)
-        sel = g.select(
-            edges={2},
-            heads={0, 3, 4, 5, 6},
-            tails={0, 3, 4, 5, 6})
+        sel = g.select(edges={2}, heads={0, 3, 4, 5, 6}, tails={0, 3, 4, 5, 6})
 
         self.assertIn((0, 3, 2), sel)
         self.assertIn((3, 0, 2), sel)
@@ -215,13 +214,12 @@ class SelectTests(unittest.TestCase):
 
 
 class FindTests(unittest.TestCase):
-
     @property
     def g(self) -> Graph:
         return self._g
 
     def setUp(self):
-        self._g = Graph(source=test_graph_rels, name='original')
+        self._g = Graph(source=test_graph_rels, name="original")
 
     def test_edge(self):
         sel = self.g.find(edges={2})
@@ -285,16 +283,15 @@ class FindTests(unittest.TestCase):
 
 
 class CloneGraphTests(unittest.TestCase):
-
     def test_clone(self):
-        g1 = Graph(name='name', source=test_graph_rels)
+        g1 = Graph(name="name", source=test_graph_rels)
         g2 = g1.clone()
 
         self.assertIsNot(g1, g2)
         self.assertIsNot(g1.nx, g2.nx)
 
         self.assertEqual(g1.source, g2.source)
-        self.assertEqual('name', g2.name)
+        self.assertEqual("name", g2.name)
 
         self.assertEqual(g1.nx.number_of_nodes(), g2.nx.number_of_nodes())
         self.assertEqual(g1.nx.number_of_edges(), g2.nx.number_of_edges())
@@ -306,29 +303,28 @@ class CloneGraphTests(unittest.TestCase):
             self.assertIn(edge, g2.nx.edges)
 
     def test_clone_references(self):
-        g1 = Graph(name='name', source=test_graph_rels)
+        g1 = Graph(name="name", source=test_graph_rels)
 
-        g1.nx.nodes[0]['immutable'] = 'immutable'
-        g1.nx.nodes[1]['mutable'] = {'mutable': True}
+        g1.nx.nodes[0]["immutable"] = "immutable"
+        g1.nx.nodes[1]["mutable"] = {"mutable": True}
 
         g2 = g1.clone()
 
-        g1.nx.nodes[0]['immutable'] = 'something else'
-        g2.nx.nodes[3]['new'] = 'new'
+        g1.nx.nodes[0]["immutable"] = "something else"
+        g2.nx.nodes[3]["new"] = "new"
 
-        self.assertEqual('immutable', g2.nx.nodes[0]['immutable'])
-        self.assertIs(g1.nx.nodes[1]['mutable'], g2.nx.nodes[1]['mutable'])
+        self.assertEqual("immutable", g2.nx.nodes[0]["immutable"])
+        self.assertIs(g1.nx.nodes[1]["mutable"], g2.nx.nodes[1]["mutable"])
 
 
 class JoinGraphTests(unittest.TestCase):
-
     def test_join_empty(self):
-        g1 = Graph(name='graph1')
-        g2 = Graph(name='graph2')
+        g1 = Graph(name="graph1")
+        g2 = Graph(name="graph2")
 
         g1.join(g2)
 
-        self.assertEqual(g1.name, 'graph1')
+        self.assertEqual(g1.name, "graph1")
         self.assertEqual(len(g1.source.rels), 0)
 
         self.assertEqual(g1.source.triples, set())
@@ -340,8 +336,8 @@ class JoinGraphTests(unittest.TestCase):
     def test_join_empty_with_one(self):
         triples = [(0, 0, 0)]
 
-        g1 = Graph(name='graph1')
-        g2 = Graph(name='graph2', source=GraphImport(triples=triples))
+        g1 = Graph(name="graph1")
+        g2 = Graph(name="graph2", source=GraphImport(triples=triples))
 
         g1.join(g2)
 
@@ -350,19 +346,21 @@ class JoinGraphTests(unittest.TestCase):
         self.assertEqual(len(g1.source.rels), 1)
         self.assertEqual(g1.nx.number_of_edges(), 1)
         self.assertEqual(g1.nx.number_of_nodes(), 1)
-        self.assertEqual(g1.nx.nodes[0], {'label': '0'})
-        self.assertEqual(g1.nx.edges[0, 0, 0], {'rid': 0, 'label': '0'})
+        self.assertEqual(g1.nx.nodes[0], {"label": "0"})
+        self.assertEqual(g1.nx.edges[0, 0, 0], {"rid": 0, "label": "0"})
 
     def test_join_with_overwrite(self):
         s1 = GraphImport(
             triples=[(0, 1, 0), (1, 0, 0), (3, 0, 0)],
-            rels={0: 'rel_nope'},
-            ents={0: 'ent_nope', 1: 'ent_nope', 3: 'ent_yep'})
+            rels={0: "rel_nope"},
+            ents={0: "ent_nope", 1: "ent_nope", 3: "ent_yep"},
+        )
 
         s2 = GraphImport(
             triples=[(0, 1, 0), (1, 0, 1), (1, 2, 1)],
-            rels={0: 'rel_yep'},
-            ents={1: 'ent_yep'})
+            rels={0: "rel_yep"},
+            ents={1: "ent_yep"},
+        )
 
         g1 = Graph(source=s1)
         g2 = Graph(source=s2)
@@ -381,13 +379,13 @@ class JoinGraphTests(unittest.TestCase):
         self.assertIn((1, 2, 1), g1.nx.edges)
         self.assertIn((3, 0, 0), g1.nx.edges)
 
-        self.assertEqual(g1.source.rels[0], 'rel_yep')
-        self.assertEqual(g1.source.rels[1], '1')
+        self.assertEqual(g1.source.rels[0], "rel_yep")
+        self.assertEqual(g1.source.rels[1], "1")
 
-        self.assertEqual(g1.source.ents[0], '0')
-        self.assertEqual(g1.source.ents[1], 'ent_yep')
-        self.assertEqual(g1.source.ents[2], '2')
-        self.assertEqual(g1.source.ents[3], 'ent_yep')
+        self.assertEqual(g1.source.ents[0], "0")
+        self.assertEqual(g1.source.ents[1], "ent_yep")
+        self.assertEqual(g1.source.ents[2], "2")
+        self.assertEqual(g1.source.ents[3], "ent_yep")
 
     def test_join_no_edges(self):
         g1 = Graph()
@@ -413,11 +411,9 @@ class JoinGraphTests(unittest.TestCase):
 
 
 class SubGraphTests(unittest.TestCase):
-
     def test_from_one(self):
-        g = Graph(source=GraphImport(
-            triples=[(0, 0, 0)],
-            ents={0: 'zero'}),
+        g = Graph(
+            source=GraphImport(triples=[(0, 0, 0)], ents={0: "zero"}),
         )
 
         nid, sub = g.sample_subgraph(start=0, depth=3)
@@ -427,8 +423,8 @@ class SubGraphTests(unittest.TestCase):
         self.assertEqual(sub.nx.number_of_edges(), 1)
         self.assertEqual(sub.nx.number_of_nodes(), 1)
 
-        self.assertEqual(sub.nx.edges[0, 0, 0], {'rid': 0, 'label': '0'})
-        self.assertEqual(sub.nx.nodes[0], {'label': 'zero'})
+        self.assertEqual(sub.nx.edges[0, 0, 0], {"rid": 0, "label": "0"})
+        self.assertEqual(sub.nx.nodes[0], {"label": "zero"})
 
     def test_to_one(self):
         g = Graph(source=test_graph_rels)
@@ -478,7 +474,6 @@ class SubGraphTests(unittest.TestCase):
 
 
 class PathFindTests(unittest.TestCase):
-
     def test_empty_path(self):
         pass  # 0, 7 cutoff=2
 
@@ -486,28 +481,27 @@ class PathFindTests(unittest.TestCase):
         g = Graph(source=test_graph_paths)
 
         paths = {
-            path.rels: path
-            for path in g.find_paths(2, 5, cutoff=5, depth=0)
+            path.rels: path for path in g.find_paths(2, 5, cutoff=5, depth=0)
         }
 
         self.assertEqual(len(paths), 3)
 
         # 1-hop
 
-        self.assertIn((0, ), paths)
-        path = paths[(0, )]
+        self.assertIn((0,), paths)
+        path = paths[(0,)]
 
         self.assertEqual(len(path), 1)
         self.assertEqual((2, 5), path.ents)
-        self.assertEqual((0, ), path.rels)
+        self.assertEqual((0,), path.rels)
 
-        self.assertEqual('head', path.g.nx.nodes[2]['kind'])
-        self.assertEqual('tail', path.g.nx.nodes[5]['kind'])
-        self.assertEqual('path', path.g.nx.edges[2, 5, 0]['kind'])
+        self.assertEqual("head", path.g.nx.nodes[2]["kind"])
+        self.assertEqual("tail", path.g.nx.nodes[5]["kind"])
+        self.assertEqual("path", path.g.nx.edges[2, 5, 0]["kind"])
 
-        for node in (set(test_graph_paths.ents.keys()) - set(path.ents)):
+        for node in set(test_graph_paths.ents.keys()) - set(path.ents):
             with self.assertRaises(KeyError):
-                path.g.nx.nodes[node]['kind']
+                path.g.nx.nodes[node]["kind"]
 
         # 2-hop
 
@@ -528,31 +522,30 @@ class PathFindTests(unittest.TestCase):
 
             self.assertEqual(g.source, path.g.source)
 
-            self.assertEqual('head', path.g.nx.nodes[path.ents[0]]['kind'])
-            self.assertEqual('tail', path.g.nx.nodes[path.ents[-1]]['kind'])
+            self.assertEqual("head", path.g.nx.nodes[path.ents[0]]["kind"])
+            self.assertEqual("tail", path.g.nx.nodes[path.ents[-1]]["kind"])
             for node in path.ents[1:-1]:
-                self.assertEqual('path', path.g.nx.nodes[node]['kind'])
+                self.assertEqual("path", path.g.nx.nodes[node]["kind"])
 
             # FIXME test path annotation on edges
 
-            for node in (set(test_graph_paths.ents.keys()) - set(path.ents)):
+            for node in set(test_graph_paths.ents.keys()) - set(path.ents):
                 with self.assertRaises(KeyError):
-                    path.g.nx.nodes[node]['kind']
+                    path.g.nx.nodes[node]["kind"]
 
     def test_depth1(self):
         g = Graph(source=test_graph_paths)
 
         paths = {
-            path.rels: path
-            for path in g.find_paths(2, 5, cutoff=5, depth=1)
+            path.rels: path for path in g.find_paths(2, 5, cutoff=5, depth=1)
         }
 
         for path in paths.values():
             self.assertEqual(6, path.g.nx.number_of_nodes())
             self.assertNotIn(0, path.g.nx.nodes)
 
-        self.assertEqual(9, paths[(0, )].g.nx.number_of_edges())
-        self.assertNotIn((4, 4, 0), paths[(0, )].g.nx.edges)
+        self.assertEqual(9, paths[(0,)].g.nx.number_of_edges())
+        self.assertNotIn((4, 4, 0), paths[(0,)].g.nx.edges)
 
         self.assertEqual(10, paths[(0, 0)].g.nx.number_of_edges())
         self.assertEqual(10, paths[(1, 0)].g.nx.number_of_edges())
@@ -566,7 +559,6 @@ class PathFindTests(unittest.TestCase):
 
 
 class StrollTests(unittest.TestCase):
-
     def _check_grounds(self, stroll, pattern, grounds):
         ref = stroll.grounds[pattern]
 
@@ -603,30 +595,35 @@ class StrollTests(unittest.TestCase):
 
         # patterns
 
-        self.assertIn((1, ), stroll.patterns)
-        self.assertIn((0, ), stroll.patterns)
+        self.assertIn((1,), stroll.patterns)
+        self.assertIn((0,), stroll.patterns)
         self.assertEqual(2, len(stroll.patterns))
 
         # grounds
 
-        self.assertIn((2, 4), stroll.grounds[(1, )])
+        self.assertIn((2, 4), stroll.grounds[(1,)])
 
         for walk in walks:
-            self.assertIn(walk, stroll.grounds[(0, )])
+            self.assertIn(walk, stroll.grounds[(0,)])
 
     def test_big(self):
         g = Graph(source=test_graph_paths)
         stroll = g.stroll(center=2, cutoff=2)
 
-        walks = ((2, 3),
-                 (2, 1),
-                 (2, 1, 2),
-                 (2, 1, 0),
-                 (2, 5, 6),
-                 (2, 5), (2, 4, 5),
-                 (2, 4), (2, 4, 4), (2, 5, 4))
+        walks = (
+            (2, 3),
+            (2, 1),
+            (2, 1, 2),
+            (2, 1, 0),
+            (2, 5, 6),
+            (2, 5),
+            (2, 4, 5),
+            (2, 4),
+            (2, 4, 4),
+            (2, 5, 4),
+        )
 
-        patterns = ((0, ), (0, 0), (1, ), (1, 0))
+        patterns = ((0,), (0, 0), (1,), (1, 0))
 
         # walks
 
@@ -642,30 +639,40 @@ class StrollTests(unittest.TestCase):
 
         # grounds
 
-        pattern = (0, )
+        pattern = (0,)
         grounds = (2, 3), (2, 1), (2, 4), (2, 5)
         self._check_grounds(stroll, pattern, grounds)
 
         pattern = (0, 0)
         grounds = (
-            (2, 1, 2), (2, 1, 0), (2, 5, 6),
-            (2, 4, 5), (2, 4, 4), (2, 5, 4))
+            (2, 1, 2),
+            (2, 1, 0),
+            (2, 5, 6),
+            (2, 4, 5),
+            (2, 4, 4),
+            (2, 5, 4),
+        )
         self._check_grounds(stroll, pattern, grounds)
 
-        pattern = (1, )
-        grounds = ((2, 4), )
+        pattern = (1,)
+        grounds = ((2, 4),)
         self._check_grounds(stroll, pattern, grounds)
 
         pattern = (1, 0)
-        grounds = ((2, 4, 4), (2, 4, 5), )
+        grounds = (
+            (2, 4, 4),
+            (2, 4, 5),
+        )
         self._check_grounds(stroll, pattern, grounds)
 
     def test_cycle_small(self):
-        source_cycle_small = GraphImport(triples=[
-            (0, 1, 0),
-            (1, 0, 0),
-            (1, 1, 0),
-        ])
+        source_cycle_small = GraphImport(
+            triples=[
+                (0, 1, 0),
+                (1, 0, 0),
+                (1, 1, 0),
+            ]
+        )
 
         g = Graph(source=source_cycle_small)
         stroll = g.stroll(center=0, cutoff=10)
@@ -675,34 +682,39 @@ class StrollTests(unittest.TestCase):
         self.assertIn((0, 1, 0), stroll.walks)
         self.assertEqual(3, len(stroll.walks), stroll.walks)
 
-        self.assertIn((0, ), stroll.patterns)
+        self.assertIn((0,), stroll.patterns)
         self.assertIn((0, 0), stroll.patterns)
         self.assertEqual(2, len(stroll.patterns))
 
     def test_cycle_big(self):
-        source_cycle_big = GraphImport(triples=[
-            (0, 1, 0),
-            (1, 1, 0),
-            (1, 2, 0),
-            (2, 2, 0),
-            (2, 0, 0),
-        ])
+        source_cycle_big = GraphImport(
+            triples=[
+                (0, 1, 0),
+                (1, 1, 0),
+                (1, 2, 0),
+                (2, 2, 0),
+                (2, 0, 0),
+            ]
+        )
 
         g = Graph(source=source_cycle_big)
         stroll = g.stroll(center=0, cutoff=100)
 
         walks = (
             # debatable: should there be (0, 1, 2, 0, 1)?
-            (0, 1), (0, 1, 1),
+            (0, 1),
+            (0, 1, 1),
             # debatable: should there be
             # (0, 1, 1, 2),
             # (0, 1, 1, 2, 2)?
-            (0, 1, 2), (0, 1, 2, 2),
+            (0, 1, 2),
+            (0, 1, 2, 2),
             # debatable: should there be
             # (0, 1, 1, 2, 0),
             # (0, 1, 2, 2, 0),
             # (0, 1, 1, 2, 2, 0) ?
-            (0, 1, 2, 0))
+            (0, 1, 2, 0),
+        )
 
         for walk in walks:
             self.assertIn(walk, stroll.walks)
@@ -722,20 +734,20 @@ class StrollTests(unittest.TestCase):
 
         # grounds
 
-        pattern = (0, )
-        walks = ((2, 4), )
+        pattern = (0,)
+        walks = ((2, 4),)
         check(pattern, walks)
 
         pattern = (0, 0)
         walks = (2, 4, 4), (2, 5, 4)
         check(pattern, walks)
 
-        pattern = (1, )
-        walks = ((2, 4), )
+        pattern = (1,)
+        walks = ((2, 4),)
         check(pattern, walks)
 
         pattern = (1, 0)
-        walks = ((2, 4, 4), )
+        walks = ((2, 4, 4),)
         check(pattern, walks)
 
     def test_to_self(self):
@@ -754,7 +766,6 @@ class StrollTests(unittest.TestCase):
 
 
 class ConnectingEdgesTests(unittest.TestCase):
-
     def test_connecting_edges(self):
         g = Graph(source=test_graph_rels)
         trail = 3, 0, 2, 2
@@ -766,13 +777,12 @@ class ConnectingEdgesTests(unittest.TestCase):
 
 
 class PartitionTests(unittest.TestCase):
-
     @property
     def g(self) -> Graph:
         return self._g
 
     def setUp(self):
-        self._g = Graph(source=test_graph_rels, name='original')
+        self._g = Graph(source=test_graph_rels, name="original")
 
     def test_empty_partition(self):
         with self.assertRaises(PartitionConstraintError):
@@ -797,11 +807,11 @@ class PartitionTests(unittest.TestCase):
     def test_partition1(self):
         parts = self.g.partition(p1={0, 1, 2}, p2={3, 4, 5, 6, 7})
 
-        self.assertIn('p1', parts)
-        self.assertIn('p2', parts)
+        self.assertIn("p1", parts)
+        self.assertIn("p2", parts)
         self.assertEqual(len(parts), 2)
 
-        gp1, gp2 = parts['p1'], parts['p2']
+        gp1, gp2 = parts["p1"], parts["p2"]
 
         # gp1
 
@@ -847,12 +857,12 @@ class PartitionTests(unittest.TestCase):
     def test_partition2(self):
         parts = self.g.partition(p1={0, 1, 3}, p2={2, 4}, p3={5, 6, 7})
 
-        self.assertIn('p1', parts)
-        self.assertIn('p2', parts)
-        self.assertIn('p3', parts)
+        self.assertIn("p1", parts)
+        self.assertIn("p2", parts)
+        self.assertIn("p3", parts)
         self.assertEqual(len(parts), 3)
 
-        gp1, gp2, gp3 = parts['p1'], parts['p2'], parts['p3']
+        gp1, gp2, gp3 = parts["p1"], parts["p2"], parts["p3"]
 
         # gp1
 
@@ -878,47 +888,46 @@ class PartitionTests(unittest.TestCase):
 
     def test_partition_names(self):
         parts = self.g.partition(p1={0, 1, 2}, p2={3, 4, 5, 6, 7})
-        gp1, gp2 = parts['p1'], parts['p2']
+        gp1, gp2 = parts["p1"], parts["p2"]
 
-        self.assertEqual(gp1.name, 'original-p1')
-        self.assertEqual(gp2.name, 'original-p2')
+        self.assertEqual(gp1.name, "original-p1")
+        self.assertEqual(gp2.name, "original-p2")
 
     def test_partition_names_prefixed(self):
         parts = self.g.partition(
-            prefix='part',
-            p1={0, 1, 2},
-            p2={3, 4, 5, 6, 7})
+            prefix="part", p1={0, 1, 2}, p2={3, 4, 5, 6, 7}
+        )
 
-        gp1, gp2 = parts['p1'], parts['p2']
+        gp1, gp2 = parts["p1"], parts["p2"]
 
-        self.assertEqual(gp1.name, 'part-p1')
-        self.assertEqual(gp2.name, 'part-p2')
+        self.assertEqual(gp1.name, "part-p1")
+        self.assertEqual(gp2.name, "part-p2")
 
     def test_partition_edge_data(self):
         # this deletes all relations of type 2
         parts = self.g.partition(p1={0, 1, 2, 4}, p2={3, 5, 6, 7})
 
-        gp1, gp2 = parts['p1'], parts['p2']
+        gp1, gp2 = parts["p1"], parts["p2"]
 
         self.assertEqual(
-            gp1.nx.edges[0, 1, 0],
-            {'rid': 0, 'label': test_graph_rels.rels[0]})
+            gp1.nx.edges[0, 1, 0], {"rid": 0, "label": test_graph_rels.rels[0]}
+        )
 
         self.assertEqual(
-            gp1.nx.edges[0, 2, 0],
-            {'rid': 0, 'label': test_graph_rels.rels[0]})
+            gp1.nx.edges[0, 2, 0], {"rid": 0, "label": test_graph_rels.rels[0]}
+        )
 
         self.assertEqual(
-            gp1.nx.edges[0, 2, 3],
-            {'rid': 3, 'label': test_graph_rels.rels[3]})
+            gp1.nx.edges[0, 2, 3], {"rid": 3, "label": test_graph_rels.rels[3]}
+        )
 
         self.assertEqual(
-            gp1.nx.edges[2, 2, 1],
-            {'rid': 1, 'label': test_graph_rels.rels[1]})
+            gp1.nx.edges[2, 2, 1], {"rid": 1, "label": test_graph_rels.rels[1]}
+        )
 
         self.assertEqual(
-            gp1.nx.edges[4, 2, 3],
-            {'rid': 3, 'label': test_graph_rels.rels[3]})
+            gp1.nx.edges[4, 2, 3], {"rid": 3, "label": test_graph_rels.rels[3]}
+        )
 
         self.assertIn(0, gp1.source.rels)
         self.assertNotIn(2, gp1.source.rels)
@@ -928,16 +937,16 @@ class PartitionTests(unittest.TestCase):
         # --
 
         self.assertEqual(
-            gp2.nx.edges[5, 6, 0],
-            {'rid': 0, 'label': test_graph_rels.rels[0]})
+            gp2.nx.edges[5, 6, 0], {"rid": 0, "label": test_graph_rels.rels[0]}
+        )
 
         self.assertEqual(
-            gp2.nx.edges[6, 3, 0],
-            {'rid': 0, 'label': test_graph_rels.rels[0]})
+            gp2.nx.edges[6, 3, 0], {"rid": 0, "label": test_graph_rels.rels[0]}
+        )
 
         self.assertEqual(
-            gp2.nx.edges[6, 7, 0],
-            {'rid': 0, 'label': test_graph_rels.rels[0]})
+            gp2.nx.edges[6, 7, 0], {"rid": 0, "label": test_graph_rels.rels[0]}
+        )
 
         self.assertIn(0, gp2.source.rels)
         self.assertNotIn(2, gp2.source.rels)
@@ -946,13 +955,12 @@ class PartitionTests(unittest.TestCase):
 
 
 class InductionTests(unittest.TestCase):
-
     @property
     def g(self) -> Graph:
         return self._g
 
     def setUp(self):
-        self._g = Graph(source=test_graph_rels, name='original')
+        self._g = Graph(source=test_graph_rels, name="original")
 
     def test_empty_induction(self):
         subg = self.g.induce(triples=set())
@@ -983,6 +991,6 @@ class InductionTests(unittest.TestCase):
         self.assertEqual(4, len(sub.source.triples))
 
     def test_name_induction(self):
-        name = 'foo'
+        name = "foo"
         subg = self.g.induce(triples=set(), name=name)
         self.assertEqual(subg.name, name)

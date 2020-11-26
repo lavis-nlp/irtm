@@ -27,7 +27,7 @@ from typing import Dict
 from typing import Union
 
 
-log = logging.get('kgc.config')
+log = logging.get("kgc.config")
 
 
 # ---
@@ -133,56 +133,57 @@ class Optuna:
 
 @dataclass
 class Suggestion:
-
     @staticmethod
     def create(**kwargs):
         # quite arbitrary heuristics in here
-        if 'low' in kwargs and 'high' in kwargs:
+        if "low" in kwargs and "high" in kwargs:
             if any(type(kwargs[k]) is float for k in kwargs):
                 return FloatSuggestion(**kwargs)
             return IntSuggestion(**kwargs)
 
-        raise ryn.RynError(f'cannot create suggestion from {kwargs}')
+        raise ryn.RynError(f"cannot create suggestion from {kwargs}")
 
 
 @dataclass
 class FloatSuggestion(Suggestion):
 
-    low:     float
-    high:    float
-    step:    float = None
-    log:      bool = False
+    low: float
+    high: float
+    step: float = None
+    log: bool = False
     initial: float = None
 
     @helper.notnone
     def suggest(
-            self, *,
-            name: str = None,
-            trial: optuna.trial.Trial = None,
+        self,
+        *,
+        name: str = None,
+        trial: optuna.trial.Trial = None,
     ) -> float:
         return trial.suggest_float(
-            name, self.low, self.high,
-            step=self.step, log=self.log)
+            name, self.low, self.high, step=self.step, log=self.log
+        )
 
 
 @dataclass
 class IntSuggestion(Suggestion):
 
-    low:     int
-    high:    int
-    step:    int = 1
-    log:    bool = False
+    low: int
+    high: int
+    step: int = 1
+    log: bool = False
     initial: int = None
 
     @helper.notnone
     def suggest(
-            self, *,
-            name: str = None,
-            trial: optuna.trial.Trial = None,
+        self,
+        *,
+        name: str = None,
+        trial: optuna.trial.Trial = None,
     ) -> int:
         return trial.suggest_int(
-            name, self.low, self.high,
-            step=self.step, log=self.log)
+            name, self.low, self.high, step=self.step, log=self.log
+        )
 
 
 # wiring
@@ -218,25 +219,29 @@ class Config:
             getter = option.__class__.getter
             return getter(option.cls)(**{**option.kwargs, **kwargs})
         except TypeError as exc:
-            log.error(f'failed to resolve {option.cls} with {option.kwargs}')
+            log.error(f"failed to resolve {option.cls} with {option.kwargs}")
             raise exc
 
     def save(self, path: Union[str, pathlib.Path]):
-        fname = 'config.json'
+        fname = "config.json"
         path = helper.path(
-            path, create=True,
-            message=f'saving {fname} to {{path_abbrv}}')
+            path, create=True, message=f"saving {fname} to {{path_abbrv}}"
+        )
 
         def _wrap(key, val):
             try:
                 val = {
                     # e.g. attr=embedding_dim
-                    **{attr: (
-                        # suggestions
-                        dataclasses.asdict(val)
-                        if dataclasses.is_dataclass(val) else val
-                    ) for attr, val in val['kwargs'].items()},
-                    **{'cls': val['cls']},
+                    **{
+                        attr: (
+                            # suggestions
+                            dataclasses.asdict(val)
+                            if dataclasses.is_dataclass(val)
+                            else val
+                        )
+                        for attr, val in val["kwargs"].items()
+                    },
+                    **{"cls": val["cls"]},
                 }
 
             # val['kwargs'] and val['cls'] triggers this
@@ -251,22 +256,24 @@ class Config:
             for key, val in dataclasses.asdict(self).items()
         }
 
-        with (path / fname).open(mode='w') as fd:
+        with (path / fname).open(mode="w") as fd:
             json.dump(dic, fd, indent=2)
 
     @classmethod
     def load(
-            K,
-            path: Union[str, pathlib.Path],
-            fname: str = None,
-    ) -> 'Config':
+        K,
+        path: Union[str, pathlib.Path],
+        fname: str = None,
+    ) -> "Config":
 
         path = helper.path(path)
         path = helper.path(
-            path / (fname or 'config.json'), exists=True,
-            message='loading kgc config from {path_abbrv}')
+            path / (fname or "config.json"),
+            exists=True,
+            message="loading kgc config from {path_abbrv}",
+        )
 
-        with path.open(mode='r') as fd:
+        with path.open(mode="r") as fd:
             raw = json.load(fd)
 
         # there are two levels to consider
@@ -277,27 +284,30 @@ class Config:
 
         def _unwrap(key, section):
             kwargs = section
-            if 'cls' in section:
+            if "cls" in section:
                 kwargs = dict(
-                    cls=section['cls'],
+                    cls=section["cls"],
                     kwargs={
                         # e.g. attr=embedding_dim
                         attr: (
                             Suggestion.create(**val)
-                            if type(val) is dict else val
+                            if type(val) is dict
+                            else val
                         )
                         for attr, val in section.items()
-                        if attr != 'cls'
-                    }
+                        if attr != "cls"
+                    },
                 )
 
             return constructors[key](**kwargs)
 
-        return K(**{
-            # e.g. key=model
-            key: _unwrap(key, section)
-            for key, section in raw.items()
-        })
+        return K(
+            **{
+                # e.g. key=model
+                key: _unwrap(key, section)
+                for key, section in raw.items()
+            }
+        )
 
     # optuna related
 
@@ -308,18 +318,18 @@ class Config:
             try:
                 for key, val in option.kwargs.items():
                     if isinstance(val, Suggestion):
-                        suggestions[f'{name}.{key}'] = val
+                        suggestions[f"{name}.{key}"] = val
 
             # option.kwargs triggers this
             except AttributeError:
                 pass
 
         if not suggestions:
-            raise ryn.RynError('no parameters marked for optimization')
+            raise ryn.RynError("no parameters marked for optimization")
 
         return suggestions
 
-    def suggest(self, trial) -> 'Config':
+    def suggest(self, trial) -> "Config":
         replaced = {}
         # for name, option in self.__dict__.items():
         #     try:
@@ -343,7 +353,7 @@ class Config:
             try:
                 # suggest concrete values
                 suggestions = {
-                    k: v.suggest(name=f'{name}.{k}', trial=trial)
+                    k: v.suggest(name=f"{name}.{k}", trial=trial)
                     for k, v in option.kwargs.items()
                     if isinstance(v, Suggestion)
                 }
@@ -358,6 +368,6 @@ class Config:
                 continue
 
         if not replaced:
-            raise ryn.RynError('no parameters marked for optimization')
+            raise ryn.RynError("no parameters marked for optimization")
 
         return dataclasses.replace(self, **replaced)

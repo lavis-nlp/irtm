@@ -29,7 +29,7 @@ from typing import Any
 from typing import Dict
 
 
-log = logging.get('text.mapper')
+log = logging.get("text.mapper")
 
 TQDM_KWARGS = dict(
     position=2,
@@ -67,7 +67,7 @@ class Base(nn.Module):
         try:
             Impl.name
         except AttributeError:
-            msg = 'Class {Impl} has no attribute .name'
+            msg = "Class {Impl} has no attribute .name"
             raise ryn.RynError(msg)
 
         Base.registered[Child.__name__][Impl.name] = Impl
@@ -78,7 +78,7 @@ class Base(nn.Module):
 
         try:
             if name is None:
-                name = 'noop'
+                name = "noop"
 
             A = Base.registered[Child.__name__][name]
         except KeyError:
@@ -86,18 +86,20 @@ class Base(nn.Module):
 
             msg = (
                 f'could not find module "{name}"\n\n'
-                f'available modules:\n'
-                f'{dicrep}')
+                f"available modules:\n"
+                f"{dicrep}"
+            )
 
             raise ryn.RynError(msg)
 
         config = A.Config(**kwargs)
 
-        log.info(f'! initializing {A.__name__} with {config}')
+        log.info(f"! initializing {A.__name__} with {config}")
         return A(config=config)
 
 
 # --- AGGREGATION
+
 
 class Aggregator(Base):
     pass
@@ -106,7 +108,7 @@ class Aggregator(Base):
 @Aggregator.module
 class MaxPoolingAggregator_1(Aggregator):
 
-    name = 'max 1'
+    name = "max 1"
 
     # batch x tokens x text_dims -> batch x text_dims
     def forward(self, X: torch.Tensor) -> torch.Tensor:
@@ -116,7 +118,7 @@ class MaxPoolingAggregator_1(Aggregator):
 @Aggregator.module
 class MaxPoolingDropoutAggregator_1(Aggregator):
 
-    name = 'max dropout 1'
+    name = "max dropout 1"
 
     @dataclass
     class Config(Base.Config):
@@ -124,9 +126,8 @@ class MaxPoolingDropoutAggregator_1(Aggregator):
         p: float
 
     def __init__(
-            self, *args,
-            config: 'MaxPoolingDropoutAggregator_1.Config',
-            **kwargs):
+        self, *args, config: "MaxPoolingDropoutAggregator_1.Config", **kwargs
+    ):
 
         super().__init__(*args, config=config, **kwargs)
         self.dropout = nn.Dropout(config.p)
@@ -139,7 +140,7 @@ class MaxPoolingDropoutAggregator_1(Aggregator):
 @Aggregator.module
 class CLSAggregator_1(Aggregator):
 
-    name = 'cls 1'
+    name = "cls 1"
 
     # batch x tokens x text_dims -> batch x text_dims
     def forward(self, X: torch.Tensor) -> torch.Tensor:
@@ -149,7 +150,7 @@ class CLSAggregator_1(Aggregator):
 @Aggregator.module
 class CLSDropoutAggregator_1(Aggregator):
 
-    name = 'cls dropout 1'
+    name = "cls dropout 1"
 
     @dataclass
     class Config(Base.Config):
@@ -157,9 +158,8 @@ class CLSDropoutAggregator_1(Aggregator):
         p: float
 
     def __init__(
-            self, *args,
-            config: 'CLSDropoutAggregator_1.Config',
-            **kwargs):
+        self, *args, config: "CLSDropoutAggregator_1.Config", **kwargs
+    ):
 
         super().__init__(*args, config=config, **kwargs)
         self.dropout = nn.Dropout(config.p)
@@ -179,7 +179,7 @@ class Projector(Base):
 @Projector.module
 class AffineProjector_1(Projector):
 
-    name = 'affine 1'
+    name = "affine 1"
 
     @dataclass
     class Config(Base.Config):
@@ -189,10 +189,7 @@ class AffineProjector_1(Projector):
 
     # ---
 
-    def __init__(
-            self, *args,
-            config: 'AffineProjector_1.Config',
-            **kwargs):
+    def __init__(self, *args, config: "AffineProjector_1.Config", **kwargs):
 
         super().__init__(*args, config=config, **kwargs)
         self.projector = nn.Linear(config.input_dims, config.output_dims)
@@ -210,7 +207,7 @@ class MLPProjector_1(Projector):
 
     """
 
-    name = 'mlp 1'
+    name = "mlp 1"
 
     @dataclass
     class Config(Base.Config):
@@ -221,10 +218,7 @@ class MLPProjector_1(Projector):
 
     # ---
 
-    def __init__(
-            self, *args,
-            config: 'MLPProjector_1.Config',
-            **kwargs):
+    def __init__(self, *args, config: "MLPProjector_1.Config", **kwargs):
 
         super().__init__(*args, config=config, **kwargs)
 
@@ -249,7 +243,7 @@ class Comparator(Base):
 @Comparator.module
 class EuclideanComparator_1(Comparator):
 
-    name = 'euclidean 1'
+    name = "euclidean 1"
 
     def forward(self, X, Y):
         return torch.dist(X, Y, p=2) / X.shape[0]
@@ -264,17 +258,17 @@ class EuclideanComparator_1(Comparator):
 @Comparator.module
 class Noop(Base):
 
-    name = 'noop'
+    name = "noop"
 
     def forward(self, *args, **kwargs):
-        assert False, 'noop cannot forward'
+        assert False, "noop cannot forward"
 
 
 # --- WIRING
 
 
 OPTIMIZER = {
-    'adam': torch.optim.Adam,
+    "adam": torch.optim.Adam,
 }
 
 
@@ -310,20 +304,20 @@ class Components:
     @helper.notnone
     def create(K, *, config: Config = None, models: data.Models = None):
         aggregator = Aggregator.init(
-            name=config.aggregator,
-            **config.aggregator_args)
+            name=config.aggregator, **config.aggregator_args
+        )
 
         projector = Projector.init(
-            name=config.projector,
-            **config.projector_args)
+            name=config.projector, **config.projector_args
+        )
 
         comparator = Comparator.init(
-            name=config.comparator,
-            **config.comparator_args)
+            name=config.comparator, **config.comparator_args
+        )
 
-        if all((
-                config.optimizer is not None,
-                config.optimizer not in OPTIMIZER)):
+        if all(
+            (config.optimizer is not None, config.optimizer not in OPTIMIZER)
+        ):
             raise ryn.RynError(f'unknown optimizer "{config.optimizer}"')
 
         self = K(
@@ -374,7 +368,7 @@ class Mapper(pl.LightningModule):
 
     @debug.setter
     def debug(self, val):
-        assert not self.trainer, 'use lightning to control debug'
+        assert not self.trainer, "use lightning to control debug"
         assert val is True or val is False
         self._debug = val
 
@@ -400,24 +394,26 @@ class Mapper(pl.LightningModule):
 
     @projection_aggregation.setter
     def projection_aggregation(self, projection_aggregation):
-        if not any((
-            projection_aggregation == 'max',
-            projection_aggregation == 'avg',
-            projection_aggregation == 'last',
-        )):
+        if not any(
+            (
+                projection_aggregation == "max",
+                projection_aggregation == "avg",
+                projection_aggregation == "last",
+            )
+        ):
             raise ryn.RynError(
-                'unknown projection aggregation:'
-                f' {projection_aggregation}')
+                "unknown projection aggregation:" f" {projection_aggregation}"
+            )
 
         self._projection_aggregation = projection_aggregation
 
     def __init__(
-            self,
-            data=None,  # data.DataModule
-            rync: Components = None,
-            freeze_text_encoder: bool = False,
-            # supported are: avg, max, last
-            projection_aggregation: str = 'avg',
+        self,
+        data=None,  # data.DataModule
+        rync: Components = None,
+        freeze_text_encoder: bool = False,
+        # supported are: avg, max, last
+        projection_aggregation: str = "avg",
     ):
         assert data is not None
         assert rync is not None
@@ -431,7 +427,7 @@ class Mapper(pl.LightningModule):
 
         self._data = data
         self._rync = rync
-        self._lr = self.rync.optimizer_args['lr']
+        self._lr = self.rync.optimizer_args["lr"]
         self.projection_aggregation = projection_aggregation
 
         # parameters
@@ -442,7 +438,7 @@ class Mapper(pl.LightningModule):
         self.loss = rync.comparator
 
         if freeze_text_encoder:
-            log.info('! freezing text encoder')
+            log.info("! freezing text encoder")
             self.encode.requires_grad_(False)
 
         self.keen = rync.kgc_model.keen
@@ -458,21 +454,21 @@ class Mapper(pl.LightningModule):
         log.info(f'register "projections" buffer of shape {shape}')
 
         self.register_buffer(
-            'projections',
-            torch.zeros(shape, requires_grad=False))
+            "projections", torch.zeros(shape, requires_grad=False)
+        )
 
         self.register_buffer(
-            'projections_counts',
-            torch.zeros(shape[0], requires_grad=False))
+            "projections_counts", torch.zeros(shape[0], requires_grad=False)
+        )
 
         self.init_projections()
 
     def configure_optimizers(self):
         optim = self.rync.Optimizer(
-            self.parameters(),
-            **self.rync.optimizer_args)
+            self.parameters(), **self.rync.optimizer_args
+        )
 
-        log.info(f'initialized optimizer with {self.rync.optimizer_args}')
+        log.info(f"initialized optimizer with {self.rync.optimizer_args}")
         return optim
 
     #
@@ -480,7 +476,7 @@ class Mapper(pl.LightningModule):
     #
 
     def init_projections(self):
-        log.info('clearing projections buffer')
+        log.info("clearing projections buffer")
         self.projections.zero_()
         self.projections_counts.zero_()
 
@@ -489,17 +485,15 @@ class Mapper(pl.LightningModule):
         for e, v in zip(entities, projected.detach()):
             idx = self.data.kgc.ryn2keen[e]
 
-            if self.projection_aggregation == 'max':
-                self.projections[idx] = torch.max(
-                    self.projections[idx], v
-                )
+            if self.projection_aggregation == "max":
+                self.projections[idx] = torch.max(self.projections[idx], v)
                 self.projections_counts[idx] = 1
 
-            if self.projection_aggregation == 'avg':
+            if self.projection_aggregation == "avg":
                 self.projections[idx] += v
                 self.projections_counts[idx] += 1
 
-            if self.projection_aggregation == 'last':
+            if self.projection_aggregation == "last":
                 self.projections[idx] = v
                 self.projections_counts = 1
 
@@ -508,22 +502,23 @@ class Mapper(pl.LightningModule):
     def forward_sentences(self, sentences: torch.Tensor):
         # mask padding and [MASK] tokens
         # mask = self.rync.tokenizer.base.vocab['[MASK]']
-        attention_mask = (sentences > 0)  # | (sentences == mask)
+        attention_mask = sentences > 0  # | (sentences == mask)
         attention_mask = attention_mask.to(dtype=torch.long)
 
-        return self.encode(
-            input_ids=sentences,
-            attention_mask=attention_mask)[0]
+        return self.encode(input_ids=sentences, attention_mask=attention_mask)[
+            0
+        ]
 
     def forward_entities(self, entities: torch.Tensor):
         return self.rync.kgc_model.embeddings(
-            entities=entities,
-            device=self.device)
+            entities=entities, device=self.device
+        )
 
     @helper.notnone
     def forward(
-            self, *,
-            sentences: torch.Tensor = None,  # batch x tokens
+        self,
+        *,
+        sentences: torch.Tensor = None,  # batch x tokens
     ):
 
         # batch x tokens x text_dims
@@ -553,7 +548,7 @@ class Mapper(pl.LightningModule):
 
         loss = self.loss(projected, target)
 
-        self.log('train_loss_step', loss)
+        self.log("train_loss_step", loss)
         return loss
 
     #
@@ -562,11 +557,11 @@ class Mapper(pl.LightningModule):
 
     @helper.notnone
     def _geometric_validation_step(
-            self,
-            sentences=None,
-            entities=None,
-            batch_idx=None,
-            dataloader_idx=None,
+        self,
+        sentences=None,
+        entities=None,
+        batch_idx=None,
+        dataloader_idx=None,
     ):
 
         # batch x kge_dims
@@ -580,15 +575,15 @@ class Mapper(pl.LightningModule):
         losses = self.loss(projected, target)
 
         # partition losses into inductive and transductive
-        kind = 'transductive' if dataloader_idx == 0 else 'inductive'
-        self.log_dict({f'{kind}.valid_loss_step': losses})
+        kind = "transductive" if dataloader_idx == 0 else "inductive"
+        self.log_dict({f"{kind}.valid_loss_step": losses})
 
     @helper.notnone
     def _kgc_validation_step(
-            self,
-            sentences=None,
-            entities=None,
-            batch_idx=None,
+        self,
+        sentences=None,
+        entities=None,
+        batch_idx=None,
     ):
         projected = self.forward(sentences=sentences)
         self.update_projections(entities=entities, projected=projected)
@@ -616,20 +611,19 @@ class Mapper(pl.LightningModule):
 
     @helper.notnone
     def run_kgc_evaluation(
-            self, *,
-            kind: str = None,
-            triples=None):  # data.Triples
+        self, *, kind: str = None, triples=None
+    ):  # data.Triples
 
         global TQDM_KWARGS
         if hvd.size() == 1:
-            TQDM_KWARGS['disable'] = False
+            TQDM_KWARGS["disable"] = False
 
-        assert kind in ['transductive', 'inductive', 'test']
+        assert kind in ["transductive", "inductive", "test"]
 
         log.info(
-            f'running {kind} evaluation'
-            f' with {triples.factory.mapped_triples.shape[0]} triples'
-            f' replacing {len(triples.entities)} embeddings'
+            f"running {kind} evaluation"
+            f" with {triples.factory.mapped_triples.shape[0]} triples"
+            f" replacing {len(triples.entities)} embeddings"
         )
 
         # -- embedding shenanigans
@@ -637,21 +631,19 @@ class Mapper(pl.LightningModule):
         Embedding = torch.nn.Embedding.from_pretrained
         original_weights = self.keen.entity_embeddings.weight.cpu()
 
-        new_weights = torch.zeros((
-            len(self.data.kgc.ryn2keen),
-            original_weights.shape[1],
-        )).to(self.device)
+        new_weights = torch.zeros(
+            (
+                len(self.data.kgc.ryn2keen),
+                original_weights.shape[1],
+            )
+        ).to(self.device)
 
-        new_weights[:original_weights.shape[0]] = original_weights
-        idxs = list(map(
-            lambda i: self.data.kgc.ryn2keen[i],
-            triples.entities
-        ))
+        new_weights[: original_weights.shape[0]] = original_weights
+        idxs = list(map(lambda i: self.data.kgc.ryn2keen[i], triples.entities))
 
         new_weights[idxs] = self.projections[idxs]
 
-        self.keen.entity_embeddings = Embedding(
-            new_weights).to(self.device)
+        self.keen.entity_embeddings = Embedding(new_weights).to(self.device)
 
         mapped_triples = triples.factory.mapped_triples
         if self.debug:
@@ -665,66 +657,71 @@ class Mapper(pl.LightningModule):
         )
 
         # restore original embeddings
-        self.keen.entity_embeddings = Embedding(
-            original_weights).to(self.device)
+        self.keen.entity_embeddings = Embedding(original_weights).to(
+            self.device
+        )
 
         # -- /embedding shenanigans
 
         def _result_dict(name=None, result=None):
-
             def _item(key, val):
-                return f'{name}.{key}', torch.Tensor([val])
+                return f"{name}.{key}", torch.Tensor([val])
 
-            return dict((k, v.item()) for k, v in (
-                _item('hits@10',
-                      result.metrics['hits_at_k']['both']['avg'][10]),
-                _item('hits@5',
-                      result.metrics['hits_at_k']['both']['avg'][5]),
-                _item('hits@1',
-                      result.metrics['hits_at_k']['both']['avg'][1]),
-                _item('mr',
-                      result.metrics['mean_rank']['both']['avg']),
-                _item('mrr',
-                      result.metrics['mean_reciprocal_rank']['both']['avg']),
-                _item('amr',
-                      result.metrics['adjusted_mean_rank']['both']),
-            ))
+            return dict(
+                (k, v.item())
+                for k, v in (
+                    _item(
+                        "hits@10",
+                        result.metrics["hits_at_k"]["both"]["avg"][10],
+                    ),
+                    _item(
+                        "hits@5", result.metrics["hits_at_k"]["both"]["avg"][5]
+                    ),
+                    _item(
+                        "hits@1", result.metrics["hits_at_k"]["both"]["avg"][1]
+                    ),
+                    _item("mr", result.metrics["mean_rank"]["both"]["avg"]),
+                    _item(
+                        "mrr",
+                        result.metrics["mean_reciprocal_rank"]["both"]["avg"],
+                    ),
+                    _item("amr", result.metrics["adjusted_mean_rank"]["both"]),
+                )
+            )
 
-        result_metrics = _result_dict(
-            name=kind,
-            result=evaluation_result
-        )
+        result_metrics = _result_dict(name=kind, result=evaluation_result)
 
         log.info(
-            f'! finished {kind} evaluation with'
+            f"! finished {kind} evaluation with"
             f' {evaluation_result.metrics["hits_at_k"]["both"]["avg"][10]:2.3f} hits@10'  # noqa: E501
-            f' and {evaluation_result.metrics["mean_reciprocal_rank"]["both"]["avg"]:2.3f} MRR')  # noqa: E501
+            f' and {evaluation_result.metrics["mean_reciprocal_rank"]["both"]["avg"]:2.3f} MRR'
+        )  # noqa: E501
 
         return result_metrics
 
     def _run_kgc_evaluations(self):
         if self.global_step == 0 and not self.debug:
-            log.info('skipping kgc evaluation; logging phony kgc result')
+            log.info("skipping kgc evaluation; logging phony kgc result")
             self.log_dict(self._mock_kgc_results())
             return
 
         log.info(
-            f'[{hvd.local_rank()}] gathered'
-            f' {int(self.projections_counts.sum().item())}'
-            ' projections')
+            f"[{hvd.local_rank()}] gathered"
+            f" {int(self.projections_counts.sum().item())}"
+            " projections"
+        )
 
-        self.projections = hvd.allreduce(
-            self.projections,
-            op=hvd.Sum)
+        self.projections = hvd.allreduce(self.projections, op=hvd.Sum)
 
         self.projections_counts = hvd.allreduce(
-            self.projections_counts,
-            op=hvd.Sum)
+            self.projections_counts, op=hvd.Sum
+        )
 
         if hvd.local_rank() != 0:
             log.info(
-                f'[{hvd.local_rank()}] servant skips kgc evaluation;'
-                ' logging phony kgc result')
+                f"[{hvd.local_rank()}] servant skips kgc evaluation;"
+                " logging phony kgc result"
+            )
 
             self.log_dict(self._mock_kgc_results())
             return
@@ -733,8 +730,10 @@ class Mapper(pl.LightningModule):
         mask = self.projections_counts != 0
         self.projections[mask] /= self.projections_counts.unsqueeze(1)[mask]
 
-        log.info(f'gathered {int(self.projections_counts.sum().item())}'
-                 ' projections from processes')
+        log.info(
+            f"gathered {int(self.projections_counts.sum().item())}"
+            " projections from processes"
+        )
 
         # TODO assert this reflect context
         # counts of datasets (unless fast_dev_run)
@@ -742,34 +741,39 @@ class Mapper(pl.LightningModule):
         # --
 
         transductive_result = self.run_kgc_evaluation(
-            kind='transductive', triples=self.data.kgc.transductive)
+            kind="transductive", triples=self.data.kgc.transductive
+        )
         inductive_result = self.run_kgc_evaluation(
-            kind='inductive', triples=self.data.kgc.inductive)
+            kind="inductive", triples=self.data.kgc.inductive
+        )
 
-        log.info('logging kgc result')
-        self.log_dict({
-            **transductive_result,
-            **inductive_result,
-        })
+        log.info("logging kgc result")
+        self.log_dict(
+            {
+                **transductive_result,
+                **inductive_result,
+            }
+        )
 
     def _mock_kgc_results(self):
-        log.info('mocking kgc evaluation results')
+        log.info("mocking kgc evaluation results")
 
         phony_results = {
-            f'{name}.{key}': torch.Tensor([val])
+            f"{name}.{key}": torch.Tensor([val])
             for name, triples in (
-                    ('inductive',
-                     self.data.kgc.inductive.factory.triples),
-                    ('transductive',
-                     self.data.kgc.transductive.factory.triples))
-            for key, val in ({
-                    'hits@10': 0.0,
-                    'hits@5': 0.0,
-                    'hits@1': 0.0,
-                    'mr': len(triples) // 2,
-                    'mrr': 0.0,
-                    'amr': 1.0,
-            }).items()
+                ("inductive", self.data.kgc.inductive.factory.triples),
+                ("transductive", self.data.kgc.transductive.factory.triples),
+            )
+            for key, val in (
+                {
+                    "hits@10": 0.0,
+                    "hits@5": 0.0,
+                    "hits@1": 0.0,
+                    "mr": len(triples) // 2,
+                    "mrr": 0.0,
+                    "amr": 1.0,
+                }
+            ).items()
         }
 
         return phony_results
@@ -780,17 +784,18 @@ class Mapper(pl.LightningModule):
         device_properties = torch.cuda.get_device_properties(self.device)
         total_memory = int(device_properties.total_memory * 0.9)
         log.info(
-            f'checking {device_properties.name} with around '
-            f' ~{total_memory // 1024**3}GB')
+            f"checking {device_properties.name} with around "
+            f" ~{total_memory // 1024**3}GB"
+        )
 
         if not test:
             trained = self.training
             self.train()
 
         loaders = (
-            [self.data.train_dataloader()] +
-            self.data.val_dataloader() +
-            [self.data.test_dataloader()]
+            [self.data.train_dataloader()]
+            + self.data.val_dataloader()
+            + [self.data.test_dataloader()]
         )
 
         for loader in loaders:
@@ -798,14 +803,15 @@ class Mapper(pl.LightningModule):
             # possible sample through the model to detect oom problems
 
             log.info(
-                f'checking {loader.dataset.name} (max sequence length:'
-                f' {loader.dataset.max_sequence_length})')
+                f"checking {loader.dataset.name} (max sequence length:"
+                f" {loader.dataset.max_sequence_length})"
+            )
 
             sample = loader.dataset[loader.dataset.max_sequence_idx]
             batch = repeat(sample, loader.batch_size)
             sentences, _ = loader.collate_fn(batch)
 
-            log.info(f'trying batch with {sentences.shape}')
+            log.info(f"trying batch with {sentences.shape}")
 
             sentences = sentences.to(self.device)
             self.forward(sentences=sentences)
@@ -813,13 +819,14 @@ class Mapper(pl.LightningModule):
             res_memory = torch.cuda.memory_reserved(self.device)
             memory_usage = (res_memory / total_memory) * 100
             log.info(
-                f'! {loader.dataset.name} is using'
-                f' ~{int(memory_usage)}% memory')
+                f"! {loader.dataset.name} is using"
+                f" ~{int(memory_usage)}% memory"
+            )
 
             del sentences
             torch.cuda.empty_cache()
 
-        log.info('finished memory check')
+        log.info("finished memory check")
         if not test and not trained:
             self.eval()
 
@@ -832,22 +839,25 @@ class Mapper(pl.LightningModule):
         # hvd is initialized now
 
         self._ow_validation_batches = math.ceil(
-            len(self.data.val_dataloader()[2]) / hvd.size())
+            len(self.data.val_dataloader()[2]) / hvd.size()
+        )
 
-        if hvd.size() != 1 and self.projection_aggregation == 'max':
+        if hvd.size() != 1 and self.projection_aggregation == "max":
             raise ryn.RynError(
-                'max pooling is not supported for multi-gpu setups')
+                "max pooling is not supported for multi-gpu setups"
+            )
 
         # --
 
-        log.info('running custom pre-training sanity check')
+        log.info("running custom pre-training sanity check")
         self.run_memcheck()
 
     def on_train_epoch_start(self):
         log.info(
-            f'! starting epoch {self.current_epoch}'
-            f' (step={self.global_step});'
-            f' running on {self.device}')
+            f"! starting epoch {self.current_epoch}"
+            f" (step={self.global_step});"
+            f" running on {self.device}"
+        )
 
         self.init_projections()
 

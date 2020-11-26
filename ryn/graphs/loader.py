@@ -16,7 +16,7 @@ from typing import Tuple
 from typing import Generator
 
 
-log = logging.get('graphs.loader')
+log = logging.get("graphs.loader")
 
 
 def _oke_fn_triples(line: str):
@@ -33,7 +33,7 @@ def _oke_parse(path: str = None, fn=None) -> Generator[Any, None, None]:
     if path is None:
         return None
 
-    with open(path, mode='r') as fd:
+    with open(path, mode="r") as fd:
         fd.readline()
         for i, line in enumerate(fd):
             yield line if fn is None else fn(line)
@@ -44,9 +44,8 @@ def _oke_parse(path: str = None, fn=None) -> Generator[Any, None, None]:
 
 
 def load_oke(
-        f_triples: str,
-        f_rel2id: str = None,
-        f_ent2id: str = None) -> graph.GraphImport:
+    f_triples: str, f_rel2id: str = None, f_ent2id: str = None
+) -> graph.GraphImport:
     """
 
     Load OpenKE-like benchmark files. Structure is as follows:
@@ -59,7 +58,7 @@ def load_oke(
     data points in the original data set)
 
     """
-    log.info(f'loading OKE-like graph from {f_triples}')
+    log.info(f"loading OKE-like graph from {f_triples}")
 
     triples = tuple(_oke_parse(f_triples, _oke_fn_triples))
     rels = dict(_oke_parse(f_rel2id, _oke_fn_idmap))
@@ -67,7 +66,7 @@ def load_oke(
 
     gi = graph.GraphImport(triples=triples, rels=rels, ents=ents)
 
-    log.info(f'finished parsing {f_triples}')
+    log.info(f"finished parsing {f_triples}")
 
     return gi
 
@@ -85,55 +84,56 @@ def load_vll(f_triples: str) -> graph.GraphImport:
     f_triples: the graph encoded as string triples (e1, r, e2)
 
     """
-    log.info(f'loading villmow-like graph from {f_triples}')
+    log.info(f"loading villmow-like graph from {f_triples}")
 
     triples = []
     refs = {
-        'ents': {'counter': 0, 'dic': {}},
-        'rels': {'counter': 0, 'dic': {}},
+        "ents": {"counter": 0, "dic": {}},
+        "rels": {"counter": 0, "dic": {}},
     }
 
     def _get(kind: str, key: str):
-        dic = refs[kind]['dic']
+        dic = refs[kind]["dic"]
 
         if key not in dic:
-            dic[key] = refs[kind]['counter']
-            refs[kind]['counter'] += 1
+            dic[key] = refs[kind]["counter"]
+            refs[kind]["counter"] += 1
 
         return dic[key]
 
-    with open(f_triples, mode='r') as fd:
+    with open(f_triples, mode="r") as fd:
         for line in fd:
 
-            gen = zip(('ents', 'rels', 'ents'), line.strip().split())
+            gen = zip(("ents", "rels", "ents"), line.strip().split())
             h, r, t = map(lambda a: _get(*a), gen)
             triples.append((h, t, r))  # mind the switch
 
     gi = graph.GraphImport(
         triples=triples,
-        rels={idx: name for name, idx in refs['rels']['dic'].items()},
-        ents={idx: name for name, idx in refs['ents']['dic'].items()},
+        rels={idx: name for name, idx in refs["rels"]["dic"].items()},
+        ents={idx: name for name, idx in refs["ents"]["dic"].items()},
     )
 
-    log.info(f'finished parsing {f_triples}')
+    log.info(f"finished parsing {f_triples}")
 
     return gi
 
 
 LOADER = {
-    'vll': load_vll,
-    'oke': load_oke,
+    "vll": load_vll,
+    "oke": load_oke,
 }
 
 
 def load_graph(
-        name: str = None,
-        path: str = None,
-        cache: str = None,
-        reader: str = None,
-        triples: str = None,
-        entity_labels: str = None,
-        relation_labels: str = None) -> Dict[str, graph.Graph]:
+    name: str = None,
+    path: str = None,
+    cache: str = None,
+    reader: str = None,
+    triples: str = None,
+    entity_labels: str = None,
+    relation_labels: str = None,
+) -> Dict[str, graph.Graph]:
 
     assert name is not None
     assert path is not None
@@ -145,16 +145,16 @@ def load_graph(
 
     log.info(f'loading graph "{name}"')
 
-    cache_file = pathlib.Path(cache) / f'{name}.pkl'
+    cache_file = pathlib.Path(cache) / f"{name}.pkl"
     if cache_file.exists():
         log.info(f'loading cached "{cache_file}"')
         return graph.Graph.load(cache_file)
 
     # ---
 
-    log.info('no cached file found, parsing')
+    log.info("no cached file found, parsing")
     if entity_labels is None or relation_labels is None:
-        files = (triples, )
+        files = (triples,)
     else:
         files = (triples, relation_labels, entity_labels)
 
@@ -174,21 +174,21 @@ def load_graph(
 
 
 def load_graphs_from_conf(
-        conf: str = None,
-        spec: str = None,
-        graphs: List[str] = None,
-        single: bool = False) -> (
-            Dict[str, graph.Graph]):
+    conf: str = None,
+    spec: str = None,
+    graphs: List[str] = None,
+    single: bool = False,
+) -> (Dict[str, graph.Graph]):
 
     if conf is None:
-        raise RynError('provide a configuration file')
+        raise RynError("provide a configuration file")
 
     if spec is None:
-        raise RynError('provide a configuration specification')
+        raise RynError("provide a configuration specification")
 
     # ---
 
-    log.info(f'selecting config: {conf}')
+    log.info(f"selecting config: {conf}")
     log.info(f'loading {graphs or "all"} from conf')
 
     gen = config.Config.create(fconf=conf, fspec=spec)
@@ -197,15 +197,15 @@ def load_graphs_from_conf(
     selection = graphs & set(confs.keys())
 
     if not len(selection):
-        msg = 'no graphs were selected:'
-        options = ', '.join(confs.keys())
+        msg = "no graphs were selected:"
+        options = ", ".join(confs.keys())
 
-        exc = RynError(f'{msg}\n  Options: {options}')
+        exc = RynError(f"{msg}\n  Options: {options}")
         log.error(str(exc))
         raise exc
 
     if single and len(selection) != 1:
-        exc = RynError('please select a single graph')
+        exc = RynError("please select a single graph")
         log.error(str(exc))
         raise exc
 
@@ -215,12 +215,12 @@ def load_graphs_from_conf(
         conf = confs[name].obj
         graph_dict[name] = load_graph(
             name=name,
-            path=conf['path'],
-            reader=conf['reader'],
-            triples=conf['triples'],
-            entity_labels=conf.get('entity labels', None),
-            relation_labels=conf.get('relation labels', None),
-            cache=ryn.ENV.CACHE_DIR / 'graphs.loader',
+            path=conf["path"],
+            reader=conf["reader"],
+            triples=conf["triples"],
+            entity_labels=conf.get("entity labels", None),
+            relation_labels=conf.get("relation labels", None),
+            cache=ryn.ENV.CACHE_DIR / "graphs.loader",
         )
 
     return graph_dict if not single else graph_dict[list(selection)[0]]
@@ -234,12 +234,12 @@ def load_graphs_from_uri(*uris: str):
     all uris must have the same provider (for now)
 
     """
-    providers, _ = zip(*(s.split('.') for s in uris))
+    providers, _ = zip(*(s.split(".") for s in uris))
     assert all(providers[0] == p for p in providers)
     provider = providers[0]
 
-    spec = str(ryn.ENV.CONF_DIR / 'graphs' / 'spec.conf')
-    conf = str(ryn.ENV.CONF_DIR / 'graphs' / f'{provider}.conf')
+    spec = str(ryn.ENV.CONF_DIR / "graphs" / "spec.conf")
+    conf = str(ryn.ENV.CONF_DIR / "graphs" / f"{provider}.conf")
 
     graph_dict = load_graphs_from_conf(conf=conf, spec=spec, graphs=uris)
 
@@ -279,7 +279,8 @@ class LazyGraphLoader:
         for name in names:
             if name not in cache:
                 cache[name] = load_graphs_from_conf(
-                    self.config, self.spec, (name, ))[name]
+                    self.config, self.spec, (name,)
+                )[name]
 
             graphs[name] = cache[name]
 

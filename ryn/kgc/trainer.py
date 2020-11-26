@@ -26,21 +26,21 @@ from typing import Union
 from typing import Iterable
 
 
-log = logging.get('kgc.trainer')
+log = logging.get("kgc.trainer")
 tqdm = partial(_tqdm, ncols=80)
 
 
 @helper.notnone
 def resolve_device(*, device_name: str = None):
-    if device_name not in ('cuda', 'cpu'):
+    if device_name not in ("cuda", "cpu"):
         raise ryn.RynError(f'unknown device option: "{device_name}"')
 
-    if not torch.cuda.is_available() and device_name == 'cuda':
-        log.error('cuda is not available; falling back to cpu')
-        device_name = 'cpu'
+    if not torch.cuda.is_available() and device_name == "cuda":
+        log.error("cuda is not available; falling back to cpu")
+        device_name = "cpu"
 
     device = torch.device(device_name)
-    log.info(f'resolved device, running on {device}')
+    log.info(f"resolved device, running on {device}")
 
     return device
 
@@ -50,10 +50,10 @@ def resolve_device(*, device_name: str = None):
 
 @helper.notnone
 def single(
-        *,
-        config: Config = None,
-        keen_dataset: keen.Dataset = None,
-        split_dataset: split.Dataset = None,
+    *,
+    config: Config = None,
+    keen_dataset: keen.Dataset = None,
+    split_dataset: split.Dataset = None,
 ) -> data.TrainingResult:
 
     # TODO https://github.com/pykeen/pykeen/issues/129
@@ -63,8 +63,8 @@ def single(
 
     if not config.general.seed:
         # choice of range is arbitrary
-        config.general.seed = np.random.randint(10**5, 10**7)
-        log.info(f'setting seed to {config.general.seed}')
+        config.general.seed = np.random.randint(10 ** 5, 10 ** 7)
+        log.info(f"setting seed to {config.general.seed}")
 
     helper.seed(config.general.seed)
 
@@ -75,7 +75,8 @@ def single(
     result_tracker.log_params(dataclasses.asdict(config))
 
     device = resolve_device(
-        device_name=config.model.kwargs['preferred_device'])
+        device_name=config.model.kwargs["preferred_device"]
+    )
 
     # target filtering for ranking losses is enabled by default
     loss = config.resolve(
@@ -129,18 +130,20 @@ def single(
 
     try:
 
-        losses = training_loop.train(**{
-            **dataclasses.asdict(config.training),
-            **dict(
-                stopper=stopper,
-                result_tracker=result_tracker,
-                clear_optimizer=True,
-            )
-        })
+        losses = training_loop.train(
+            **{
+                **dataclasses.asdict(config.training),
+                **dict(
+                    stopper=stopper,
+                    result_tracker=result_tracker,
+                    clear_optimizer=True,
+                ),
+            }
+        )
 
     except RuntimeError as exc:
         log.error(f'training error: "{exc}"')
-        log.error('sweeping training loop memory up under the rug')
+        log.error("sweeping training loop memory up under the rug")
 
         # not working although documented?
         # result_tracker.wandb.alert(title='RuntimeError', text=msg)
@@ -154,9 +157,10 @@ def single(
 
     training_time = data.Time(start=ts, end=datetime.now())
     result_tracker.log_metrics(
-        prefix='validation',
+        prefix="validation",
         metrics=dict(best=stopper.best_metric, metric=stopper.metric),
-        step=stopper.best_epoch)
+        step=stopper.best_epoch,
+    )
 
     # aggregation
 
@@ -176,14 +180,14 @@ def single(
 
 @helper.notnone
 def _create_study(
-        *,
-        config: Config = None,
-        out: pathlib.Path = None,
-        resume: bool = False,
+    *,
+    config: Config = None,
+    out: pathlib.Path = None,
+    resume: bool = False,
 ) -> optuna.Study:
 
     out.mkdir(parents=True, exist_ok=True)
-    db_path = out / 'optuna.db'
+    db_path = out / "optuna.db"
 
     # removed timestamp: current way of doing it in ryn
     # has seperate optuna.db for each study; might change
@@ -192,16 +196,16 @@ def _create_study(
     # timestamp = datetime.now().strftime('%Y.%m.%d-%H.%M')
     # study_name = f'{config.model.cls}-sweep-{timestamp}'
 
-    study_name = f'{config.model.cls}-sweep'
+    study_name = f"{config.model.cls}-sweep"
     log.info(f'create optuna study "{study_name}"')
 
     if resume:
-        log.info('! resuming old study')
+        log.info("! resuming old study")
 
     # TODO use direction="maximise"
     study = optuna.create_study(
         study_name=study_name,
-        storage=f'sqlite:///{db_path}',
+        storage=f"sqlite:///{db_path}",
         load_if_exists=resume,
     )
 
@@ -209,12 +213,16 @@ def _create_study(
     # create and enqueue a custom trial
     if not resume:
         params = {
-            k: v.initial for k, v in config.suggestions.items()
-            if v.initial is not None}
+            k: v.initial
+            for k, v in config.suggestions.items()
+            if v.initial is not None
+        }
 
         if params:
-            log.info('setting initial study params: ' + ', '.join(
-                f'{k}={v}' for k, v in params.items()))
+            log.info(
+                "setting initial study params: "
+                + ", ".join(f"{k}={v}" for k, v in params.items())
+            )
             study.enqueue_trial(params)
 
     return study
@@ -222,29 +230,29 @@ def _create_study(
 
 @helper.notnone
 def multi(
-        *,
-        base: Config = None,
-        out: pathlib.Path = None,
-        resume: bool = False,
-        **kwargs
+    *,
+    base: Config = None,
+    out: pathlib.Path = None,
+    resume: bool = False,
+    **kwargs,
 ) -> None:
 
     # Optuna lingo:
     #   Trial: A single call of the objective function
     #   Study: An optimization session, which is a set of trials
     #   Parameter: A variable whose value is to be optimized
-    assert base.optuna, 'no optuna config found'
+    assert base.optuna, "no optuna config found"
 
     def objective(trial):
-        log.info(f'! starting trial {trial.number}')
+        log.info(f"! starting trial {trial.number}")
 
         # obtain optuna suggestions
         config = base.suggest(trial)
-        name = f'{config.model.cls}-{trial.number}'
-        path = out / f'trial-{trial.number:04d}'
+        name = f"{config.model.cls}-{trial.number}"
+        path = out / f"trial-{trial.number:04d}"
 
         # update configuration
-        config.tracker.kwargs['experiment'] = name
+        config.tracker.kwargs["experiment"] = name
         # tracker = dataclasses.replace(config.tracker, experiment=name)
         # config = dataclasses.replace(config, tracker=tracker)
 
@@ -261,39 +269,37 @@ def multi(
             raise ryn.RynError(msg)
 
         best_metric = result.stopper.best_metric
-        log.info(f'! trial {trial.number} finished: '
-                 f'best metric = {best_metric}')
+        log.info(
+            f"! trial {trial.number} finished: " f"best metric = {best_metric}"
+        )
 
         # min optimization
         result.save(path)
         return -best_metric if base.optuna.maximise else best_metric
 
-    study = _create_study(
-        config=base,
-        out=out,
-        resume=resume)
+    study = _create_study(config=base, out=out, resume=resume)
 
     study.optimize(
         objective,
         n_trials=base.optuna.trials,
         gc_after_trial=True,
-        catch=(ryn.RynError, ),
+        catch=(ryn.RynError,),
     )
 
-    log.info('finished study')
+    log.info("finished study")
 
 
 @helper.notnone
 def train(
-        *,
-        config: Config = None,
-        split_dataset: split.Dataset = None,
-        keen_dataset: keen.Dataset = None,
-        **kwargs,
+    *,
+    config: Config = None,
+    split_dataset: split.Dataset = None,
+    keen_dataset: keen.Dataset = None,
+    **kwargs,
 ) -> None:
 
-    time = str(datetime.now()).replace(' ', '_')
-    out = ryn.ENV.KGC_DIR / split_dataset.name / f'{config.model.cls}-{time}'
+    time = str(datetime.now()).replace(" ", "_")
+    out = ryn.ENV.KGC_DIR / split_dataset.name / f"{config.model.cls}-{time}"
     config.save(out)
 
     multi(
@@ -302,20 +308,19 @@ def train(
         keen_dataset=keen_dataset,
         split_dataset=split_dataset,
         resume=False,
-        **kwargs)
+        **kwargs,
+    )
 
 
 @helper.notnone
 def train_from_kwargs(
-        *,
-        config: str = None,
-        split_dataset: str = None,
-        **kwargs):
+    *, config: str = None, split_dataset: str = None, **kwargs
+):
 
-    log.info('running training')
+    log.info("running training")
     split_dataset, keen_dataset = data.load_datasets(path=split_dataset)
 
-    print(f'\n{split_dataset}\n{keen_dataset}\n')
+    print(f"\n{split_dataset}\n{keen_dataset}\n")
 
     path = helper.path(config)
     config = Config.load(path.parent, fname=path.name)
@@ -325,18 +330,16 @@ def train_from_kwargs(
         config=config,
         split_dataset=split_dataset,
         keen_dataset=keen_dataset,
-        **kwargs
+        **kwargs,
     )
 
 
 @helper.notnone
 def resume_from_kwargs(
-        *,
-        path: str = None,
-        split_dataset: str = None,
-        **kwargs):
+    *, path: str = None, split_dataset: str = None, **kwargs
+):
 
-    log.info('resuming training')
+    log.info("resuming training")
     out = helper.path(path, exists=True)
 
     config = Config.load(out)
@@ -349,20 +352,21 @@ def resume_from_kwargs(
         resume=True,
         keen_dataset=keen_dataset,
         split_dataset=split_dataset,
-        **kwargs
+        **kwargs,
     )
 
-    log.info('done')
+    log.info("done")
+
 
 # --------------------
 
 
 def evaluate(
-        model: torch.nn.Module = None,
-        config: Config = None,
-        mapped_triples=None,
-        tqdm_kwargs=None,
-        **kwargs
+    model: torch.nn.Module = None,
+    config: Config = None,
+    mapped_triples=None,
+    tqdm_kwargs=None,
+    **kwargs,
 ):
 
     tqdm_kwargs = tqdm_kwargs or {}
@@ -389,19 +393,20 @@ def evaluate(
         metrics=dataclasses.asdict(metrics),
     )
 
-    log.info(f'evaluation took: {evaluation_time.took}')
+    log.info(f"evaluation took: {evaluation_time.took}")
     return evaluation_result
 
 
 @helper.notnone
 def evaluate_glob(
-        *,
-        glob: Iterable[pathlib.Path] = None,
-        split_dataset: split.Dataset = None,
-        keen_dataset: keen.Dataset = None):
+    *,
+    glob: Iterable[pathlib.Path] = None,
+    split_dataset: split.Dataset = None,
+    keen_dataset: keen.Dataset = None,
+):
 
     glob = list(glob)
-    log.info(f'probing {len(glob)} directories')
+    log.info(f"probing {len(glob)} directories")
 
     results = []
     for path in tqdm(glob):
@@ -410,7 +415,7 @@ def evaluate_glob(
             assert train_result.config.general.dataset == split_dataset.name
 
         except (FileNotFoundError, NotADirectoryError) as exc:
-            log.info(f'skipping {path.name}: {exc}')
+            log.info(f"skipping {path.name}: {exc}")
             continue
 
         try:
@@ -436,9 +441,9 @@ def evaluate_glob(
 
 @helper.notnone
 def evaluate_from_kwargs(
-        *,
-        results: List[str] = None,
-        split_dataset: str = None,
+    *,
+    results: List[str] = None,
+    split_dataset: str = None,
 ):
 
     split_dataset, keen_dataset = data.load_datasets(path=split_dataset)
@@ -446,14 +451,14 @@ def evaluate_from_kwargs(
     eval_results = evaluate_glob(
         glob=map(pathlib.Path, results),
         split_dataset=split_dataset,
-        keen_dataset=keen_dataset)
+        keen_dataset=keen_dataset,
+    )
 
     return eval_results
 
 
 @helper.notnone
 def print_results(*, results, out: Union[str, pathlib.Path] = None):
-
     def _save_rget(dic, *args, default=None):
         ls = list(args)[::-1]
 
@@ -470,24 +475,33 @@ def print_results(*, results, out: Union[str, pathlib.Path] = None):
     sort_key = 4  # hits@10
 
     headers = [
-        'name', 'model', 'val',
-        'hits@1', 'hits@10', 'MRR', 'MR', 'A-MR']
-    headers[sort_key] += ' *'
+        "name",
+        "model",
+        "val",
+        "hits@1",
+        "hits@10",
+        "MRR",
+        "MR",
+        "A-MR",
+    ]
+    headers[sort_key] += " *"
 
     for eval_result, path in results:
         train_result = data.TrainingResult.load(path, load_model=False)
         get_test = partial(_save_rget, eval_result.metrics)
 
-        rows.append([
-            path.name,
-            eval_result.model,
-            train_result.stopper['results'][-1],
-            get_test('hits_at_k', 'both', 'avg', '1', default=0) * 100,
-            get_test('hits_at_k', 'both', 'avg', '10', default=0) * 100,
-            get_test('mean_reciprocal_rank', 'both', 'avg') * 100,
-            int(get_test('mean_rank', 'both', 'avg')),
-            get_test('adjusted_mean_rank', 'both', default=2),
-        ])
+        rows.append(
+            [
+                path.name,
+                eval_result.model,
+                train_result.stopper["results"][-1],
+                get_test("hits_at_k", "both", "avg", "1", default=0) * 100,
+                get_test("hits_at_k", "both", "avg", "10", default=0) * 100,
+                get_test("mean_reciprocal_rank", "both", "avg") * 100,
+                int(get_test("mean_rank", "both", "avg")),
+                get_test("adjusted_mean_rank", "both", default=2),
+            ]
+        )
 
     rows.sort(key=lambda r: r[sort_key], reverse=True)
     table = tabulate(rows, headers=headers)
@@ -496,15 +510,17 @@ def print_results(*, results, out: Union[str, pathlib.Path] = None):
     print(table)
 
     if out is not None:
-        fname = 'evaluation'
+        fname = "evaluation"
         out = helper.path(
-            out, create=True,
-            message=f'writing {fname} txt/csv to {{path_abbrv}}')
+            out,
+            create=True,
+            message=f"writing {fname} txt/csv to {{path_abbrv}}",
+        )
 
-        with (out / (fname + '.txt')).open(mode='w') as fd:
+        with (out / (fname + ".txt")).open(mode="w") as fd:
             fd.write(table)
 
-        with (out / (fname + '.csv')).open(mode='w') as fd:
+        with (out / (fname + ".csv")).open(mode="w") as fd:
             writer = csv.DictWriter(fd, fieldnames=headers)
             writer.writeheader()
             writer.writerows([dict(zip(headers, row)) for row in rows])

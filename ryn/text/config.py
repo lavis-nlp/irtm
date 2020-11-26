@@ -99,21 +99,21 @@ class Config:
         fname = path.name
 
         path = helper.path(
-            path.parent, create=True,
-            message=f'saving {fname} to {{path_abbrv}}')
+            path.parent,
+            create=True,
+            message=f"saving {fname} to {{path_abbrv}}",
+        )
 
-        with (path / fname).open(mode='w') as fd:
+        with (path / fname).open(mode="w") as fd:
             yaml.dump(dataclasses.asdict(self), fd)
 
     @classmethod
-    def load(K, path: Union[str, pathlib.Path]) -> 'Config':
+    def load(K, path: Union[str, pathlib.Path]) -> "Config":
         return K.create(configs=[path])
 
     @classmethod
     @helper.notnone
     def create(
-            K,
-            configs: Sequence[Union[str, pathlib.Path]] = None,
-            **kwargs
-    ) -> 'Config':
+        K, configs: Sequence[Union[str, pathlib.Path]] = None, **kwargs
+    ) -> "Config":
         return K(**ryaml.load(configs=configs, **kwargs))
