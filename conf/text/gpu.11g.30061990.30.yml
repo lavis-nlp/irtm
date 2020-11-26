@@ -1,5 +1,5 @@
 # 11GB GPU RAM configuration
-# - used for split seed=30061990 ratio=0.7 with 30 sentences
+# - used for split seed=30061990 ratio=0.9 with 30 sentences
 # - tested with GTX 1080 TI
 
 # max sequence length: 287
