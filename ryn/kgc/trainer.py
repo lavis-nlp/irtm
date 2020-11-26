@@ -57,7 +57,7 @@ def single(
 ) -> data.TrainingResult:
 
     # TODO https://github.com/pykeen/pykeen/issues/129
-    BATCH_SIZE = 60
+    BATCH_SIZE = 250
 
     # preparation
 
