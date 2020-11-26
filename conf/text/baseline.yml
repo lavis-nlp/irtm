@@ -15,7 +15,7 @@ trainer_args:
   max_epochs: 50
   fast_dev_run: False
   distributed_backend: horovod
-  accumulate_grad_batches: 5
+  accumulate_grad_batches: 10
   gradient_clip_val: 1
 
 checkpoint_args:
@@ -23,16 +23,13 @@ checkpoint_args:
   save_top_k: 10
 
 dataloader_train_args:
-  batch_size: 200
   num_workers: 0
   shuffle: True
 
 dataloader_valid_args:
-  batch_size: 225
   num_workers: 0
 
 dataloader_test_args:
-  batch_size: 250
   num_workers: 0
 
 optimizer: adam
@@ -42,7 +39,9 @@ optimizer_args:
 text_encoder: bert-base-cased
 freeze_text_encoder: True
 
-aggregator: max 1
+aggregator: max dropout 1
+aggregator_args:
+  p: 0.5
 projector: affine 1
 projector_args:
   input_dims: 768
