@@ -4,7 +4,7 @@
   },
   "tracker": {
     "cls": "wandb",
-    "project": "ryn-keen",
+    "project": "ryn-keen-proto",
     "reinit": true,
     "offline": false
   },
@@ -52,8 +52,8 @@
   },
   "stopper": {
     "cls": "EarlyStopper",
-    "frequency": 50,
-    "patience": 5,
+    "frequency": 1,
+    "patience": 4,
     "relative_delta": 0.001
   },
   "sampler": {
@@ -68,7 +68,7 @@
   },
   "training": {
     "num_epochs": 2000,
-      "batch_size": 512
+    "batch_size": 200
   },
   "training_loop": {
     "cls": "SLCWATrainingLoop"
