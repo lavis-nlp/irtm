@@ -223,3 +223,20 @@ def evaluate_baseline(**kwargs):
     Evaluate a mapper where all projections are [1., ...]
     """
     evaluator.evaluate_baseline(**kwargs)
+
+
+@text.command()
+@click.option(
+    '--root', type=str, required=True,
+    help='')
+@click.option(
+    '-c', '--config', type=str, multiple=True,
+    help='one or more configuration files')
+@click.option(
+    '--debug', is_flag=True,
+    help='run everything fast, do not write anything')
+def evaluate_all(**kwargs):
+    """
+    Run evaluations for all saved checkpoints
+    """
+    evaluator.evaluate_all(**kwargs)

@@ -2,7 +2,7 @@
 #          RYN TEXT MAPPER CONFIGURATION
 #    -----------------------------------------
 #
-#        see the baseline.yml for comments
+#        see the default.yml for comments
 
 valid_split: 0.9
 wandb_args:
@@ -37,7 +37,7 @@ optimizer_args:
   lr: 0.000005
 
 text_encoder: bert-base-cased
-freeze_text_encoder: False
+freeze_text_encoder: True
 
 aggregator: cls dropout 1
 aggregator_args:

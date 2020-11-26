@@ -94,9 +94,10 @@ def _run_kgc_evaluations(
     results = {}
 
     for kind, triples in triplesens.items():
-        results[kind] = model.run_kgc_evaluation(
+        key = f'{model.projection_aggregation}.{kind}'
+        results[key] = model.run_kgc_evaluation(
             kind=kind,
-            triples=triples
+            triples=triples,
         )
 
     return results
@@ -109,31 +110,26 @@ def evaluate(
         datamodule: data.DataModule = None,
         debug: bool = None,
 ):
-    print('''
-
-              R Y N
-    -------------------------
-            evaluation
-
-    ''')
-
-    print('producing projections\n')
+    print('EVALUATE')
 
     _init(model=model, debug=debug, run_memcheck=True)
 
-    print('\ncreating projections\n')
-    # populates model.projections buffer
-    _create_projections(
-        model=model,
-        datamodule=datamodule,
-        debug=debug,
-    )
+    results = {}
+    projection_aggregations = 'max', 'avg', 'last'
+    for projection_aggregation in projection_aggregations:
 
-    print('\nrunning kgc evaluation\n')
-    results = _run_kgc_evaluations(
-        nodel=model,
-        datamodule=datamodule
-    )
+        print('\ncreating projections\n')
+        _create_projections(
+            model=model,
+            datamodule=datamodule,
+            debug=debug,
+        )
+
+        print('\nrunning kgc evaluation\n')
+        results.update(_run_kgc_evaluations(
+            model=model,
+            datamodule=datamodule
+        ))
 
     return results
 
@@ -156,7 +152,7 @@ def _evaluation_uncached(
         str(checkpoint),
         data=datamodule,
         rync=rync,
-        freeze_text_encoder=config.freeze_text_encoder
+        freeze_text_encoder=True,
     )
 
     results = evaluate(
@@ -257,7 +253,7 @@ def evaluate_baseline(
     model = mapper.Mapper(
         rync=rync,
         data=datamodule,
-        freeze_text_encoder=False,
+        freeze_text_encoder=True,
     )
 
     _init(model=model, debug=debug, run_memcheck=False)
@@ -281,3 +277,21 @@ def evaluate_baseline(
         target_file=out / 'evaluation.yml',
         debug=debug,
     )
+
+
+@helper.notnone
+def evaluate_all(
+        root: pathlib.Path = None,
+        **kwargs
+):
+    """
+    Run evaluation for all saved checkpoints
+    """
+
+    root = helper.path(root, exists=True)
+    for checkpoint in root.glob('**/epoch=*-step=*.ckpt'):
+        print(f'evaluating {checkpoint.name}')
+
+        # <path>/weights/<PROJECT_NAME>/<RUN_ID>/checkpoints/epoch=*-step=*.ckpt
+        path = checkpoint.parents[4]
+        evaluate_from_kwargs(path=path, checkpoint=checkpoint, **kwargs)
