@@ -328,7 +328,14 @@ class Dataset:
                 for h, t, r in part.triples
                 if h not in part.owe and t not in part.owe
             )
-            assert not len(undesired), f"found undesired triples: {undesired}"
+            # deactivated for fb15k237-owe
+            # assert not len(undesired), (
+            # f"found undesired triples: len({undesired})")
+            if len(undesired):
+                log.error(
+                    f"there are {len(undesired)} triples containing"
+                    f" only closed world entities in {part.name}"
+                )
 
     @classmethod
     @helper.cached(".cached.graphs.split.dataset.pkl")
