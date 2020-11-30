@@ -501,8 +501,9 @@ class Mapper(pl.LightningModule):
 
     def forward_sentences(self, sentences: torch.Tensor):
         # mask padding and [MASK] tokens
-        # mask = self.rync.tokenizer.base.vocab['[MASK]']
-        attention_mask = sentences > 0  # | (sentences == mask)
+
+        mask = 103  # TODO BERT specific!
+        attention_mask = (sentences > 0) | (sentences == mask)
         attention_mask = attention_mask.to(dtype=torch.long)
 
         return self.encode(input_ids=sentences, attention_mask=attention_mask)[
