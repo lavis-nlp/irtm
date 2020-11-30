@@ -177,18 +177,22 @@ def _evaluation_cached(
 def _handle_results(
     *,
     results: Dict,
+    checkpoint: str = None,
     target_file: Union[str, pathlib.Path],
     debug: bool = None,
 ):
-
-    yml_str = yaml.dump(results)
-
     if not debug:
+        with target_file.open(mode="r") as fd:
+            runs = yaml.load(fd) or {}
+
+        log.info(f"updating {checkpoint} in {target_file.name}")
+
+        runs[checkpoint] = results
         with target_file.open(mode="w") as fd:
-            fd.write(yml_str)
+            fd.write(yaml.dump(runs))
 
     print("\n\nfinished!\n")
-    print(yml_str)
+    print(yaml.dump(results))
 
 
 @helper.notnone
@@ -232,8 +236,13 @@ def evaluate_from_kwargs(
         )
 
     _handle_results(
-        results=results, target_file=ryn_dir / "evaluation.yml", debug=debug
+        checkpoint=checkpoint.name,
+        results=results,
+        target_file=ryn_dir / "evaluation.yml",
+        debug=debug,
     )
+
+    return checkpoint.name, results
 
 
 @helper.notnone
