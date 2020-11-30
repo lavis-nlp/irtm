@@ -1,8 +1,6 @@
 # RŶN
 
-> But no wizardry nor spell, neither fang nor venom, nor devil's art
-> nor beast-strength, could overthrow Huan
-> utterly.
+> But no wizardry nor spell, neither fang nor venom, nor devil's art nor beast-strength, could overthrow Huan of Valinor
 
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 
