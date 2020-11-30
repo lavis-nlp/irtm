@@ -479,22 +479,16 @@ class Mapper(pl.LightningModule):
             self.parameters(), **config.optimizer_args
         )
 
-        scheduler = None
-        if config.scheduler:
-            fn, kwargs = SCHEDULER[config.scheduler]
+        scheduler_name = config.scheduler or "constant"
+        fn, kwargs = SCHEDULER[scheduler_name]
 
-            last_epoch = self.current_epoch - 1
-            args = [config.scheduler_args[k] for k in kwargs] + [last_epoch]
-            scheduler = fn(optimizer, *args)
+        last_epoch = self.current_epoch - 1
+        args = [config.scheduler_args[k] for k in kwargs] + [last_epoch]
+        scheduler = fn(optimizer, *args)
 
         log.info(f"initialized optimizer with {config.optimizer_args}")
-
-        if scheduler:
-            log.info(f"initialized scheduler with {kwargs=}")
-            return [optimizer], [scheduler]
-        else:
-            log.info("optimizing without scheduler")
-            return optimizer
+        log.info(f"initialized {scheduler_name} scheduler with {kwargs=}")
+        return [optimizer], [scheduler]
 
     #
     #   SELF REALISATION
@@ -724,8 +718,8 @@ class Mapper(pl.LightningModule):
         log.info(
             f"! finished {kind} evaluation with"
             f' {evaluation_result.metrics["hits_at_k"]["both"]["avg"][10]:2.3f} hits@10'  # noqa: E501
-            f' and {evaluation_result.metrics["mean_reciprocal_rank"]["both"]["avg"]:2.3f} MRR'
-        )  # noqa: E501
+            f' and {evaluation_result.metrics["mean_reciprocal_rank"]["both"]["avg"]:2.3f} MRR'  # noqa: E501
+        )
 
         return result_metrics
 
