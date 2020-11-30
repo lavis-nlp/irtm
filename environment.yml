@@ -18,4 +18,5 @@ dependencies:
   - pip=20
   - pip:
     - -r file:requirements.txt
+    - horovod --no-binary=horovod
   - pytorch=1.7

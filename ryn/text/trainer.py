@@ -18,7 +18,7 @@ from datetime import datetime
 from typing import List
 from typing import Optional
 
-log = logging.get('text.trainer')
+log = logging.get("text.trainer")
 
 
 @helper.notnone
@@ -31,75 +31,87 @@ def load_from_config(*, config: Config = None):
         split_dataset=upstream_models.kgc_model.split_dataset,
     )
 
-    rync = mapper.Components.create(
-        config=config,
-        models=upstream_models
-    )
+    rync = mapper.Components.create(config=config, models=upstream_models)
 
     return datamodule, rync
 
 
 @helper.notnone
 def _init_logger(
-        debug: bool = None,
-        timestamp: str = None,
-        config: Config = None,
-        kgc_model_name: str = None,
-        text_encoder_name: str = None,
-        text_dataset_name: str = None,
-        resume: bool = None,
+    debug: bool = None,
+    timestamp: str = None,
+    config: Config = None,
+    kgc_model_name: str = None,
+    text_encoder_name: str = None,
+    text_dataset_name: str = None,
+    resume: bool = None,
 ):
 
     # --
 
     logger = None
-    name = f'{text_encoder_name}.{kgc_model_name}.{timestamp}'
+    name = f"{text_encoder_name}.{kgc_model_name}.{timestamp}"
 
     if debug:
-        log.info('debug mode; not using any logger')
+        log.info("debug mode; not using any logger")
         return None
 
     if config.wandb_args:
-        config = dataclasses.replace(config, wandb_args={
-            **dict(
-                name=name,
-                save_dir=str(config.out),
-            ),
-            **config.wandb_args,
-        })
+        config = dataclasses.replace(
+            config,
+            wandb_args={
+                **dict(
+                    name=name,
+                    save_dir=str(config.out),
+                ),
+                **config.wandb_args,
+            },
+        )
 
-        log.info('initializating logger: '
-                 f'{config.wandb_args["project"]}/{config.wandb_args["name"]}')
+        log.info(
+            "initializating logger: "
+            f'{config.wandb_args["project"]}/{config.wandb_args["name"]}'
+        )
 
         logger = pl.loggers.wandb.WandbLogger(**config.wandb_args)
-        logger.experiment.config.update({
-            'kgc_model': kgc_model_name,
-            'text_dataset': text_dataset_name,
-            'text_encoder': text_encoder_name,
-            'mapper_config': dataclasses.asdict(config),
-        }, allow_val_change=resume)
+        logger.experiment.config.update(
+            {
+                "kgc_model": kgc_model_name,
+                "text_dataset": text_dataset_name,
+                "text_encoder": text_encoder_name,
+                "mapper_config": dataclasses.asdict(config),
+            },
+            allow_val_change=resume,
+        )
 
     else:
-        log.info('! no wandb configuration found; falling back to csv')
-        logger = pl.loggers.csv_logs.CSVLogger(config.out / 'csv', name=name)
+        log.info("! no wandb configuration found; falling back to csv")
+        logger = pl.loggers.csv_logs.CSVLogger(config.out / "csv", name=name)
 
     assert logger is not None
     return logger
 
 
 def _init_trainer(
-        config: Config = None,
-        logger: Optional = None,
-        debug: bool = False,
-        resume_from_checkpoint: Optional[str] = None,
+    config: Config = None,
+    logger: Optional = None,
+    debug: bool = False,
+    resume_from_checkpoint: Optional[str] = None,
 ) -> pl.Trainer:
 
     callbacks = []
 
     if not debug and config.checkpoint_args:
-        log.info(f'registering checkpoint callback: {config.checkpoint_args}')
-        callbacks.append(pl.callbacks.ModelCheckpoint(
-            **config.checkpoint_args))
+        log.info(f"registering checkpoint callback: {config.checkpoint_args}")
+        callbacks.append(
+            pl.callbacks.ModelCheckpoint(**config.checkpoint_args)
+        )
+
+    callbacks.append(
+        pl.callbacks.LearningRateMonitor(
+            logging_interval="step",
+        )
+    )
 
     trainer_args = dict(
         callbacks=callbacks,
@@ -110,15 +122,15 @@ def _init_trainer(
 
     if not debug:
         trainer_args.update(
-            profiler='simple',
+            profiler="simple",
             logger=logger,
             # trained model directory
-            weights_save_path=config.out / 'weights',
+            weights_save_path=config.out / "weights",
             # checkpoint directory
-            default_root_dir=config.out / 'checkpoints',
+            default_root_dir=config.out / "checkpoints",
         )
 
-    log.info('initializing trainer')
+    log.info("initializing trainer")
     return pl.Trainer(
         **{
             **config.trainer_args,
@@ -129,34 +141,34 @@ def _init_trainer(
 
 @helper.notnone
 def _fit(
-        *,
-        trainer: pl.Trainer = None,
-        model: pl.LightningModule = None,
-        datamodule: data.DataModule = None,
-        out: pathlib.Path = None,
-        debug: bool = None
+    *,
+    trainer: pl.Trainer = None,
+    model: pl.LightningModule = None,
+    datamodule: data.DataModule = None,
+    out: pathlib.Path = None,
+    debug: bool = None,
 ):
-    log.info('pape satan, pape satan aleppe')
+    log.info("pape satan, pape satan aleppe")
 
     try:
         trainer.fit(model, datamodule=datamodule)
 
     except Exception as exc:
-        log.error(f'{exc}')
-        with (out / 'exception.txt').open(mode='w') as fd:
-            fd.write(f'Exception: {datetime.now()}\n\n')
+        log.error(f"{exc}")
+        with (out / "exception.txt").open(mode="w") as fd:
+            fd.write(f"Exception: {datetime.now()}\n\n")
             fd.write(str(exc))
 
         raise exc
 
     if not debug:
-        with (out / 'profiler_summary.txt').open(mode='w') as fd:
+        with (out / "profiler_summary.txt").open(mode="w") as fd:
             fd.write(trainer.profiler.summary())
 
 
 @helper.notnone
 def train(*, config: Config = None, debug: bool = False):
-    log.info('lasciate ogni speranza o voi che entrate')
+    log.info("lasciate ogni speranza o voi che entrate")
 
     datamodule, rync = load_from_config(config=config)
 
@@ -171,21 +183,26 @@ def train(*, config: Config = None, debug: bool = False):
     # --
 
     out_fmt = config.out or (
-        f'{ryn.ENV.TEXT_DIR}/mapper/'
-        '{text_dataset}/{text_database}/'
-        '{text_model}/{kgc_model}')
+        f"{ryn.ENV.TEXT_DIR}/mapper/"
+        "{text_dataset}/{text_database}/"
+        "{text_model}/{kgc_model}"
+    )
 
-    out = helper.path(out_fmt.format(**dict(
-            text_dataset=datamodule.text.dataset,
-            text_database=datamodule.text.database,
-            text_model=datamodule.text.model,
-            kgc_model=rync.kgc_model_name,
-    )))
-
-    timestamp = datetime.now().strftime('%Y.%m.%d-%H.%M.%S')
     out = helper.path(
-        out/timestamp, create=True,
-        message='writing model to {path_abbrv}')
+        out_fmt.format(
+            **dict(
+                text_dataset=datamodule.text.dataset,
+                text_database=datamodule.text.database,
+                text_model=datamodule.text.model,
+                kgc_model=rync.kgc_model_name,
+            )
+        )
+    )
+
+    timestamp = datetime.now().strftime("%Y.%m.%d-%H.%M.%S")
+    out = helper.path(
+        out / timestamp, create=True, message="writing model to {path_abbrv}"
+    )
 
     config = dataclasses.replace(config, out=out)
 
@@ -210,7 +227,7 @@ def train(*, config: Config = None, debug: bool = False):
     # hvd is initialized now
 
     if not debug and hvd.local_rank() == 0:
-        dataclasses.replace(config, out=str(out)).save(out / 'config.yml')
+        dataclasses.replace(config, out=str(out)).save(out / "config.yml")
 
     _fit(
         trainer=trainer,
@@ -220,22 +237,22 @@ def train(*, config: Config = None, debug: bool = False):
         debug=debug,
     )
 
-    log.info('training finished')
+    log.info("training finished")
 
 
 @helper.notnone
 def train_from_kwargs(
-        debug: bool = False,
-        offline: bool = False,
-        config: List[str] = None,
-        **kwargs,
+    debug: bool = False,
+    offline: bool = False,
+    config: List[str] = None,
+    **kwargs,
 ):
 
     if debug:
-        log.warning('debug run')
+        log.warning("debug run")
 
     if offline:
-        log.warning('offline run')
+        log.warning("offline run")
 
     config = Config.create(configs=config, **kwargs)
     train(config=config, debug=debug)
@@ -243,26 +260,30 @@ def train_from_kwargs(
 
 @helper.notnone
 def resume_from_kwargs(
-        path: str = None,
-        checkpoint: str = None,
-        debug: bool = None,
-        offline: bool = None,
-        **kwargs
+    path: str = None,
+    checkpoint: str = None,
+    debug: bool = None,
+    offline: bool = None,
+    **kwargs,
 ):
 
     out = helper.path(path, exists=True)
-    config = Config.create(configs=[out / 'config.yml'], **kwargs)
+    config = Config.create(configs=[out / "config.yml"], **kwargs)
 
     config.out = out
-    config.wandb_args.update(dict(
-        offline=offline,
-    ))
+    config.wandb_args.update(
+        dict(
+            offline=offline,
+        )
+    )
 
     datasets, rync = load_from_config(config=config)
 
     checkpoint = helper.path(
-        checkpoint, exists=True,
-        message='loading model checkpoint {path_abbrv}')
+        checkpoint,
+        exists=True,
+        message="loading model checkpoint {path_abbrv}",
+    )
 
     map_model = mapper.Mapper.load_from_checkpoint(
         str(checkpoint),
@@ -279,7 +300,7 @@ def resume_from_kwargs(
     # (see pytorch_lightning/loggers/wandb.py:127)
     run_id = checkpoint.parent.parent.name
     os.environ["WANDB_RUN_ID"] = run_id
-    log.info(f'! resuming from run id: {run_id}')
+    log.info(f"! resuming from run id: {run_id}")
 
     logger = _init_logger(
         debug=debug,
@@ -306,4 +327,4 @@ def resume_from_kwargs(
         debug=debug,
     )
 
-    log.info('resumed training finished')
+    log.info("resumed training finished")

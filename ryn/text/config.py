@@ -86,6 +86,12 @@ class Config:
     projector_args: Dict[str, Any] = field(default_factory=dict)
     comparator_args: Dict[str, Any] = field(default_factory=dict)
 
+    # OPTIONAL
+    # ----------------------------------------
+
+    scheduler: Optional[str] = None
+    scheduler_args: Optional[Dict[str, Any]] = None
+
     # SET AUTOMATICALLY
     # ----------------------------------------
 
@@ -116,4 +122,5 @@ class Config:
     def create(
         K, configs: Sequence[Union[str, pathlib.Path]] = None, **kwargs
     ) -> "Config":
-        return K(**ryaml.load(configs=configs, **kwargs))
+        params = ryaml.load(configs=configs, **kwargs)
+        return K(**params)

@@ -76,6 +76,19 @@ optimizer: null
 optimizer_args:
   lr: null
 
+# learning rate scheduling
+# supported schedulers are:
+# https://huggingface.co/transformers/main_classes/optimizer_schedules.html
+#    - constant
+#    - constant with warmup
+#    - cosine with warmup
+#    - cosine with hard restarts with warmup
+#    - linear with warmup
+scheduler: null
+scheduler_args:
+  num_warmup_steps: null
+  # ...
+
 #
 #  MAPPER
 #

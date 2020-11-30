@@ -25,9 +25,6 @@ from itertools import repeat
 from dataclasses import dataclass
 from collections import defaultdict
 
-from typing import Any
-from typing import Dict
-
 
 log = logging.get("text.mapper")
 
@@ -272,11 +269,33 @@ OPTIMIZER = {
 }
 
 
+# unfortunately tf does not allow kwargs
+# and the args order needs to be defined explicitly
+SCHEDULER = {
+    "constant": (tf.get_constant_schedule, ()),
+    "constant with warmup": (
+        tf.get_constant_schedule_with_warmup,
+        ("num_warmup_steps"),
+    ),
+    "cosine with warmup": (
+        tf.get_cosine_schedule_with_warmup,
+        ("num_warmup_steps", "num_training_steps"),
+    ),
+    "cosine with hard restarts with warmup": (
+        tf.get_cosine_with_hard_restarts_schedule_with_warmup,
+        ("num_warmup_steps", "num_training_steps", "num_cycles"),
+    ),
+    "linear with warmup": (
+        tf.get_linear_schedule_with_warmup,
+        ("num_warmup_steps", "num_training_steps"),
+    ),
+}
+
+
 @dataclass
 class Components:
 
-    Optimizer: torch.optim.Optimizer
-    optimizer_args: Dict[str, Any]
+    config: Config
 
     # text encoder
     text_encoder: tf.BertModel
@@ -321,8 +340,7 @@ class Components:
             raise ryn.RynError(f'unknown optimizer "{config.optimizer}"')
 
         self = K(
-            Optimizer=OPTIMIZER.get(config.optimizer),
-            optimizer_args=config.optimizer_args,
+            config=config,
             text_encoder=models.text_encoder,
             aggregator=aggregator,
             projector=projector,
@@ -373,14 +391,6 @@ class Mapper(pl.LightningModule):
         self._debug = val
 
     @property
-    def lr(self):
-        return self._lr
-
-    @lr.setter  # required for auto_lr_find
-    def lr(self, val):
-        self._lr = val
-
-    @property
     def rync(self) -> Components:
         return self._rync
 
@@ -427,7 +437,6 @@ class Mapper(pl.LightningModule):
 
         self._data = data
         self._rync = rync
-        self._lr = self.rync.optimizer_args["lr"]
         self.projection_aggregation = projection_aggregation
 
         # parameters
@@ -464,12 +473,28 @@ class Mapper(pl.LightningModule):
         self.init_projections()
 
     def configure_optimizers(self):
-        optim = self.rync.Optimizer(
-            self.parameters(), **self.rync.optimizer_args
+        config = self.rync.config
+
+        optimizer = OPTIMIZER[config.optimizer](
+            self.parameters(), **config.optimizer_args
         )
 
-        log.info(f"initialized optimizer with {self.rync.optimizer_args}")
-        return optim
+        scheduler = None
+        if config.scheduler:
+            fn, kwargs = SCHEDULER[config.scheduler]
+
+            last_epoch = self.current_epoch - 1
+            args = [config.scheduler_args[k] for k in kwargs] + [last_epoch]
+            scheduler = fn(optimizer, *args)
+
+        log.info(f"initialized optimizer with {config.optimizer_args}")
+
+        if scheduler:
+            log.info(f"initialized scheduler with {kwargs=}")
+            return [optimizer], [scheduler]
+        else:
+            log.info("optimizing without scheduler")
+            return optimizer
 
     #
     #   SELF REALISATION
@@ -546,10 +571,14 @@ class Mapper(pl.LightningModule):
 
         # batch x kge_dims
         target = self.forward_entities(entities)
-
         loss = self.loss(projected, target)
 
-        self.log("train_loss_step", loss)
+        self.log_dict(
+            dict(
+                train_loss_step=loss,
+            )
+        )
+
         return loss
 
     #

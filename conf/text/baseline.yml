@@ -23,25 +23,31 @@ checkpoint_args:
   save_top_k: 10
 
 dataloader_train_args:
+  batch_size: 5
   num_workers: 0
   shuffle: True
 
 dataloader_valid_args:
+  batch_size: 5
   num_workers: 0
 
 dataloader_test_args:
+  batch_size: 5
   num_workers: 0
 
 optimizer: adam
 optimizer_args:
   lr: 0.00001
 
+scheduler: linear with warmup
+scheduler_args:
+  num_warmup_steps: 500
+  num_training_steps: 15000
+
 text_encoder: bert-base-cased
 freeze_text_encoder: False
 
-aggregator: max dropout 1
-aggregator_args:
-  p: 0.5
+aggregator: cls 1
 projector: affine 1
 projector_args:
   input_dims: 768
