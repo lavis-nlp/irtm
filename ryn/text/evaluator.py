@@ -182,10 +182,8 @@ def _handle_results(
     debug: bool = None,
 ):
     if not debug:
-        with target_file.open(mode="r") as fd:
+        with target_file.open(mode="a") as fd:
             runs = yaml.load(fd) or {}
-
-        log.info(f"updating {checkpoint} in {target_file.name}")
 
         runs[checkpoint] = results
         with target_file.open(mode="w") as fd:
