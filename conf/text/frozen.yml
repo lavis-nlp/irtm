@@ -12,7 +12,7 @@ wandb_args:
 
 trainer_args:
   gpus: 1
-  max_epochs: 50
+  max_epochs: 100
   fast_dev_run: False
   distributed_backend: horovod
   accumulate_grad_batches: 5
