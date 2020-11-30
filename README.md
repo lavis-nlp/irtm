@@ -6,13 +6,21 @@
 
 ## Installation
 
+With horovod multi-gpu support:
+```bash
+# sets environment variables and invokes
+# conda env create -f environment.yml
+fish environment.fish
+```
+
+Without multi-gpu support:
+
 ```bash
 conda create --name ryn python=3.8
+conda install pytorch
 pip install -r requirements.txt
 pip install -e .
 ```
-
-You also need to install pytorch. For multi-gpu support, you need horovod.
 
 
 ## Command Line Client
