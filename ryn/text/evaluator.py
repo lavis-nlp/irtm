@@ -182,8 +182,13 @@ def _handle_results(
     debug: bool = None,
 ):
     if not debug:
-        with target_file.open(mode="a") as fd:
-            runs = yaml.load(fd) or {}
+        runs = {}
+
+        try:
+            with target_file.open(mode="r") as fd:
+                runs = yaml.load(fd, Loader=yaml.FullLoader) or {}
+        except FileNotFoundError:
+            log.info(f"creating {target_file.name}")
 
         runs[checkpoint] = results
         with target_file.open(mode="w") as fd:
