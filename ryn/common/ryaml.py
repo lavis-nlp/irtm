@@ -26,7 +26,7 @@ def join(d1, d2):
 
 
 def dic_from_kwargs(**kwargs):
-    sep = '__'
+    sep = "__"
     dic = defaultdict(dict)
 
     for k, v in kwargs.items():
@@ -48,18 +48,16 @@ def load(*, configs: Sequence[str], **kwargs):
     """
 
     if not configs and not kwargs:
-        raise ryn.RynError('no configuration provided')
+        raise ryn.RynError("no configuration provided")
 
-    as_path = partial(
-        helper.path, exists=True,
-        message='loading {path_abbrv}')
+    as_path = partial(helper.path, exists=True, message="loading {path_abbrv}")
 
     # first join all yaml configs into one dictionary;
     # later dictionaries overwrite earlier ones
     result = {}
     for path in map(as_path, configs):
-        with path.open(mode='r') as fd:
-            join(result, yaml.load(fd))
+        with path.open(mode="r") as fd:
+            join(result, yaml.load(fd, Loader=yaml.FullLoader))
 
     # then join all kwargs;
     # this is practically the reverse of what
@@ -72,13 +70,12 @@ def load(*, configs: Sequence[str], **kwargs):
 
 @helper.notnone
 def print_click_arguments(*, dic: Dict[str, Any] = None) -> str:
-
     def _resolve(k, v):
-        name = k.replace('_', '-')
+        name = k.replace("_", "-")
         if type(v) is dict:
             for it in v.items():
                 for subname, argtype in _resolve(*it):
-                    yield f'{name}--{subname}', argtype
+                    yield f"{name}--{subname}", argtype
         else:
             yield name, type(v).__name__
 
