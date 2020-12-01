@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 # fmt: off
 
+import ryn
 from ryn.cli import main
 from ryn.text import data
 from ryn.text import trainer
@@ -66,9 +67,6 @@ def cli(dataset: str = None, ratio: float = None, seed: int = None):
     '--dataset', type=str, required=True,
     help='path to ryn.graph.split.Dataset directory')
 @click.option(
-    '--database', type=str, required=True,
-    help='path to sqlite text database')
-@click.option(
     '--sentences', type=int, required=True,
     help='(max) number of sentences per entity')
 @click.option(
@@ -86,14 +84,37 @@ def cli(dataset: str = None, ratio: float = None, seed: int = None):
 @click.option(
     '--suffix', type=str,
     help='suffix to append to the dataset directory')
+@click.option(
+    '--sqlite-database', type=str,
+    help='path to sqlite text database')
+@click.option(
+    '--json-file', type=str,
+    help='path to json file')
 def transform(
         dataset: str = None,
+        sqlite_database: str = None,
+        json_file: str = None,
         **kwargs):
     """
     Transform a graph.split.Dataset to a text.data.Dataset
     """
+    if json_file and sqlite_database:
+        raise ryn.RynError('cannot provide both sqlite and json')
+
+    if json_file:
+        loader = 'json'
+        loader_args = dict(fname=json_file)
+
+    if sqlite_database:
+        loader = 'sqlite'
+        loader_args = dict(database=sqlite_database)
+
     dataset = split.Dataset.load(path=dataset)
-    data.transform(dataset=dataset, **kwargs)
+    data.transform(
+        dataset=dataset,
+        loader=loader,
+        loader_args=loader_args,
+        **kwargs)
 
 
 # shared options

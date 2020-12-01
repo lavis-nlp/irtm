@@ -3,7 +3,7 @@
 import ryn
 
 from ryn.kgc import keen
-from ryn.text import loader
+from ryn.text import loader as ryn_loader
 from ryn.text.config import Config
 from ryn.graphs import split
 from ryn.common import helper
@@ -35,6 +35,7 @@ import pytorch_lightning as pl
 import transformers as tf
 
 from typing import IO
+from typing import Any
 from typing import Set
 from typing import List
 from typing import Dict
@@ -99,7 +100,7 @@ class Tokenizer:
 @dataclass
 class TransformContext:
 
-    select: loader.SQLite
+    select: ryn_loader.SQLite
 
     fd_indexes: IO[str]
     fd_sentences: IO[str]
@@ -115,11 +116,13 @@ class TransformContext:
 
 # this matches masked sequences of the upstream sqlite context dbs
 RE_MASKS = re.compile("#+")
-MARKED = Tokenizer.TOK_MENTION_START + " {mention} " + Tokenizer.TOK_MENTION_END
+MARKED = (
+    Tokenizer.TOK_MENTION_START + " {mention} " + Tokenizer.TOK_MENTION_END
+)
 
 
 def _transform_result(
-    result,
+    result: ryn_loader.Result,
     *,
     e: int = None,
     amount: int = None,
@@ -127,14 +130,12 @@ def _transform_result(
     marked: bool = None,
     tokenizer: Tokenizer = None,
 ):
-
-    entities, mentions, blobs, blobs_masked = zip(*result)
-    assert all(e == db_entity for db_entity in entities)
-
     def _flatten(nested):
         return [sent for blob in nested for sent in blob.split("\n")]
 
-    sentences = _flatten(blobs_masked) if masked else _flatten(blobs)
+    sentences = (
+        _flatten(result.blobs_masked) if masked else _flatten(result.blobs)
+    )
 
     if masked:
         assert not marked
@@ -146,7 +147,7 @@ def _transform_result(
         assert not masked
         sentences = [
             s.replace(mention, MARKED.format(mention=mention))
-            for s, mention in zip(sentences, mentions)
+            for s, mention in zip(sentences, result.mentions)
         ]
 
     random.shuffle(sentences)
@@ -174,7 +175,9 @@ def _transform_split(
 
     # init text files
 
-    ctx.fd_indexes.write(f"# Format: <ID>{SEP}<INDEX1> <INDEX2> ...\n".encode())
+    ctx.fd_indexes.write(
+        f"# Format: <ID>{SEP}<INDEX1> <INDEX2> ...\n".encode()
+    )
     ctx.fd_sentences.write(
         f"# Format: <ID>{SEP}<NAME>{SEP}<SENTENCE>\n".encode()
     )
@@ -283,8 +286,10 @@ class WorkerArgs:
 
     model: str
     tokens: int
-    database: str
     sentences: int
+
+    loader: str
+    loader_args: Dict[str, Any]
 
     p_out: pathlib.Path
     dataset: split.Dataset
@@ -307,7 +312,7 @@ def _transform_get_ctx(stack, split: str, args: WorkerArgs):
             gopen(str(args.p_out / f"{split}-nocontext.txt.gz"))
         ),
         select=stack.enter_context(
-            loader.SQLite(database=args.database, to_memory=True)
+            ryn_loader.LOADER[args.loader](**args.loader_args)
         ),
         tokenizer=Tokenizer(model=args.model),
         dataset=args.dataset,
@@ -333,12 +338,13 @@ def _transform_worker(packed):
 def transform(
     *,
     dataset: split.Dataset = None,
-    database: str = None,
     sentences: int = None,
     tokens: int = None,
     model: str = None,
     masked: bool = None,
     marked: bool = None,
+    loader: str = None,
+    loader_args: Dict[str, Any] = None,
     # optional
     suffix: str = None,
 ):
@@ -349,6 +355,9 @@ def transform(
     The produced files can be read by text.model.Data
 
     """
+
+    if loader not in ryn_loader.LOADER:
+        raise ryn.RynError(f"unknown loader: '{loader}'")
 
     if masked and marked:
         raise ryn.RynError("both masking and marking does not make sense")
@@ -372,7 +381,12 @@ def transform(
         name = f"{name}-{suffix}"
 
     ds_name = dataset.name
-    db_name = pathlib.Path(database).name
+
+    if loader == "sqlite":
+        db_name = pathlib.Path(loader_args["database"]).name
+    elif loader == "json":
+        db_name = pathlib.Path(loader_args["fname"]).name
+        loader_args.update(dict(id2ent=dataset.g.source.ents))
 
     p_out = ryn.ENV.TEXT_DIR / "data" / ds_name / db_name / name
     p_out.mkdir(exist_ok=True, parents=True)
@@ -383,7 +397,7 @@ def transform(
             created=datetime.now().isoformat(),
             git_hash=helper.git_hash(),
             dataset=dataset.name,
-            database=pathlib.Path(database).name,
+            database=db_name,
             sentences=sentences,
             tokens=tokens,
             model=model,
@@ -397,7 +411,8 @@ def transform(
         args = WorkerArgs(
             p_out=p_out,
             dataset=dataset,
-            database=database,
+            loader=loader,
+            loader_args=loader_args,
             sentences=sentences,
             tokens=tokens,
             model=model,

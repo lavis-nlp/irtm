@@ -16,20 +16,24 @@ from tqdm import tqdm as _tqdm
 from typing import Dict
 from typing import List
 from typing import Tuple
+from typing import Optional
 from typing import Generator
 
 
 log = logging.get("text.loader")
-
-
 tqdm = partial(_tqdm, ncols=80)
 
 
-class Selector:
-    def by_entity_id(self, entity_id: int):
-        raise NotImplementedError()
+@dataclass
+class Result:
 
-    def by_entity(self, entity: str):
+    mentions: Tuple[str]
+    blobs: Tuple[str]
+    blobs_masked: Tuple[str]
+
+
+class Selector:
+    def by_entity(self, entity: str) -> Optional[Result]:
         raise NotImplementedError()
 
 
@@ -44,7 +48,7 @@ class Loader:
 # JSON --------------------
 
 
-class JSONLoader(Loader):
+class JSON(Loader):
     """
 
     Load a json
@@ -61,8 +65,29 @@ class JSONLoader(Loader):
 
     """
 
+    class JSONSelector(Selector):
+        def __init__(
+            self, ent2desc: Dict[int, List[str]], id2ent: Dict[int, str]
+        ):
+            self.ent2desc = ent2desc
+            self.id2ent = id2ent
+
+        def by_entity(self, e: int) -> Optional[Result]:
+            blobs = self.ent2desc[self.id2ent[e]]
+            if not blobs:
+                return None
+
+            return Result(
+                mentions=[self.id2ent[e]],
+                blobs=blobs,
+                blobs_masked=[],
+            )
+
+    # ---
+
     @helper.notnone
     def __init__(self, fname: str = None, id2ent: Dict[int, str] = None):
+        log.info(f"loading {fname=} with {len(id2ent)} mapped entities")
         self.id2ent = id2ent
 
         path = helper.path(fname, exists=True, message="loading {path_abbrv}")
@@ -80,23 +105,8 @@ class JSONLoader(Loader):
 
         assert all(ent in self.ent2desc for ent in id2ent.values())
 
-    class JSONSelector(Selector):
-        def __init__(
-            self, ent2desc: Dict[int, List[str]], id2ent: Dict[int, str]
-        ):
-            self.ent2desc = ent2desc
-            self.id2ent = id2ent
-
-        def by_entity_id(self, entity_id: int):
-            return self.ent2desc[self.id2ent[entity_id]]
-
-        def by_entity(self, entity: str):
-            return self.ent2desc[entity]
-
     def __enter__(self):
-        return JSONLoader.JSONSelector(
-            ent2desc=self.ent2desc, id2ent=self.id2ent
-        )
+        return JSON.JSONSelector(ent2desc=self.ent2desc, id2ent=self.id2ent)
 
     def __exit__(self, *_):
         pass
@@ -174,10 +184,9 @@ class SQLite(Loader):
         conn: sqlite3.Connection
         cursor: sqlite3.Cursor
 
-        def by_entity_id(self, entity_id: int):
+        def by_entity_id(self, entity_id: int) -> Optional[Result]:
             query = (
                 "SELECT "
-                f"{SQLite.COL_ENTITY}, "
                 f"{SQLite.COL_MENTION}, "
                 f"{SQLite.COL_CONTEXT}, "
                 f"{SQLite.COL_CONTEXT_MASKED} "
@@ -188,12 +197,21 @@ class SQLite(Loader):
             params = (entity_id,)
 
             self.cursor.exectute(query, params)
-            return self.cursor.fetchall()
+            result = self.cursor.fetchall()
+            mentions, blobs, blobs_masked = zip(*result)
 
-        def by_entity(self, entity: str):
+            if not blobs:
+                return None
+
+            return Result(
+                mentions=mentions,
+                blobs=blobs,
+                blobs_masked=blobs_masked,
+            )
+
+        def by_entity(self, entity: int):
             query = (
                 "SELECT "
-                f"{SQLite.COL_ENTITY}, "
                 f"{SQLite.COL_MENTION}, "
                 f"{SQLite.COL_CONTEXT}, "
                 f"{SQLite.COL_CONTEXT_MASKED} "
@@ -204,7 +222,14 @@ class SQLite(Loader):
             params = (entity,)
 
             self.cursor.execute(query, params)
-            return self.cursor.fetchall()
+            result = self.cursor.fetchall()
+            mentions, blobs, blobs_masked = zip(*result)
+
+            return Result(
+                mentions=mentions,
+                blobs=blobs,
+                blobs_masked=blobs_masked,
+            )
 
     # ---
 
@@ -231,3 +256,9 @@ class SQLite(Loader):
 
     def __exit__(self, *_):
         self._conn.close()
+
+
+LOADER = dict(
+    sqlite=SQLite,
+    json=JSON,
+)
