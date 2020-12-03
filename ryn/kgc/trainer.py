@@ -376,6 +376,7 @@ def evaluate(
     )
 
     ts = datetime.now()
+    model = model.to("cuda")  # TODO (inter-machine problem)
     metrics = evaluator.evaluate(
         model=model,
         mapped_triples=mapped_triples,

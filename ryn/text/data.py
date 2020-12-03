@@ -636,7 +636,6 @@ class TextDataset:
     dataset: str
     database: str
 
-    ratio: int
     max_sentence_count: int
     max_token_count: int
 
@@ -647,10 +646,10 @@ class TextDataset:
     cw_train: Part
     # validate projections for known entities
     # but unknown contexts
-    cw_transductive: Part
-    # validate projections for unknown entities
+    cw_transductive: Optional[Part]
+    # validate projections for both unknown entities
     # and unknown contexts
-    cw_inductive: Part
+    cw_inductive: Optional[Part]
 
     # --- open world part of ryn.split.Dataset
 
@@ -658,6 +657,10 @@ class TextDataset:
     ow_valid: Part
     # final test set for inductive kgc
     ow_test: Part
+
+    # -- optional
+
+    ratio: Optional[int] = None
 
     @property
     def name(self) -> str:
@@ -686,6 +689,9 @@ class TextDataset:
             ("ow.valid", self.ow_valid),
             ("ow.test", self.ow_test),
         ):
+            if part is None:
+                buf += textwrap.indent(f"[{name.upper()}] None\n", "  ")
+                continue
 
             ow = set(part.id2ent) - cw
             cw |= ow
@@ -755,6 +761,44 @@ class TextDataset:
         )
 
         log.info(f"obtained {self}")
+        return self
+
+    @classmethod
+    @helper.notnone
+    @helper.cached(".cached.text.data.dataset.loaded.pkl")
+    def load(
+        K,
+        path: Union[str, pathlib.Path] = None,
+    ):
+        """
+
+        Single-sentence scenario
+
+        """
+        path = pathlib.Path(path)
+        if not path.is_dir():
+            raise ryn.RynError(f"Dataset cannot be found: {path}")
+
+        with (path / "info.json").open(mode="r") as fd:
+            info = json.load(fd)
+        self = TextDataset(
+            # update
+            created=datetime.now().isoformat(),
+            git_hash=helper.git_hash(),
+            # copy
+            model=info["model"],
+            dataset=info["dataset"],
+            database=info["database"],
+            max_sentence_count=info["sentences"],
+            max_token_count=info["tokens"],
+            # load
+            cw_train=Part.load(name="cw.train", path=path),
+            cw_transductive=None,
+            cw_inductive=None,
+            ow_valid=Part.load(name="ow.valid", path=path),
+            ow_test=Part.load(name="ow.test", path=path),
+        )
+
         return self
 
 
@@ -990,6 +1034,37 @@ class DataModule(pl.LightningDataModule):
     def kgc(self) -> Optional[KGCDataset]:
         return self._kgc
 
+    # ---
+    # training utilities
+
+    def has_geometric_validation(self) -> bool:
+        return self.text.cw_inductive and self.text.cw_transductive
+
+    def should_evaluate_geometric(self, dataloader_idx: Optional[int]) -> bool:
+        if not self.has_geometric_validation() or not dataloader_idx:
+            return False
+
+        return dataloader_idx == 0 or dataloader_idx == 1
+
+    def should_evaluate_kgc(self, dataloader_idx: Optional[int]) -> bool:
+        expected_idx = 0
+        if self.has_geometric_validation():
+            expected_idx = 2
+
+        return not dataloader_idx or dataloader_idx == expected_idx
+
+    def geometric_validation_kind(self, dataloader_idx: int) -> str:
+        return "transductive" if dataloader_idx == 0 else "inductive"
+
+    @property
+    def kgc_dataloader(self):
+        dataloader = self.val_dataloader()
+        if self.has_geometric_validation():
+            return dataloader[2]
+        return dataloader[0]
+
+    # ---
+
     @helper.notnone
     def __init__(
         self,
@@ -1005,12 +1080,17 @@ class DataModule(pl.LightningDataModule):
 
         self._text = None
         if self.config.text_dataset:
-            self._text = TextDataset.create(
+
+            self._text = TextDataset.load(
                 path=self.config.text_dataset,
-                retained_entities=self.split.concepts,
-                ratio=self.config.valid_split,
-                seed=self.split.cfg.seed,
             )
+
+            # self._text = TextDataset.create(
+            #     path=self.config.text_dataset,
+            #     retained_entities=self.split.concepts,
+            #     ratio=self.config.valid_split,
+            #     seed=self.split.cfg.seed,
+            # )
 
         self._keen = None
         self._kgc = None
@@ -1034,20 +1114,28 @@ class DataModule(pl.LightningDataModule):
             part=self.text.cw_train,
         )
 
-        self._valid_sets = (
-            TorchDataset(
-                name="cw.valid.transductive",
-                part=self.text.cw_transductive,
-            ),
-            TorchDataset(
-                name="cw.valid.inductive",
-                part=self.text.cw_inductive,
-            ),
-            TorchDataset(
-                name="ow.valid",
-                part=self.text.ow_valid,
-            ),
-        )
+        if self.has_geometric_validation():
+            self._valid_sets = (
+                TorchDataset(
+                    name="cw.valid.transductive",
+                    part=self.text.cw_transductive,
+                ),
+                TorchDataset(
+                    name="cw.valid.inductive",
+                    part=self.text.cw_inductive,
+                ),
+                TorchDataset(
+                    name="ow.valid",
+                    part=self.text.ow_valid,
+                ),
+            )
+        else:
+            self._valid_sets = (
+                TorchDataset(
+                    name="ow.valid",
+                    part=self.text.ow_valid,
+                ),
+            )
 
         self._test_set = TorchDataset(
             name="ow.test",

@@ -584,8 +584,7 @@ class Mapper(pl.LightningModule):
         self,
         sentences=None,
         entities=None,
-        batch_idx=None,
-        dataloader_idx=None,
+        kind: str = None,
     ):
 
         # batch x kge_dims
@@ -599,7 +598,6 @@ class Mapper(pl.LightningModule):
         losses = self.loss(projected, target)
 
         # partition losses into inductive and transductive
-        kind = "transductive" if dataloader_idx == 0 else "inductive"
         self.log_dict({f"{kind}.valid_loss_step": losses})
 
     @helper.notnone
@@ -614,17 +612,17 @@ class Mapper(pl.LightningModule):
         if batch_idx == self._ow_validation_batches - 1:
             self._run_kgc_evaluations()
 
-    def validation_step(self, batch, batch_idx: int, dataloader_idx: int):
+    def validation_step(self, batch, batch_idx: int, *args):
+        dataloader_idx = args[0] if args else None  # nasty!
         sentences, entities = batch
 
-        if dataloader_idx == 0 or dataloader_idx == 1:
+        if self.data.should_evaluate_geometric(dataloader_idx):
             self._geometric_validation_step(
                 sentences=sentences,
                 entities=entities,
-                batch_idx=batch_idx,
-                dataloader_idx=dataloader_idx,
+                kind=self.data.geometric_validation_kind(dataloader_idx),
             )
-        elif dataloader_idx == 2:
+        elif self.data.should_evaluate_kgc(dataloader_idx):
             self._kgc_validation_step(
                 sentences=sentences,
                 entities=entities,
@@ -863,7 +861,7 @@ class Mapper(pl.LightningModule):
         # hvd is initialized now
 
         self._ow_validation_batches = math.ceil(
-            len(self.data.val_dataloader()[2]) / hvd.size()
+            len(self.data.kgc_dataloader) / hvd.size()
         )
 
         if hvd.size() != 1 and self.projection_aggregation == "max":
