@@ -55,7 +55,7 @@ class Plotter:
 
         if self.fname is not None:
             log.info(f'saving figure to "{self.fname}"')
-            for suff in ('.png', '.svg'):
+            for suff in ('.png', '.svg', '.eps'):
                 self.fig.savefig(self.fname + suff)
 
         plt.close(self.fig)
