@@ -83,7 +83,7 @@ def click_resume(**kwargs):
 @click.argument(
     'results', type=str, nargs=-1)
 @click.option(
-    '--split_dataset', type=str, required=True,
+    '--split-dataset', type=str, required=True,
     help='path to the split dataset directory')
 @click.option(
     '--out', type=str,
