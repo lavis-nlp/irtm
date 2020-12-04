@@ -116,20 +116,15 @@ def evaluate(
     _init(model=model, debug=debug, run_memcheck=True)
 
     results = {}
-    projection_aggregations = "max", "avg", "last"
-    for projection_aggregation in projection_aggregations:
+    print("\ncreating projections\n")
+    _create_projections(
+        model=model,
+        datamodule=datamodule,
+        debug=debug,
+    )
 
-        print("\ncreating projections\n")
-        _create_projections(
-            model=model,
-            datamodule=datamodule,
-            debug=debug,
-        )
-
-        print("\nrunning kgc evaluation\n")
-        results.update(
-            _run_kgc_evaluations(model=model, datamodule=datamodule)
-        )
+    print("\nrunning kgc evaluation\n")
+    results.update(_run_kgc_evaluations(model=model, datamodule=datamodule))
 
     return results
 
@@ -243,7 +238,7 @@ def evaluate_from_kwargs(
     _handle_results(
         checkpoint=checkpoint.name,
         results=results,
-        target_file=ryn_dir / "evaluation.yml",
+        target_file=ryn_dir / f"evaluation.{checkpoint.name}.yml",
         debug=debug,
     )
 
