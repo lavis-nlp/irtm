@@ -25,6 +25,8 @@ from itertools import repeat
 from dataclasses import dataclass
 from collections import defaultdict
 
+from typing import Dict
+
 
 log = logging.get("text.mapper")
 
@@ -586,7 +588,6 @@ class Mapper(pl.LightningModule):
         entities=None,
         kind: str = None,
     ):
-
         # batch x kge_dims
         projected = self.forward(sentences=sentences)
         self.update_projections(entities=entities, projected=projected)
@@ -674,7 +675,7 @@ class Mapper(pl.LightningModule):
         evaluation_result = kgc_trainer.evaluate(
             model=self.keen,
             config=self.rync.kgc_model.config,
-            mapped_triples=mapped_triples,
+            mapped_triples=mapped_triples[:100],
             tqdm_kwargs=TQDM_KWARGS,
         )
 
@@ -685,41 +686,7 @@ class Mapper(pl.LightningModule):
 
         # -- /embedding shenanigans
 
-        def _result_dict(name=None, result=None):
-            def _item(key, val):
-                return f"{name}.{key}", torch.Tensor([val])
-
-            return dict(
-                (k, v.item())
-                for k, v in (
-                    _item(
-                        "hits@10",
-                        result.metrics["hits_at_k"]["both"]["avg"][10],
-                    ),
-                    _item(
-                        "hits@5", result.metrics["hits_at_k"]["both"]["avg"][5]
-                    ),
-                    _item(
-                        "hits@1", result.metrics["hits_at_k"]["both"]["avg"][1]
-                    ),
-                    _item("mr", result.metrics["mean_rank"]["both"]["avg"]),
-                    _item(
-                        "mrr",
-                        result.metrics["mean_reciprocal_rank"]["both"]["avg"],
-                    ),
-                    _item("amr", result.metrics["adjusted_mean_rank"]["both"]),
-                )
-            )
-
-        result_metrics = _result_dict(name=kind, result=evaluation_result)
-
-        log.info(
-            f"! finished {kind} evaluation with"
-            f' {evaluation_result.metrics["hits_at_k"]["both"]["avg"][10]:2.3f} hits@10'  # noqa: E501
-            f' and {evaluation_result.metrics["mean_reciprocal_rank"]["both"]["avg"]:2.3f} MRR'  # noqa: E501
-        )
-
-        return result_metrics
+        return evaluation_result
 
     def _run_kgc_evaluations(self):
         if self.global_step == 0 and not self.debug:
@@ -762,43 +729,72 @@ class Mapper(pl.LightningModule):
 
         # --
 
-        transductive_result = self.run_kgc_evaluation(
-            kind="transductive", triples=self.data.kgc.transductive
-        )
-        inductive_result = self.run_kgc_evaluation(
-            kind="inductive", triples=self.data.kgc.inductive
-        )
+        for kind, triples in (
+            ("transductive", self.data.kgc.transductive),
+            ("inductive", self.data.kgc.inductive),
+        ):
 
-        log.info("logging kgc result")
-        self.log_dict(
-            {
-                **transductive_result,
-                **inductive_result,
-            }
-        )
+            result = self.run_kgc_evaluation(kind=kind, triples=triples)
+            self._log_kgc_results(kind=kind, metrics=result.metrics)
+
+            log.info(f"! finished {kind} kgc evaluation")
+
+    @helper.notnone
+    def flatten_kgc_results(self, *, kind: str = None, metrics: Dict = None):
+        # TODO newer pykeen version offer .to_flat_dict()
+        def _flatten(parents, dic):
+            acc = {}
+
+            for k, v in dic.items():
+                k = parents + [str(k)]
+                acc.update(
+                    _flatten(k, v) if (type(v) is dict) else {tuple(k): v}
+                )
+
+            return acc
+
+        flat = _flatten([kind], metrics)
+        return flat
+
+    def _log_kgc_results(self, kind: str = None, metrics: Dict = None):
+        # TODO newer pykeen version offers to_flat_dict()
+        flat = self.flatten_kgc_results(kind=kind, metrics=metrics)
+        flat = {"/".join(k): torch.Tensor([v]) for k, v in flat.items()}
+        self.log_dict(flat)
 
     def _mock_kgc_results(self):
         log.info("mocking kgc evaluation results")
 
-        phony_results = {
-            f"{name}.{key}": torch.Tensor([val])
-            for name, triples in (
-                ("inductive", self.data.kgc.inductive.factory.triples),
-                ("transductive", self.data.kgc.transductive.factory.triples),
-            )
-            for key, val in (
-                {
-                    "hits@10": 0.0,
-                    "hits@5": 0.0,
-                    "hits@1": 0.0,
-                    "mr": len(triples) // 2,
-                    "mrr": 0.0,
-                    "amr": 1.0,
-                }
-            ).items()
-        }
+        for kind, triples in (
+            ("inductive", self.data.kgc.inductive.factory.triples),
+            ("transductive", self.data.kgc.inductive.factory.triples),
+        ):
 
-        return phony_results
+            metrics = {}
+
+            for metric in (
+                "mean_rank",
+                "mean_reciprocal_rank",
+                "hits_at_k",
+                "adjusted_mean_rank",
+            ):
+                metrics[metric] = {}
+
+                for side in "head", "tail", "both":
+                    val = 0
+                    metrics[metric][side] = sub = {}
+
+                    if metric == "mean_rank":
+                        if kind == "inductive":
+                            val = len(triples) // 2
+
+                    for red in "avg", "best", "worst":
+                        if metric == "hits_at_k":
+                            sub[red] = {k: 0 for k in (1, 3, 5, 10)}
+                        else:
+                            sub[red] = val
+
+            self._log_kgc_results(kind=kind, metrics=metrics)
 
     def run_memcheck(self, test: bool = False):
         # removing some memory because some cuda

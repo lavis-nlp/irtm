@@ -90,16 +90,18 @@ def _run_kgc_evaluations(
         "test": datamodule.kgc.test,
     }
 
-    results = {}
+    metrics = {}
 
     for kind, triples in triplesens.items():
         key = f"{model.projection_aggregation}.{kind}"
-        results[key] = model.run_kgc_evaluation(
+        results = model.run_kgc_evaluation(
             kind=kind,
             triples=triples,
         )
 
-    return results
+        metrics[key] = results.metrics
+
+    return metrics
 
 
 @helper.notnone

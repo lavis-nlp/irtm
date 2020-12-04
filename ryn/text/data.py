@@ -493,6 +493,8 @@ class Part:
     ):
 
         n = int(len(self.id2idxs) * ratio) - len(retained_entities)
+        assert (0 < n) and (n < len(self.id2idxs))
+
         candidates = list(set(self.id2ent) - retained_entities)
         a, b = candidates[:n], candidates[n:]
 
@@ -1040,21 +1042,19 @@ class DataModule(pl.LightningDataModule):
     def has_geometric_validation(self) -> bool:
         return self.text.cw_inductive and self.text.cw_transductive
 
+    def geometric_validation_kind(self, dataloader_idx: int) -> str:
+        assert self.has_geometric_validation()
+        return "transductive" if dataloader_idx == 0 else "inductive"
+
     def should_evaluate_geometric(self, dataloader_idx: Optional[int]) -> bool:
-        if not self.has_geometric_validation() or not dataloader_idx:
+        if not self.has_geometric_validation():
+            assert dataloader_idx == 0
             return False
 
         return dataloader_idx == 0 or dataloader_idx == 1
 
     def should_evaluate_kgc(self, dataloader_idx: Optional[int]) -> bool:
-        expected_idx = 0
-        if self.has_geometric_validation():
-            expected_idx = 2
-
-        return not dataloader_idx or dataloader_idx == expected_idx
-
-    def geometric_validation_kind(self, dataloader_idx: int) -> str:
-        return "transductive" if dataloader_idx == 0 else "inductive"
+        return dataloader_idx is None or dataloader_idx == 2
 
     @property
     def kgc_dataloader(self):
@@ -1081,16 +1081,17 @@ class DataModule(pl.LightningDataModule):
         self._text = None
         if self.config.text_dataset:
 
-            self._text = TextDataset.load(
-                path=self.config.text_dataset,
-            )
-
-            # self._text = TextDataset.create(
+            log.error("TODO: TextDataset load/create")
+            # self._text = TextDataset.load(
             #     path=self.config.text_dataset,
-            #     retained_entities=self.split.concepts,
-            #     ratio=self.config.valid_split,
-            #     seed=self.split.cfg.seed,
             # )
+
+            self._text = TextDataset.create(
+                path=self.config.text_dataset,
+                retained_entities=self.split.concepts,
+                ratio=self.config.valid_split,
+                seed=self.split.cfg.seed,
+            )
 
         self._keen = None
         self._kgc = None
