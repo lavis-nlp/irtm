@@ -4,7 +4,7 @@
 
 # max sequence length: 287
 dataloader_train_args:
-  batch_size: 25
+  batch_size: 20
 
 # max sequence length: 371
 dataloader_valid_args:
@@ -12,4 +12,4 @@ dataloader_valid_args:
 
 # max sequence length: 237
 dataloader_test_args:
-  batch_size: 30
+  batch_size: 25
