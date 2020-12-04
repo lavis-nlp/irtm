@@ -1048,7 +1048,7 @@ class DataModule(pl.LightningDataModule):
 
     def should_evaluate_geometric(self, dataloader_idx: Optional[int]) -> bool:
         if not self.has_geometric_validation():
-            assert dataloader_idx == 0
+            assert dataloader_idx is None
             return False
 
         return dataloader_idx == 0 or dataloader_idx == 1
@@ -1146,7 +1146,6 @@ class DataModule(pl.LightningDataModule):
     # FOR LIGHTNING
 
     def train_dataloader(self) -> torch_data.DataLoader:
-        log.info("requesting train dataloader")
         return torch_data.DataLoader(
             self._train_set,
             collate_fn=TorchDataset.collate_fn,
@@ -1154,7 +1153,6 @@ class DataModule(pl.LightningDataModule):
         )
 
     def val_dataloader(self) -> torch_data.DataLoader:
-        log.info("requesting val dataloader")
         return [
             torch_data.DataLoader(
                 dataset,
@@ -1166,7 +1164,6 @@ class DataModule(pl.LightningDataModule):
 
     def test_dataloader(self) -> torch_data.DataLoader:
         # see evaluator.py
-        log.info("requesting ow test dataloader")
         return torch_data.DataLoader(
             self._test_set,
             collate_fn=TorchDataset.collate_fn,
