@@ -91,15 +91,15 @@ def _run_kgc_evaluations(
     }
 
     metrics = {}
+    metrics[model.projection_aggregation] = res = {}
 
     for kind, triples in triplesens.items():
-        key = f"{model.projection_aggregation}.{kind}"
         results = model.run_kgc_evaluation(
             kind=kind,
             triples=triples,
         )
 
-        metrics[key] = results.metrics
+        res[kind] = results.metrics
 
     return metrics
 
@@ -111,11 +111,8 @@ def evaluate(
     datamodule: data.DataModule = None,
     debug: bool = None,
 ):
-    print("EVALUATE")
-
     _init(model=model, debug=debug, run_memcheck=True)
 
-    results = {}
     print("\ncreating projections\n")
     _create_projections(
         model=model,
@@ -124,9 +121,25 @@ def evaluate(
     )
 
     print("\nrunning kgc evaluation\n")
-    results.update(_run_kgc_evaluations(model=model, datamodule=datamodule))
+    results = _run_kgc_evaluations(model=model, datamodule=datamodule)
 
-    return results
+    def _map(dic):
+        mapped = {}
+        for k, v in dic.items():
+            if type(v) is dict:
+                mapped[k] = _map(v)
+            else:
+                try:
+                    # it is full of numpy scalars
+                    # that yaml chokes on
+                    mapped[k] = v.item()
+                except AttributeError:
+                    mapped[k] = v
+
+        return mapped
+
+    mapped = _map(results)
+    return mapped
 
 
 @helper.notnone
@@ -173,7 +186,7 @@ def _evaluation_cached(
 @helper.notnone
 def _handle_results(
     *,
-    results: Dict,
+    results: Dict = None,
     checkpoint: str = None,
     target_file: Union[str, pathlib.Path],
     debug: bool = None,
@@ -191,7 +204,7 @@ def _handle_results(
         with target_file.open(mode="w") as fd:
             fd.write(yaml.dump(runs))
 
-    print("\n\nfinished!\n")
+    print("\n\n")
     print(yaml.dump(results))
 
 
@@ -215,6 +228,8 @@ def evaluate_from_kwargs(
     ryn_dir = path / "ryn"
     helper.path(ryn_dir, create=True)
 
+    print(f"\nEVALUATE {checkpoint.name}")
+
     if not debug:
         results = _evaluation_cached(
             # helper.cached
@@ -236,8 +251,8 @@ def evaluate_from_kwargs(
         )
 
     _handle_results(
-        checkpoint=checkpoint.name,
         results=results,
+        checkpoint=checkpoint.name,
         target_file=ryn_dir / f"evaluation.{checkpoint.name}.yml",
         debug=debug,
     )
@@ -280,7 +295,7 @@ def evaluate_baseline(
 
     _handle_results(
         results=results,
-        target_file=out / "evaluation.yml",
+        target_file=out / "evaluation.baseline.yml",
         debug=debug,
     )
 
@@ -293,8 +308,6 @@ def evaluate_all(root: pathlib.Path = None, **kwargs):
 
     root = helper.path(root, exists=True)
     for checkpoint in root.glob("**/epoch=*-step=*.ckpt"):
-        print(f"evaluating {checkpoint.name}")
-
         # <path>/weights/<PROJECT_NAME>/<RUN_ID>/checkpoints/epoch=*-step=*.ckpt
         path = checkpoint.parents[4]
         evaluate_from_kwargs(path=path, checkpoint=checkpoint, **kwargs)

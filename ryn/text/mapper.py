@@ -452,8 +452,9 @@ class Mapper(pl.LightningModule):
             log.info("! freezing text encoder")
             self.encode.requires_grad_(False)
 
+        log.info("! freezing kgc model")
         self.keen = rync.kgc_model.keen
-        rync.kgc_model.freeze()
+        self.keen.requires_grad_(False)
 
         # -- projections
 
@@ -675,7 +676,7 @@ class Mapper(pl.LightningModule):
         evaluation_result = kgc_trainer.evaluate(
             model=self.keen,
             config=self.rync.kgc_model.config,
-            mapped_triples=mapped_triples[:100],
+            mapped_triples=mapped_triples,
             tqdm_kwargs=TQDM_KWARGS,
         )
 
