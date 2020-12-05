@@ -5,6 +5,7 @@ import ryn
 from ryn.kgc import keen
 from ryn.text import loader as ryn_loader
 from ryn.text.config import Config
+from ryn.graphs import graph
 from ryn.graphs import split
 from ryn.common import helper
 from ryn.common import logging
@@ -807,6 +808,7 @@ class TextDataset:
 @dataclass
 class Triples:
 
+    g: graph.Graph
     entities: Set[int]
     factory: keen_triples.TriplesFactory
 
@@ -823,6 +825,7 @@ class Triples:
         factory = keen_triples.TriplesFactory(triples=triples, **kwargs)
 
         return K(
+            g=split_part.g,
             entities=split_part.owe,
             factory=factory,
         )
@@ -922,14 +925,27 @@ class TorchDataset(torch_data.Dataset):
     def max_sequence_idx(self):
         return self._max_idx
 
+    @property
+    def degrees(self):
+        return self._degrees
+
     def __len__(self):
         return len(self._flat)
 
     def __getitem__(self, idx: int) -> Tuple[torch.Tensor, int]:
         return self._flat[idx]
 
-    @helper.notnone
-    def __init__(self, *, name: str = None, part: Part = None):
+    def __init__(
+        self,
+        *,
+        name: str = None,
+        part: Part = None,
+        # required to obtain node degrees
+        triples: Triples = None,
+    ):
+        assert name is not None
+        assert part is not None
+
         super().__init__()
         self._name = name
 
@@ -944,9 +960,26 @@ class TorchDataset(torch_data.Dataset):
         self._max_len = lens[self.max_sequence_idx]
 
         log.info(
-            f"initialized torch dataset {name}: "
-            f"samples={len(self)}, "
-            f"max sequence length: {self.max_sequence_length}"
+            f"initialized torch dataset {name}: samples={len(self)};"
+            f" max sequence length: {self.max_sequence_length}"
+        )
+
+        if not triples:
+            self._degrees = None
+            return
+
+        # note: this does not consider direction; nodes with an
+        #  out_degree of 0 can still have a large in_degree
+        self._degrees = torch.Tensor(
+            [triples.g.nx.degree[e] for _, e in self._flat]
+        )
+        assert (
+            len(self.degrees[self.degrees == 0]) == 0
+        ), "found disconnected nodes"
+
+        log.info(
+            f"node degrees: mean={self.degrees.mean():2.2f};"
+            f" std={self.degrees.std():2.2f}"
         )
 
     @property
@@ -1065,7 +1098,6 @@ class DataModule(pl.LightningDataModule):
 
     # ---
 
-    @helper.notnone
     def __init__(
         self,
         *,
@@ -1082,16 +1114,18 @@ class DataModule(pl.LightningDataModule):
         if self.config.text_dataset:
 
             log.error("TODO: TextDataset load/create")
-            # self._text = TextDataset.load(
+            self._text = TextDataset.load(
+                path=self.config.text_dataset,
+            )
+
+            # self._text = TextDataset.create(
             #     path=self.config.text_dataset,
+            #     retained_entities=self.split.concepts,
+            #     ratio=self.config.valid_split,
+            #     seed=self.split.cfg.seed,
             # )
 
-            self._text = TextDataset.create(
-                path=self.config.text_dataset,
-                retained_entities=self.split.concepts,
-                ratio=self.config.valid_split,
-                seed=self.split.cfg.seed,
-            )
+            assert self._text
 
         self._keen = None
         self._kgc = None
@@ -1113,9 +1147,12 @@ class DataModule(pl.LightningDataModule):
         self._train_set = TorchDataset(
             name="cw.train",
             part=self.text.cw_train,
+            triples=self.kgc.transductive,
         )
 
         if self.has_geometric_validation():
+            assert False, "remove dataloader_idx suffix from logged metrics"
+
             self._valid_sets = (
                 TorchDataset(
                     name="cw.valid.transductive",
@@ -1146,9 +1183,30 @@ class DataModule(pl.LightningDataModule):
     # FOR LIGHTNING
 
     def train_dataloader(self) -> torch_data.DataLoader:
+        sampler = None
+        if self.config.sampler:
+            assert self.config.sampler == "node degree"  # TODO define registry
+
+            num_samples = self.config.sampler_args["num_samples"]
+            if num_samples.startswith("x"):
+                num_samples = len(self._train_set) * int(num_samples[1:])
+
+            replacement = self.config.sampler_args["replacement"]
+
+            sampler = torch_data.WeightedRandomSampler(
+                weights=self._train_set.degrees,
+                num_samples=num_samples,
+                replacement=replacement,
+            )
+
+            log.info(
+                f"using node degreee sampler {num_samples=} {replacement=}"
+            )
+
         return torch_data.DataLoader(
             self._train_set,
             collate_fn=TorchDataset.collate_fn,
+            sampler=sampler,
             **self.config.dataloader_train_args,
         )
 

@@ -130,7 +130,7 @@ def _init_trainer(
             default_root_dir=config.out / "checkpoints",
         )
 
-    log.info("initializing trainer")
+    log.info(f"initializing trainer with {config.trainer_args}")
     return pl.Trainer(
         **{
             **config.trainer_args,

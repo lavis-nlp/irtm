@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 
+import ryn
 from ryn.common import ryaml
 from ryn.common import helper
 
@@ -50,6 +51,10 @@ class Config:
 
     # PYTORCH
     # ----------------------------------------
+
+    # https://pytorch.org/docs/stable/data.html#torch.utils.data.WeightedRandomSampler
+    sampler: Optional[str]
+    sampler_args: Optional[Dict[str, Any]]
 
     # https://pytorch.org/docs/stable/data.html#torch.utils.data.DataLoader
     dataloader_train_args: Dict[str, Any]
@@ -122,5 +127,6 @@ class Config:
     def create(
         K, configs: Sequence[Union[str, pathlib.Path]] = None, **kwargs
     ) -> "Config":
+        configs = [ryn.ENV.CONF_DIR / "text" / "defaults.yml"] + list(configs)
         params = ryaml.load(configs=configs, **kwargs)
         return K(**params)
