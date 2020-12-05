@@ -34,28 +34,41 @@ trainer_args:
   distributed_backend: null
   accumulate_grad_batches: null
   gradient_clip_val: null
+  log_every_n_steps: null
+  replace_sampler_ddp: null
 
 # checkpointing
 # see https://pytorch-lightning.readthedocs.io/en/latest/generated/pytorch_lightning.callbacks.ModelCheckpoint.html?highlight=ModelCheckpoint
 #
-# possible metrics:
-#    valid_loss_step
-#    transductive.hits@1
-#    transductive.hits@5
-#    transductive.hits@10
-#    transductive.mr
-#    transductive.mrr
-#    transductive.amr
-#    inductive.hits@1
-#    inductive.hits@5
-#    inductive.hits@10
-#    inductive.mr
-#    inductive.mrr
-#    inductive.amr
+# possible metrics:n
+#    general syntax:
+#    /<KIND>/<METRIC>/<SIDE>/<SELECTION>[/<K>]
 #
+#       kind: inductive, transductive
+#     metric: hits_at_k, mean_rank, mean_reciprocal_rank, average_mean_rank
+#       side: head, tail, both
+#  selection: avg, best, worst
+#          k: 1, 3, 5, 10
+#
+#    e.g:
+#      /inductive/mean_rank/tail/best
+#      /inductive/hits_at_k/both/avg/10
 checkpoint_args:
   monitor: null
   save_top_k: null
+
+
+# NOTE: untested for multi gpu!
+# whether to use a sampler
+# supported sampler types:
+#   node degree: sample weighted by node degree
+# if this is provided, set the trainer arg replace_sampler_ddp: False
+sampler: null
+sampler_args:
+  # either an integer or x<INT> - a multiplier
+  # e.g.: x3 means #samples * 3
+  num_samples: null
+  replacement: null
 
 # dataloader
 # batch sizes are set by gpu*.yml files

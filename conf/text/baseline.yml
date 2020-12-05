@@ -41,8 +41,8 @@ optimizer_args:
 
 scheduler: linear with warmup
 scheduler_args:
-  num_warmup_steps: 500
-  num_training_steps: 15000
+  num_warmup_steps: 2
+  num_training_steps: 50
 
 text_encoder: bert-base-cased
 freeze_text_encoder: False

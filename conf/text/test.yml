@@ -2,9 +2,10 @@
 #          RYN TEXT MAPPER CONFIGURATION
 #    -----------------------------------------
 #
-#        see the default.yml for comments
+#         see the default.yml for comments
 
 valid_split: 0.9
+
 wandb_args:
   project: ryn-text-proto
   log_model: False
@@ -17,14 +18,20 @@ trainer_args:
   accumulate_grad_batches: 1
   gradient_clip_val: 1
   log_every_n_steps: 1
+  replace_sampler_ddp: False
 
 checkpoint_args:
-  monitor: inductive.hits@10/dataloader_idx_2
+  monitor: inductive/hits_at_k/both/avg/10
   save_top_k: 2
+
+sampler: node degree
+sampler_args:
+  num_samples: x1
+  replacement: True
 
 dataloader_train_args:
   num_workers: 0
-  shuffle: True
+  shuffle: False
 
 dataloader_valid_args:
   num_workers: 0
@@ -34,19 +41,16 @@ dataloader_test_args:
 
 optimizer: adam
 optimizer_args:
-  lr: 0.000005
+  lr: 0.00001
 
 text_encoder: bert-base-cased
 freeze_text_encoder: True
 
-aggregator: cls dropout 1
-aggregator_args:
-  p: 0.5
-
+aggregator: cls 1
 projector: affine 1
 projector_args:
   input_dims: 768
-  output_dims: 450
+  output_dims: 500
 
 comparator: euclidean 1
 out: data/test/{text_dataset}/
