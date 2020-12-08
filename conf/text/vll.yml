@@ -20,8 +20,9 @@ trainer_args:
   replace_sampler_ddp: False
 
 checkpoint_args:
-  monitor: inductive/hits_at_k/both/avg/10
   save_top_k: 10
+  monitor: inductive/hits_at_k/both/avg/10
+  mode: max
 
 dataloader_train_args:
   num_workers: 0

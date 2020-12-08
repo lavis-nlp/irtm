@@ -1,0 +1,7 @@
+aggregator: max 1
+aggregator_args: {}
+comparator: euclidean 1
+comparator_args: {}
+freeze_text_encoder: false
+projector: affine 1
+

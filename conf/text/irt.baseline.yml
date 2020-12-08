@@ -5,6 +5,7 @@
 #        see the default.yml for comments
 #
 valid_split: 0.9
+text_encoder: bert-base-cased
 
 wandb_args:
   project: ryn-text
@@ -13,44 +14,35 @@ wandb_args:
 trainer_args:
   gpus: 1
   max_epochs: 50
+  check_val_every_n_epoch: 5
   fast_dev_run: False
   distributed_backend: horovod
   accumulate_grad_batches: 10
   gradient_clip_val: 1
+  replace_sampler_ddp: False
+  log_every_n_steps: 5
 
 checkpoint_args:
-  monitor: inductive.hits@10/dataloader_idx_2
+  mode: max
+  monitor: inductive/hits_at_k/both/avg/10
   save_top_k: 10
 
 dataloader_train_args:
-  batch_size: 5
   num_workers: 0
   shuffle: True
 
 dataloader_valid_args:
-  batch_size: 5
   num_workers: 0
 
 dataloader_test_args:
-  batch_size: 5
   num_workers: 0
 
 optimizer: adam
 optimizer_args:
-  lr: 0.00001
+  lr: 1.0e-05
 
-scheduler: linear with warmup
-scheduler_args:
-  num_warmup_steps: 2
-  num_training_steps: 50
-
-text_encoder: bert-base-cased
-freeze_text_encoder: False
-
-aggregator: cls 1
-projector: affine 1
 projector_args:
   input_dims: 768
-  output_dims: 450
+  output_dims: 500
 
-comparator: euclidean 1
+valid_split: 0.9
