@@ -12,12 +12,13 @@ from ryn.graphs import loader
 from ryn.common import helper
 from ryn.common import logging
 
-import pickle
+import yaml
 import random
 import pathlib
 import textwrap
 import operator
 
+import dataclasses
 from datetime import datetime
 from functools import partial
 from functools import lru_cache
@@ -31,6 +32,7 @@ from typing import List
 from typing import Dict
 from typing import Tuple
 from typing import Union
+from typing import Optional
 
 
 log = logging.get("graph.split")
@@ -53,13 +55,16 @@ class Config:
 
     seed: int
 
-    # split ratio (for example: retaining 70% of all
-    # samples for training requires a value of .7)
     ow_split: float
-    train_split: float
+    cw_train_split: float
+    ow_train_split: float
 
     # no of relation (sorted by ratio)
     threshold: int
+
+    # manually add or remove relations to be considered
+    blacklist: Set[str]
+    whitelist: Set[str]
 
     # post-init
 
@@ -75,7 +80,8 @@ class Config:
             (
                 f"seed: {self.seed}\n"
                 f"ow split: {self.ow_split}\n"
-                f"train split: {self.train_split}\n"
+                f"cw train split: {self.cw_train_split}\n"
+                f"ow train split: {self.ow_train_split}\n"
                 f"relation threshold: {self.threshold}\n"
                 f"git: {self.git}\n"
                 f"date: {self.date}\n"
@@ -86,19 +92,32 @@ class Config:
     # ---
 
     def save(self, path: Union[str, pathlib.Path]):
-        path = pathlib.Path(path)
-        log.info(f"saving config to {path}")
+        path = helper.path(path, message="saving config to {path_abbrv}")
 
-        with path.open(mode="wb") as fd:
-            pickle.dump(self, fd)
+        with path.open(mode="w") as fd:
+            yaml.dump(
+                dataclasses.asdict(
+                    dataclasses.replace(
+                        self,
+                        blacklist=list(self.blacklist),
+                        whitelist=list(self.whitelist),
+                    )
+                ),
+                fd,
+            )
 
-    @staticmethod
-    def load(path: Union[str, pathlib.Path]) -> "Config":
-        path = pathlib.Path(path)
-        log.info(f"loading config from {path}")
+    @classmethod
+    def load(K, path: Union[str, pathlib.Path]) -> "Config":
+        path = helper.path(
+            path, exists=True, message="loading config from {path_abbrv}"
+        )
 
-        with path.open(mode="rb") as fd:
-            return pickle.load(fd)
+        with path.open(mode="r") as fd:
+            self = K(**yaml.load(fd))
+
+        return dataclasses.replace(
+            self, blacklist=set(self.blacklist), whitelist=set(self.whitelist)
+        )
 
 
 @dataclass(eq=False)  # id based hashing
@@ -328,14 +347,16 @@ class Dataset:
                 for h, t, r in part.triples
                 if h not in part.owe and t not in part.owe
             )
-            # deactivated for fb15k237-owe
-            # assert not len(undesired), (
-            # f"found undesired triples: len({undesired})")
-            if len(undesired):
-                log.error(
-                    f"there are {len(undesired)} triples containing"
-                    f" only closed world entities in {part.name}"
-                )
+            # deactivate for fb15k237-owe
+            assert not len(
+                undesired
+            ), f"found undesired triples: len({undesired})"
+
+            # if len(undesired):
+            #     log.error(
+            #         f"there are {len(undesired)} triples containing"
+            #         f" only closed world entities in {part.name}"
+            #     )
 
     @classmethod
     @helper.cached(".cached.graphs.split.dataset.pkl")
@@ -353,7 +374,7 @@ class Dataset:
         """
         path = pathlib.Path(path)
 
-        cfg = Config.load(path / "cfg.pkl")
+        cfg = Config.load(path / "cfg.yml")
         g = graph.Graph.load(path / "graph.pkl")
 
         with (path / "concepts.txt").open(mode="r") as fd:
@@ -562,20 +583,24 @@ class Splitter:
            may be part of an ow.test triples.
 
         3. The amount of triples should be balanced by the provided
-           configuration (cfg.ow_split, cfg.train_split).
+           configuration (cfg.ow_split, cfg.cw_train_split,
+           cfg.ow_train_split).
 
         """
         log.info(f"create {self.name=}")
 
-        concepts = self.rels[: self.cfg.threshold]
-        concepts = set.union(*(rel.concepts for rel in concepts))
+        relations = self.rels[: self.cfg.threshold]
+        relations += [r for r in self.rels if r.name in self.cfg.whitelist]
+        relations = [r for r in relations if r.name not in self.cfg.blacklist]
+
+        concepts = set.union(*(rel.concepts for rel in relations))
         log.info(f"{len(concepts)=}")
 
         candidates = list(set(self.g.source.ents) - concepts)
         random.shuffle(candidates)
 
         _p = int(self.cfg.ow_split * 100)
-        log.info(f"targeting {_p}% of all triples for ow")
+        log.info(f"targeting {_p}% of all triples for cw")
 
         # there are two thresholds:
         # 0 < t1 < t2 < len(triples) = n
@@ -585,8 +610,8 @@ class Splitter:
         #  t2-n:   cw
 
         n = len(self.g.source.triples)
-        t1 = int(self.cfg.ow_split * (1 - self.cfg.train_split) * n)
-        t2 = int(self.cfg.ow_split * n)
+        t2 = int(n * (1 - self.cfg.ow_split))
+        t1 = int(t2 * (1 - self.cfg.ow_train_split))
 
         log.info(f"target splits: 0 {t1=} {t2=} {n=}")
 
@@ -631,7 +656,7 @@ class Splitter:
         )
 
         cw_triples = list(cw.train)
-        t3 = int((1 - self.cfg.train_split) * len(cw_triples))
+        t3 = int((1 - self.cfg.cw_train_split) * len(cw_triples))
         log.info(f"selecting {t3} random triples for cw.valid")
 
         random.shuffle(cw_triples)
@@ -693,7 +718,7 @@ class Splitter:
         _write("concepts.txt", [(e,) for e in concepts])
 
         self.g.save(self.path / "graph.pkl")
-        self.cfg.save(self.path / "cfg.pkl")
+        self.cfg.save(self.path / "cfg.yml")
 
 
 def create(g: graph.Graph, cfg: Config):
@@ -712,7 +737,10 @@ def create_from_conf(
     ratios: List[int] = None,
     seeds: List[int] = None,
     ow_split: float = None,
-    train_split: float = None,
+    cw_train_split: float = None,
+    ow_train_split: float = None,
+    blacklist: Optional[str] = None,
+    whitelist: Optional[str] = None,
 ):
 
     for g in loader.load_graphs_from_uri(*uris):
@@ -722,19 +750,41 @@ def create_from_conf(
         rels.sort(key=lambda rel: rel.ratio)
         log.info(f"retrieved {len(rels)} relations")
 
+        blacklisted = set()
+        if blacklist:
+            with open(blacklist, mode="r") as fd:
+                blacklisted = set(s.strip() for s in fd.readlines())
+                log.info(f"! blacklisting {len(blacklisted)} relations")
+
+        whitelisted = set()
+        if whitelist:
+            with open(whitelist, mode="r") as fd:
+                whitelisted = set(s.strip() for s in fd.readlines())
+                log.info(f"! whitelisted {len(whitelisted)} relations")
+
         # if ow_split and train_split also become
         # parameters use itertools permutations
 
         print("")
         bar = tqdm(total=len(ratios) * len(seeds))
 
-        K = partial(Config, ow_split=ow_split, train_split=train_split)
+        K = partial(
+            Config,
+            ow_split=ow_split,
+            cw_train_split=cw_train_split,
+            ow_train_split=ow_train_split,
+        )
         for threshold in ratios:
             log.info(f"! {threshold=}")
 
             for seed in seeds:
                 log.info(f"! {seed=}")
 
-                cfg = K(seed=seed, threshold=threshold)
+                cfg = K(
+                    seed=seed,
+                    threshold=threshold,
+                    blacklist=blacklisted,
+                    whitelist=whitelisted,
+                )
                 create(g, cfg)
                 bar.update(1)

@@ -105,8 +105,17 @@ def click_split():
     '--ow-split', type=float, required=True,
     help='closed world / open world triple ratio')
 @click.option(
-    '--train-split', type=float, required=True,
-    help='training / validation|test ratio')
+    '--cw-train-split', type=float, required=True,
+    help='closed world training / test ratio')
+@click.option(
+    '--ow-train-split', type=float, required=True,
+    help='open world validation / test ratio')
+@click.option(
+    '--blacklist', type=str,
+    help='blacklisted relation names, one per line')
+@click.option(
+    '--whitelist', type=str,
+    help='whitelisted relation names, one per line')
 def create(**kwargs):
     """
     Create a graphs.split.Dataset from a graphs.graph.Graph
