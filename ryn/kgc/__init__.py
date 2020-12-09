@@ -58,6 +58,9 @@ def kgc_cli(result: str = None):
 @click.option(
     '--split-dataset', type=str, required=True,
     help='path to ryn.graphs.split.Dataset folder')
+@click.option(
+    '--participate/--create', type=bool, default=False,
+    help='for multi-process optimization')
 def click_train(**kwargs):
     """
     Train a knowledge graph completion model

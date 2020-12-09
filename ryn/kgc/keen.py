@@ -215,7 +215,7 @@ def triples_to_ndarray(g: graph.Graph, triples: Collection[Tuple[int]]):
 # ---
 
 
-class Dataset(keen_datasets_base.DataSet):
+class Dataset(keen_datasets_base.Dataset):
     """
 
     Dataset as required by pykeen
@@ -405,7 +405,7 @@ class Dataset(keen_datasets_base.DataSet):
 
         # default split is 80/20
         training, validation = train.split(
-            split_dataset.cfg.train_split,
+            split_dataset.cfg.cw_train_split,
             random_state=split_dataset.cfg.seed,
         )
 

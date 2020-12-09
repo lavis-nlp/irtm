@@ -57,7 +57,8 @@ def single(
 ) -> data.TrainingResult:
 
     # TODO https://github.com/pykeen/pykeen/issues/129
-    BATCH_SIZE = 250
+    # monkey-patched pykeen to return constant batch size
+    BATCH_SIZE = 200
 
     # preparation
 
@@ -99,7 +100,6 @@ def single(
 
     evaluator = config.resolve(
         config.evaluator,
-        batch_size=BATCH_SIZE,
     )
 
     optimizer = config.resolve(
@@ -183,7 +183,7 @@ def _create_study(
     *,
     config: Config = None,
     out: pathlib.Path = None,
-    resume: bool = False,
+    resume: bool = None,
 ) -> optuna.Study:
 
     out.mkdir(parents=True, exist_ok=True)
@@ -196,7 +196,7 @@ def _create_study(
     # timestamp = datetime.now().strftime('%Y.%m.%d-%H.%M')
     # study_name = f'{config.model.cls}-sweep-{timestamp}'
 
-    study_name = f"{config.model.cls}-sweep"
+    study_name = f"{config.model.cls.lower()}-sweep"
     log.info(f'create optuna study "{study_name}"')
 
     if resume:
@@ -207,6 +207,7 @@ def _create_study(
         study_name=study_name,
         storage=f"sqlite:///{db_path}",
         load_if_exists=resume,
+        # TODO make option
     )
 
     # if there are any initial values to be set,
@@ -248,7 +249,7 @@ def multi(
 
         # obtain optuna suggestions
         config = base.suggest(trial)
-        name = f"{config.model.cls}-{trial.number}"
+        name = f"{config.model.cls.lower()}-{trial.number}"
         path = out / f"trial-{trial.number:04d}"
 
         # update configuration
@@ -298,8 +299,7 @@ def train(
     **kwargs,
 ) -> None:
 
-    time = str(datetime.now()).replace(" ", "_")
-    out = ryn.ENV.KGC_DIR / split_dataset.name / f"{config.model.cls}-{time}"
+    out = ryn.ENV.KGC_DIR / split_dataset.name / f"{config.model.cls.lower()}"
     config.save(out)
 
     multi(
@@ -307,14 +307,17 @@ def train(
         base=config,
         keen_dataset=keen_dataset,
         split_dataset=split_dataset,
-        resume=False,
         **kwargs,
     )
 
 
 @helper.notnone
 def train_from_kwargs(
-    *, config: str = None, split_dataset: str = None, **kwargs
+    *,
+    config: str = None,
+    split_dataset: str = None,
+    participate: bool,
+    **kwargs,
 ):
 
     log.info("running training")
@@ -330,6 +333,7 @@ def train_from_kwargs(
         config=config,
         split_dataset=split_dataset,
         keen_dataset=keen_dataset,
+        resume=participate,
         **kwargs,
     )
 
