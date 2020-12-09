@@ -4,7 +4,7 @@
   },
   "tracker": {
     "cls": "wandb",
-    "project": "ryn-keen-proto",
+    "project": "ryn-keen",
     "reinit": true,
     "offline": false
   },
@@ -17,8 +17,7 @@
       "log": false,
       "initial": 250
     },
-    "preferred_device": "cuda",
-    "automatic_memory_optimization": true
+    "preferred_device": "cuda"
   },
   "optimizer": {
     "cls": "Adagrad",
@@ -53,8 +52,8 @@
   "stopper": {
     "cls": "EarlyStopper",
     "frequency": 1,
-    "patience": 4,
-    "relative_delta": 0.001
+    "patience": 10,
+    "relative_delta": 0.0001
   },
   "sampler": {
     "cls": "BasicNegativeSampler",
