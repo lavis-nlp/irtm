@@ -17,8 +17,7 @@
       "log": false,
       "initial": 250
     },
-    "preferred_device": "cuda",
-    "automatic_memory_optimization": true
+    "preferred_device": "cuda"
   },
   "optimizer": {
     "cls": "Adagrad",
@@ -52,9 +51,11 @@
   },
   "stopper": {
     "cls": "EarlyStopper",
-    "frequency": 50,
-    "patience": 5,
-    "relative_delta": 0.001
+    "frequency": 10,
+    "patience": 10,
+    "relative_delta": 0.00001,
+    "metric": "hits_at_k",
+    "larger_is_better": true
   },
   "sampler": {
     "cls": "BasicNegativeSampler",
@@ -68,13 +69,13 @@
   },
   "training": {
     "num_epochs": 2000,
-      "batch_size": 512
+      "batch_size": 2048
   },
   "training_loop": {
     "cls": "SLCWATrainingLoop"
   },
   "optuna": {
-    "trials": 100,
+    "trials": 50,
     "maximise": true
   }
 }
