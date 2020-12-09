@@ -830,7 +830,9 @@ class Triples:
     ):
         # kgc
         triples = keen.triples_to_ndarray(split_dataset.g, split_part.triples)
-        factory = keen_triples.TriplesFactory(triples=triples, **kwargs)
+        factory = keen_triples.TriplesFactory.from_labeled_triples(
+            triples, **kwargs
+        )
 
         return K(
             g=split_part.g,
@@ -1030,24 +1032,21 @@ class Models:
 
         text_encoder = None
         tokenizer = None
-        if config.text_encoder:
-            text_encoder = tf.BertModel.from_pretrained(
-                config.text_encoder,
-                cache_dir=ryn.ENV.CACHE_DIR / "lib.transformers",
-            )
+        text_encoder = tf.BertModel.from_pretrained(
+            config.text_encoder,
+            cache_dir=ryn.ENV.CACHE_DIR / "lib.transformers",
+        )
 
-            tokenizer = Tokenizer.load(config.text_dataset)
+        tokenizer = Tokenizer.load(config.text_dataset)
 
-            log.info(f"resizing token embeddings to {len(tokenizer.base)}")
-            text_encoder.resize_token_embeddings(len(tokenizer.base))
+        log.info(f"resizing token embeddings to {len(tokenizer.base)}")
+        text_encoder.resize_token_embeddings(len(tokenizer.base))
 
         # --
 
-        kgc_model = None
-        if config.kgc_model and config.split_dataset:
-            kgc_model = keen.Model.load(
-                config.kgc_model, split_dataset=config.split_dataset
-            )
+        kgc_model = keen.Model.load(
+            config.kgc_model, split_dataset=config.split_dataset
+        )
 
         return K(
             tokenizer=tokenizer,
@@ -1122,16 +1121,16 @@ class DataModule(pl.LightningDataModule):
         if self.config.text_dataset:
 
             log.error("TODO: TextDataset load/create")
-            self._text = TextDataset.load(
-                path=self.config.text_dataset,
-            )
-
-            # self._text = TextDataset.create(
+            # self._text = TextDataset.load(
             #     path=self.config.text_dataset,
-            #     retained_entities=self.split.concepts,
-            #     ratio=self.config.valid_split,
-            #     seed=self.split.cfg.seed,
             # )
+
+            self._text = TextDataset.create(
+                path=self.config.text_dataset,
+                retained_entities=self.split.concepts,
+                ratio=self.config.valid_split,
+                seed=self.split.cfg.seed,
+            )
 
             assert self._text
 
@@ -1159,7 +1158,7 @@ class DataModule(pl.LightningDataModule):
         )
 
         if self.has_geometric_validation():
-            assert False, "remove dataloader_idx suffix from logged metrics"
+            log.info("! dataset offers geometric validation")
 
             self._valid_sets = (
                 TorchDataset(
@@ -1176,6 +1175,8 @@ class DataModule(pl.LightningDataModule):
                 ),
             )
         else:
+            log.info("! dataset offers no geometric validation")
+
             self._valid_sets = (
                 TorchDataset(
                     name="ow.valid",
@@ -1219,6 +1220,8 @@ class DataModule(pl.LightningDataModule):
         )
 
     def val_dataloader(self) -> torch_data.DataLoader:
+        assert self._valid_sets
+
         return [
             torch_data.DataLoader(
                 dataset,

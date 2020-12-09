@@ -653,7 +653,7 @@ class Mapper(pl.LightningModule):
         # -- embedding shenanigans
 
         Embedding = torch.nn.Embedding.from_pretrained
-        original_weights = self.keen.entity_embeddings.weight.cpu()
+        original_weights = self.keen.entity_embeddings._embeddings.weight.cpu()
 
         new_weights = torch.zeros(
             (
@@ -667,7 +667,9 @@ class Mapper(pl.LightningModule):
 
         new_weights[idxs] = self.projections[idxs]
 
-        self.keen.entity_embeddings = Embedding(new_weights).to(self.device)
+        self.keen.entity_embeddings._embeddings = Embedding(new_weights).to(
+            self.device
+        )
 
         mapped_triples = triples.factory.mapped_triples
         if self.debug:
@@ -681,9 +683,9 @@ class Mapper(pl.LightningModule):
         )
 
         # restore original embeddings
-        self.keen.entity_embeddings = Embedding(original_weights).to(
-            self.device
-        )
+        self.keen.entity_embeddings._embeddings = Embedding(
+            original_weights
+        ).to(self.device)
 
         # -- /embedding shenanigans
 
@@ -692,7 +694,7 @@ class Mapper(pl.LightningModule):
     def _run_kgc_evaluations(self):
         if self.global_step == 0 and not self.debug:
             log.info("skipping kgc evaluation; logging phony kgc result")
-            self.log_dict(self._mock_kgc_results())
+            self._mock_kgc_results()
             return
 
         log.info(
@@ -713,7 +715,7 @@ class Mapper(pl.LightningModule):
                 " logging phony kgc result"
             )
 
-            self.log_dict(self._mock_kgc_results())
+            self._mock_kgc_results()
             return
 
         # calculate averages over all projections
@@ -880,5 +882,8 @@ class Mapper(pl.LightningModule):
 
         self.init_projections()
 
-        assert not self.keen.entity_embeddings.weight.requires_grad
-        assert not self.keen.relation_embeddings.weight.requires_grad
+        _embs = self.keen.entity_embeddings._embeddings
+        assert not _embs.weight.requires_grad
+
+        _embs = self.keen.relation_embeddings._embeddings
+        assert not _embs.weight.requires_grad

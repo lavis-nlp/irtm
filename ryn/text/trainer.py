@@ -10,7 +10,6 @@ from ryn.common import logging
 import pytorch_lightning as pl
 import horovod.torch as hvd
 
-import os
 import pathlib
 import dataclasses
 from datetime import datetime
@@ -50,7 +49,7 @@ def _init_logger(
     # --
 
     logger = None
-    name = f"{text_encoder_name}.{kgc_model_name}.{timestamp}"
+    name = f"{timestamp}"
 
     if debug:
         log.info("debug mode; not using any logger")
@@ -229,6 +228,9 @@ def train(*, config: Config = None, debug: bool = False):
     if not debug and hvd.local_rank() == 0:
         dataclasses.replace(config, out=str(out)).save(out / "config.yml")
 
+    if not hvd.local_rank() == 0:
+        logger = None
+
     _fit(
         trainer=trainer,
         model=map_model,
@@ -277,7 +279,7 @@ def resume_from_kwargs(
         )
     )
 
-    datasets, rync = load_from_config(config=config)
+    datamodule, rync = load_from_config(config=config)
 
     checkpoint = helper.path(
         checkpoint,
@@ -287,29 +289,31 @@ def resume_from_kwargs(
 
     map_model = mapper.Mapper.load_from_checkpoint(
         str(checkpoint),
-        datasets=datasets,
+        data=datamodule,
         rync=rync,
         freeze_text_encoder=config.freeze_text_encoder,
     )
 
     timestamp = out.name
+    pl.seed_everything(datamodule.split.cfg.seed)
 
     # it is not possible to set resume=... for wandb.init
     # with pytorch lightning - so we need to fumble around
     # with os.environ...
     # (see pytorch_lightning/loggers/wandb.py:127)
-    run_id = checkpoint.parent.parent.name
-    os.environ["WANDB_RUN_ID"] = run_id
-    log.info(f"! resuming from run id: {run_id}")
+    # run_id = checkpoint.parent.parent.name
+    # os.environ["WANDB_RUN_ID"] = run_id
+    # log.info(f"! resuming from run id: {run_id}")
 
     logger = _init_logger(
         debug=debug,
         timestamp=timestamp,
         config=config,
         kgc_model_name=rync.kgc_model_name,
-        text_encoder_name=datasets.text_encoder,
-        text_dataset_name=datasets.text.name,
-        resume=True,
+        text_encoder_name=config.text_encoder,
+        text_dataset_name=datamodule.text.name,
+        resume=False,
+        # resume=True,
     )
 
     trainer = _init_trainer(
@@ -322,7 +326,7 @@ def resume_from_kwargs(
     _fit(
         trainer=trainer,
         model=map_model,
-        datasets=datasets,
+        datamodule=datamodule,
         out=out,
         debug=debug,
     )
