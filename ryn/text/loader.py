@@ -223,6 +223,10 @@ class SQLite(Loader):
 
             self.cursor.execute(query, params)
             result = self.cursor.fetchall()
+            if not result:
+                return None
+
+            result.sort()  # otherwise no guarantee
             mentions, blobs, blobs_masked = zip(*result)
 
             return Result(

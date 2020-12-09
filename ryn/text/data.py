@@ -132,11 +132,19 @@ def _transform_result(
     tokenizer: Tokenizer = None,
 ):
     def _flatten(nested):
-        return [sent for blob in nested for sent in blob.split("\n")]
+        return [
+            (sentence, mention)
+            for blob, mention in nested
+            for sentence in blob.split("\n")
+        ]
 
-    sentences = (
-        _flatten(result.blobs_masked) if masked else _flatten(result.blobs)
+    blobs = result.blobs_masked if masked else result.blobs
+    sentences, mentions = map(
+        list, zip(*_flatten(zip(blobs, result.mentions)))
     )
+
+    # do not use this anymore (mention mapping!)
+    result = None
 
     if masked:
         assert not marked
@@ -148,9 +156,10 @@ def _transform_result(
         assert not masked
         sentences = [
             s.replace(mention, MARKED.format(mention=mention))
-            for s, mention in zip(sentences, result.mentions)
+            for s, mention in zip(sentences, mentions)
         ]
 
+    # make sure a seed is set!
     random.shuffle(sentences)
 
     return tuple(
@@ -169,10 +178,9 @@ def _transform_split(
 ):
 
     log.info(f"! transforming split {part.name} " f"({masked=}, {marked=})")
+    helper.seed(ctx.dataset.cfg.seed)
 
     # ---
-
-    helper.seed(ctx.dataset.cfg.seed)
 
     # init text files
 
