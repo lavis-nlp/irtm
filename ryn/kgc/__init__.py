@@ -91,9 +91,12 @@ def click_resume(**kwargs):
 @click.option(
     '--out', type=str,
     help='directory to write the summary to')
-def click_evaluate(out: str = None, **kwargs):
+@click.option(
+    '--mode', type=str,
+    help='one of validation, testing, all')
+def click_evaluate(out: str = None, mode: str = None, **kwargs):
     """
     Evaluate a set of kgc models
     """
-    results = trainer.evaluate_from_kwargs(**kwargs)
-    trainer.print_results(results=results, out=out)
+    results = trainer.evaluate_from_kwargs(mode=mode, **kwargs)
+    trainer.print_results(results=results, out=out, mode=mode)

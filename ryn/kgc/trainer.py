@@ -403,11 +403,41 @@ def evaluate(
 
 
 @helper.notnone
+def _get_mapped_triples(keen_dataset: keen.Dataset = None, mode: str = None):
+
+    if mode == "testing":
+        selection = (keen_dataset.testing, )
+
+    elif mode == "validation":
+        selection = (keen_dataset.validation, )
+
+    elif mode == "all":
+        selection = (
+            keen_dataset.training,
+            keen_dataset.validation,
+            keen_dataset.testing
+        )
+    else:
+        raise ryn.RynError(f"unknown mode: '{mode}'")
+
+    ref = keen_dataset.training.mapped_triples
+    mapped_triples = torch.zeros((0, ref.shape[1]), dtype=ref.dtype)
+    for kind in filter(None, selection):
+        log.info(f"adding {len(kind.mapped_triples)} triples")
+        mapped_triples = torch.vstack((
+            mapped_triples, kind.mapped_triples
+        ))
+
+    return mapped_triples
+
+
+@helper.notnone
 def evaluate_glob(
     *,
     glob: Iterable[pathlib.Path] = None,
     split_dataset: split.Dataset = None,
     keen_dataset: keen.Dataset = None,
+    mode: str = None,
 ):
 
     glob = list(glob)
@@ -424,20 +454,24 @@ def evaluate_glob(
             continue
 
         try:
-            eval_result = data.EvaluationResult.load(path)
+            eval_result = data.EvaluationResult.load(path, prefix=mode)
 
         except FileNotFoundError:
+
+            mapped_triples = _get_mapped_triples(keen_dataset=keen_dataset, mode=mode)
+            log.info(f"evaluting {len(mapped_triples)} triples")
+
             eval_result = evaluate(
                 model=train_result.model,
                 config=train_result.config,
-                mapped_triples=keen_dataset.testing.mapped_triples,
+                mapped_triples=mapped_triples,
                 tqdm_kwargs=dict(
                     position=1,
                     ncols=80,
                     leave=False,
                 ),
             )
-            eval_result.save(path)
+            eval_result.save(path, prefix=mode)
 
         results.append((eval_result, path))
 
@@ -449,6 +483,7 @@ def evaluate_from_kwargs(
     *,
     results: List[str] = None,
     split_dataset: str = None,
+    mode: str = None,
 ):
 
     split_dataset, keen_dataset = data.load_datasets(path=split_dataset)
@@ -457,13 +492,14 @@ def evaluate_from_kwargs(
         glob=map(pathlib.Path, results),
         split_dataset=split_dataset,
         keen_dataset=keen_dataset,
+        mode=mode,
     )
 
     return eval_results
 
 
 @helper.notnone
-def print_results(*, results, out: Union[str, pathlib.Path] = None):
+def print_results(*, results, out: Union[str, pathlib.Path] = None, mode: str = None):
     def _save_rget(dic, *args, default=None):
         ls = list(args)[::-1]
 
@@ -515,7 +551,7 @@ def print_results(*, results, out: Union[str, pathlib.Path] = None):
     print(table)
 
     if out is not None:
-        fname = "evaluation"
+        fname = f"evaluation.{mode}"
         out = helper.path(
             out,
             create=True,

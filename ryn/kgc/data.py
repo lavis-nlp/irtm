@@ -200,21 +200,26 @@ class EvaluationResult:
     evaluation_time: Time
     metrics: Dict
 
-    def save(self, path: Union[str, pathlib.Path]):
-        fname = "evaluation.json"
+    @staticmethod
+    def _fname(prefix):
+        return f"evaluation.{prefix}.json"
+
+    def save(self, path: Union[str, pathlib.Path], prefix: str = None):
+        fname = EvaluationResult._fname(prefix)
         path = helper.path(path, message=f"writing {fname} to {{path_abbrv}}")
         with (path / fname).open(mode="w") as fd:
             json.dump(dataclasses.asdict(self), fd, default=str, indent=2)
 
     @classmethod
-    def load(K, path: Union[str, pathlib.Path]):
+    def load(K, path: Union[str, pathlib.Path], prefix: str = None):
         path = helper.path(
             path,
             exists=True,
             message="loading evaluation results from {path_abbrv}",
         )
 
-        with (path / "evaluation.json").open(mode="r") as fd:
+        fname = EvaluationResult._fname(prefix)
+        with (path / fname).open(mode="r") as fd:
             raw = json.load(fd)
 
         return K(
