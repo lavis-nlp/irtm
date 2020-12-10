@@ -399,8 +399,8 @@ class Dataset(keen_datasets_base.Dataset):
 
         # keen uses its own internal indexing
         # so strip own indexes and create "translated" triple matrix
-        train = keen_triples.TriplesFactory(
-            triples=to_a(split_dataset.cw_train.triples),
+        train = keen_triples.TriplesFactory.from_labeled_triples(
+            to_a(split_dataset.cw_train.triples),
         )
 
         # default split is 80/20
@@ -410,8 +410,8 @@ class Dataset(keen_datasets_base.Dataset):
         )
 
         # re-use existing entity/relation mappings
-        testing = keen_triples.TriplesFactory(
-            triples=to_a(split_dataset.cw_valid.triples),
+        testing = keen_triples.TriplesFactory.from_labeled_triples(
+            to_a(split_dataset.cw_valid.triples),
             entity_to_id=train.entity_to_id,
             relation_to_id=train.relation_to_id,
         )
