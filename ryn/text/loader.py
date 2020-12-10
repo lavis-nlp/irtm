@@ -67,18 +67,22 @@ class JSON(Loader):
 
     class JSONSelector(Selector):
         def __init__(
-            self, ent2desc: Dict[int, List[str]], id2ent: Dict[int, str]
+            self, id2desc: Dict[int, List[str]], id2ent: Dict[int, str]
         ):
-            self.ent2desc = ent2desc
+            self.id2desc = id2desc
             self.id2ent = id2ent
 
         def by_entity(self, e: int) -> Optional[Result]:
-            blobs = self.ent2desc[self.id2ent[e]]
+            blobs = self.id2desc[e]
+
             if not blobs:
+                # log.error(f"{e=} {self.id2ent[e]} {blobs=}")
                 return None
 
+            mentions = [self.id2ent[e] for _ in blobs]
+
             return Result(
-                mentions=[self.id2ent[e]],
+                mentions=mentions,
                 blobs=blobs,
                 blobs_masked=[],
             )
@@ -86,27 +90,54 @@ class JSON(Loader):
     # ---
 
     @helper.notnone
-    def __init__(self, fname: str = None, id2ent: Dict[int, str] = None):
+    def __init__(
+        self,
+        fname: str = None,
+        # from ryn: graph.source.ents
+        id2ent: Dict[int, str] = None,
+        # (optionally) maps mid -> idx
+        idmap: Optional[str] = None,
+    ):
         log.info(f"loading {fname=} with {len(id2ent)} mapped entities")
         self.id2ent = id2ent
+
+        idmap = helper.path(
+            idmap, exists=True, message="loading idmap from {path_abbrv}"
+        )
+
+        # translate mids to idxs
+        with idmap.open(mode="r") as fd:
+            fd.readline()  # consume first line with count
+            idmap = dict(
+                (label, int(idx))
+                for label, idx in map(str.split, fd.readlines())
+            )
 
         path = helper.path(fname, exists=True, message="loading {path_abbrv}")
         with path.open(mode="r") as fd:
             raw = json.load(fd)
 
-        self.ent2desc = {}
+        self.id2desc = {}
         for entity, data in raw.items():
             description = data["description"]
-            if not description:
-                self.ent2desc[entity] = None
-            else:
-                description = description.capitalize() + "."
-                self.ent2desc[entity] = [description]
+            e = idmap[entity]
+            self.id2desc[e] = (
+                None if not description else [description.capitalize() + "."]
+            )
 
-        assert all(ent in self.ent2desc for ent in id2ent.values())
+        empty = {e: None for e in id2ent if e not in self.id2desc}
+        log.error(f"no description for {len(empty)} in {path.name}")
+        self.id2desc.update(empty)
+
+        log.error(
+            f"no description in total for"
+            f" {len([v for v in self.id2desc.values() if not v])}"
+        )
+
+        assert all(ent in self.id2desc for ent in id2ent)
 
     def __enter__(self):
-        return JSON.JSONSelector(ent2desc=self.ent2desc, id2ent=self.id2ent)
+        return JSON.JSONSelector(id2desc=self.id2desc, id2ent=self.id2ent)
 
     def __exit__(self, *_):
         pass

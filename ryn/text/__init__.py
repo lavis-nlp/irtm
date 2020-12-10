@@ -90,10 +90,14 @@ def cli(dataset: str = None, ratio: float = None, seed: int = None):
 @click.option(
     '--json-file', type=str,
     help='path to json file')
+@click.option(
+    '--json-idmap', type=str,
+    help='if the internal ids need to be mapped to keys in the json')
 def transform(
         dataset: str = None,
         sqlite_database: str = None,
         json_file: str = None,
+        json_idmap: str = None,
         **kwargs):
     """
     Transform a graph.split.Dataset to a text.data.Dataset
@@ -103,7 +107,10 @@ def transform(
 
     if json_file:
         loader = 'json'
-        loader_args = dict(fname=json_file)
+        loader_args = dict(
+            fname=json_file,
+            idmap=json_idmap,
+        )
 
     if sqlite_database:
         loader = 'sqlite'

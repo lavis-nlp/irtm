@@ -16,6 +16,7 @@ import json
 import random
 import pathlib
 import textwrap
+import traceback
 import contextlib
 import multiprocessing as mp
 
@@ -101,7 +102,7 @@ class Tokenizer:
 @dataclass
 class TransformContext:
 
-    select: ryn_loader.SQLite
+    select: ryn_loader.Loader
 
     fd_indexes: IO[str]
     fd_sentences: IO[str]
@@ -220,17 +221,21 @@ def _transform_split(
         unit=" entities",
     )
 
+    no_context_entities = set()
     no_context_triples = set()
+
     for i, e, name in bar(gen):
         result = ctx.select.by_entity(e)
 
         def _no_ctx():
             nonlocal no_context_triples
+            nonlocal no_context_entities
 
             triples = part.g.find(heads={e}, tails={e})
             count = len(triples)
 
             no_context_triples |= triples
+            no_context_entities.add(e)
             _write(ctx.fd_nocontext, f"{e}{SEP}{name}{SEP}{count}")
 
             msg = f"! no context for {e}: {name} ({count} triples)"
@@ -285,8 +290,9 @@ def _transform_split(
     log.info(f"finished processing {part.name}")
     if len(no_context_triples):
         log.error(
-            f"{part.name}: {len(no_context_triples)}"
-            f"/{len(part.triples)} triples without context"
+            f"[{part.name}] {len(no_context_entities)}"
+            " entities without context"
+            f" ({len(no_context_triples)}/{len(part.triples)} triples)"
         )
 
 
@@ -342,6 +348,15 @@ def _transform_worker(packed):
         ctx = _transform_get_ctx(stack, split, args)
 
         _transform_split(wid, ctx, part, **kwargs)
+
+
+def _transform_worker_wrapper(*args, **kwargs):
+    try:
+        _transform_worker(*args, **kwargs)
+    except Exception as exc:
+        log.error(traceback.format_exc())
+        log.error(f"{exc}")
+        raise exc
 
 
 def transform(
@@ -429,7 +444,7 @@ def transform(
 
         kwargs = dict(masked=masked, marked=marked)
         pool.map(
-            _transform_worker,
+            _transform_worker_wrapper,
             [
                 (1, "cw.train", args, kwargs),
                 (2, "ow.valid", args, kwargs),
@@ -594,7 +609,7 @@ class Part:
         id2sents = defaultdict(list)
         for e, blob in read(f"{name}-sentences.txt.gz"):
             e_name, sentence = blob.split(SEP, maxsplit=1)
-            id2sents[e].append(sentence)
+            id2sents[e].append(sentence.strip())
             id2ent[e] = e_name
 
         # tokens
