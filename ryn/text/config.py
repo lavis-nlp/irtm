@@ -27,10 +27,6 @@ class Config:
     # whether to fine-tune the text_encoder
     freeze_text_encoder: bool
 
-    # ow_valid is split for the training
-    # into validation and testing data
-    valid_split: int
-
     # WANDB
     # ----------------------------------------
     # the following arguments are set by default but can be overwritten:
@@ -74,8 +70,10 @@ class Config:
 
     # this is the pre-processed text data
     # and it also determines the upstream text encoder
-    # for more information see tyn.text.data.Dataset
+    # (ryn.text.data.Dataset)
     text_dataset: Union[str, pathlib.Path]
+
+    # the triple split (ryn.graphs.split.Dataset)
     split_dataset: Union[str, pathlib.Path]
 
     # see the respective <Class>.impl dictionary
@@ -96,6 +94,18 @@ class Config:
 
     scheduler: Optional[str] = None
     scheduler_args: Optional[Dict[str, Any]] = None
+
+    # ow_valid is split for the training
+    # into validation and testing data
+    valid_split: Optional[int] = None
+
+    # DEFAULTING
+    # ----------------------------------------
+
+    # whether to split the text dataset to have geometric
+    # inductive/transductive validation steps. Requires
+    # each entitiy to have at least two sentences.
+    split_text_dataset: bool = True
 
     # SET AUTOMATICALLY
     # ----------------------------------------

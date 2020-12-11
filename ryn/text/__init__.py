@@ -165,6 +165,7 @@ _shared_options_mapper = [
     click.option('--split-dataset', type=str),
     click.option('--kgc-model', type=str),
     click.option('--text-dataset', type=str),
+    click.option('--split-text-dataset', type=bool),
     click.option('--out', type=str),
 ]
 

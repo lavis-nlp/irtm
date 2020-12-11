@@ -1120,6 +1120,7 @@ class DataModule(pl.LightningDataModule):
 
     # ---
 
+    @helper.notnone
     def __init__(
         self,
         *,
@@ -1132,32 +1133,32 @@ class DataModule(pl.LightningDataModule):
         self._config = config
         self._split = split_dataset
 
-        self._text = None
-        if self.config.text_dataset:
+        if self.config.split_text_dataset:
+            if not self.config.valid_split:
+                raise ryn.RynError(
+                    "config.valid_split required if"
+                    " config.split_text_dataset is set"
+                )
 
-            log.error("TODO: TextDataset load/create")
-            # self._text = TextDataset.load(
-            #     path=self.config.text_dataset,
-            # )
-
+            log.info("creating text dataset: enable geometric validation")
             self._text = TextDataset.create(
                 path=self.config.text_dataset,
                 retained_entities=self.split.concepts,
                 ratio=self.config.valid_split,
                 seed=self.split.cfg.seed,
             )
-
-            assert self._text
-
-        self._keen = None
-        self._kgc = None
-        if keen_dataset:
-            self._keen = keen_dataset
-            self._kgc = KGCDataset.create(
-                config=config,
-                keen_dataset=self.keen,
-                split_dataset=self.split,
+        else:
+            log.info("loading text dataset: disable geometric validation")
+            self._text = TextDataset.load(
+                path=self.config.text_dataset,
             )
+
+        self._keen = keen_dataset
+        self._kgc = KGCDataset.create(
+            config=config,
+            keen_dataset=self.keen,
+            split_dataset=self.split,
+        )
 
     def prepare_data(self):
         # called once on master for multi-gpu setups
