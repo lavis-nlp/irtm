@@ -18,6 +18,10 @@ from typing import Optional
 from typing import Sequence
 
 
+class MisconfigurationError(ryn.RynError):
+    pass
+
+
 @dataclass
 class Config:
 
@@ -112,6 +116,17 @@ class Config:
 
     # directory to save everything to
     out: Union[str, pathlib.Path] = None
+
+    # ---
+
+    def __post_init__(self):
+        if (
+            self.projector.startswith("affine pooling")
+            and self.dataloader_train_args["shuffle"]
+        ):
+            raise MisconfigurationError(
+                "do not shuffle samples when using affine pooling"
+            )
 
     # ---
 

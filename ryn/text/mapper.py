@@ -8,6 +8,7 @@ from ryn.text.config import Config
 from ryn.common import helper
 from ryn.common import logging
 
+import gc
 import math
 import torch
 import torch.optim
@@ -21,11 +22,14 @@ import horovod.torch as hvd
 
 import yaml
 
+from itertools import count
 from itertools import repeat
+from itertools import groupby
 from dataclasses import dataclass
 from collections import defaultdict
 
 from typing import Dict
+from typing import Tuple
 
 
 log = logging.get("text.mapper")
@@ -193,9 +197,73 @@ class AffineProjector_1(Projector):
         super().__init__(*args, config=config, **kwargs)
         self.projector = nn.Linear(config.input_dims, config.output_dims)
 
-    # batch x text_dims -> batch x kge_dims
-    def forward(self, X: torch.Tensor) -> torch.Tensor:
-        return self.projector(X)
+    # batch x text_dims, batch -> entities x kge_dims
+    def forward(self, X: torch.Tensor, entities: Tuple[int]) -> torch.Tensor:
+        return self.projector(X), entities
+
+
+@Projector.module
+class AffineProjectorWithPooling_1(Projector):
+    """
+
+    Project and aggregate entities
+
+    """
+
+    name = "affine pooling 1"
+
+    @dataclass
+    class Config(Base.Config):
+
+        POOLING = ("max",)  # later: avg, min+max, max+avg etc.
+
+        input_dims: int
+        output_dims: int
+        pooling: str
+
+        def __post_init__(self):
+            if self.pooling not in AffineProjectorWithPooling_1.Config.POOLING:
+                raise ryn.RynError(f"unsupported pooling: '{self.pooling}'")
+
+    # ---
+
+    def __init__(
+        self, *args, config: "AffineProjectorWithPooling_1.Config", **kwargs
+    ):
+        super().__init__(*args, config=config, **kwargs)
+        self.projector = nn.Linear(config.input_dims, config.output_dims)
+
+    # batch x text_dims, batch -> unique entities x kge_dims
+    def forward(self, X: torch.Tensor, entities: Tuple[int]):
+
+        # batch x text_dims -> batch x kge_dims
+        projected = self.projector(X)
+
+        # inner-batch indexes
+        counter = count()
+        # e.g. given two entities and a batch_size of 5:
+        # (8, 8, 8, 7, 7) -> [(8, [0, 1, 2]), (7, [3, 4])]
+        grouped = [
+            (entity, [next(counter) for _ in grouper])
+            for entity, grouper in groupby(entities)
+        ]
+
+        # batch x kge_dims -> unique entities x kge_dims
+        # black formats this rather strangely
+        # fmt: off
+        Y = torch.vstack(tuple(
+            projected[idxs, ].max(axis=0).values
+            for _, idxs in grouped
+        ))
+        # fmt: on
+
+        unique_entities = tuple(zip(*grouped))[0]
+
+        assert len(Y) == len(grouped)
+        assert len(Y) == len(unique_entities)
+        assert Y.shape[1] == self.config.output_dims
+
+        return Y, unique_entities
 
 
 @Projector.module
@@ -228,8 +296,8 @@ class MLPProjector_1(Projector):
         )
 
     # batch x text_dims -> batch x kge_dims
-    def forward(self, X: torch.Tensor) -> torch.Tensor:
-        return self.projector(X)
+    def forward(self, X: torch.Tensor, entities: Tuple[int]) -> torch.Tensor:
+        return self.projector(X), entities
 
 
 # --- COMPARING
@@ -542,6 +610,7 @@ class Mapper(pl.LightningModule):
         self,
         *,
         sentences: torch.Tensor = None,  # batch x tokens
+        entities: torch.Tensor = None,  # batch
     ):
 
         # batch x tokens x text_dims
@@ -550,10 +619,10 @@ class Mapper(pl.LightningModule):
         # batch x text_dims
         aggregated = self.aggregate(encoded)
 
-        # batch x kge_dims
-        projected = self.project(aggregated)
+        # entities x kge_dims
+        projected, entities = self.project(aggregated, entities)
 
-        return projected
+        return projected, entities
 
     #
     #   TRAINING
@@ -563,10 +632,12 @@ class Mapper(pl.LightningModule):
         sentences, entities = batch
 
         # batch x kge_dims
-        projected = self.forward(sentences=sentences)
-        self.update_projections(entities=entities, projected=projected)
+        projected, entities = self.forward(
+            sentences=sentences, entities=entities
+        )
+        self.update_projections(projected=projected, entities=entities)
 
-        # batch x kge_dims
+        # entities x kge_dims
         target = self.forward_entities(entities)
         loss = self.loss(projected, target)
 
@@ -590,13 +661,15 @@ class Mapper(pl.LightningModule):
         kind: str = None,
     ):
         # batch x kge_dims
-        projected = self.forward(sentences=sentences)
-        self.update_projections(entities=entities, projected=projected)
+        projected, entities = self.forward(
+            sentences=sentences, entities=entities
+        )
+        self.update_projections(projected=projected, entities=entities)
 
-        # batch x kge_dims
+        # entities x kge_dims
         target = self.forward_entities(entities)
 
-        # batch
+        # entities
         losses = self.loss(projected, target)
 
         # partition losses into inductive and transductive
@@ -609,8 +682,10 @@ class Mapper(pl.LightningModule):
         entities=None,
         batch_idx=None,
     ):
-        projected = self.forward(sentences=sentences)
-        self.update_projections(entities=entities, projected=projected)
+        projected, entities = self.forward(
+            sentences=sentences, entities=entities
+        )
+        self.update_projections(projected=projected, entities=entities)
         if batch_idx == self._ow_validation_batches - 1:
             self._run_kgc_evaluations()
 
@@ -830,12 +905,12 @@ class Mapper(pl.LightningModule):
 
             sample = loader.dataset[loader.dataset.max_sequence_idx]
             batch = repeat(sample, loader.batch_size)
-            sentences, _ = loader.collate_fn(batch)
+            sentences, entities = loader.collate_fn(batch)
 
             log.info(f"trying batch with {sentences.shape}")
 
             sentences = sentences.to(self.device)
-            self.forward(sentences=sentences)
+            self.forward(sentences=sentences, entities=entities)
 
             res_memory = torch.cuda.memory_reserved(self.device)
             memory_usage = (res_memory / total_memory) * 100
@@ -844,7 +919,10 @@ class Mapper(pl.LightningModule):
                 f" ~{int(memory_usage)}% memory"
             )
 
+            del batch
             del sentences
+
+            gc.collect()
             torch.cuda.empty_cache()
 
         log.info("finished memory check")

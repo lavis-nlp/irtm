@@ -68,10 +68,13 @@ def _create_projections(
             for batch_idx, batch in gen:
                 sentences, entities = batch
                 sentences = sentences.to(device=model.device)
-                projected = model.forward(sentences=sentences)
+                projected, entities = model.forward(
+                    sentences=sentences, entities=entities
+                )
 
                 model.update_projections(
-                    entities=entities, projected=projected
+                    projected=projected,
+                    entities=entities,
                 )
 
                 if debug:
