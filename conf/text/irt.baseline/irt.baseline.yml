@@ -7,6 +7,8 @@
 valid_split: 0.9
 text_encoder: bert-base-cased
 
+split_text_dataset: True
+
 kgc_model: data/kgc/oke.fb15k237_26041992_100/distmult/trial-0017
 split_dataset: data/split/oke.fb15k237_26041992_100
 
