@@ -30,6 +30,7 @@ from collections import defaultdict
 
 from typing import Dict
 from typing import Tuple
+from typing import Optional
 
 
 log = logging.get("text.mapper")
@@ -220,10 +221,15 @@ class AffineProjectorWithPooling_1(Projector):
         input_dims: int
         output_dims: int
         pooling: str
+        dropout: bool
+        dropout_p: Optional[float] = None
 
         def __post_init__(self):
             if self.pooling not in AffineProjectorWithPooling_1.Config.POOLING:
                 raise ryn.RynError(f"unsupported pooling: '{self.pooling}'")
+
+            if self.dropout and not self.dropout_p:
+                raise ryn.RynError("dropout_p missing")
 
     # ---
 
@@ -231,16 +237,20 @@ class AffineProjectorWithPooling_1(Projector):
         self, *args, config: "AffineProjectorWithPooling_1.Config", **kwargs
     ):
         super().__init__(*args, config=config, **kwargs)
+        if self.config.dropout:
+            self.dropout = nn.Dropout(config.dropout_p)
+
         self.projector = nn.Linear(config.input_dims, config.output_dims)
 
     # batch x text_dims, batch -> unique entities x kge_dims
     def forward(self, X: torch.Tensor, entities: Tuple[int]):
 
-        # batch x text_dims -> batch x kge_dims
-        projected = self.projector(X)
+        if self.config.dropout:
+            X = self.dropout(X)
 
         # inner-batch indexes
         counter = count()
+
         # e.g. given two entities and a batch_size of 5:
         # (8, 8, 8, 7, 7) -> [(8, [0, 1, 2]), (7, [3, 4])]
         grouped = [
@@ -251,19 +261,22 @@ class AffineProjectorWithPooling_1(Projector):
         # batch x kge_dims -> unique entities x kge_dims
         # black formats this rather strangely
         # fmt: off
-        Y = torch.vstack(tuple(
-            projected[idxs, ].max(axis=0).values
+        pooled = torch.vstack(tuple(
+            X[idxs, ].max(axis=0).values
             for _, idxs in grouped
         ))
         # fmt: on
 
         unique_entities = tuple(zip(*grouped))[0]
 
-        assert len(Y) == len(grouped)
-        assert len(Y) == len(unique_entities)
-        assert Y.shape[1] == self.config.output_dims
+        # batch x text_dims -> batch x kge_dims
+        projected = self.projector(pooled)
 
-        return Y, unique_entities
+        assert len(projected) == len(grouped)
+        assert len(projected) == len(unique_entities)
+        assert projected.shape[1] == self.config.output_dims
+
+        return projected, unique_entities
 
 
 @Projector.module
