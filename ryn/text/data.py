@@ -10,7 +10,6 @@ from ryn.graphs import split
 from ryn.common import helper
 from ryn.common import logging
 
-import re
 import gzip
 import json
 import random
@@ -117,7 +116,8 @@ class TransformContext:
 
 
 # this matches masked sequences of the upstream sqlite context dbs
-RE_MASKS = re.compile("#+")
+# MASK_TOKEN = "#"
+# RE_MASKS = re.compile(MASK_TOKEN + "+")
 MARKED = (
     Tokenizer.TOK_MENTION_START + " {mention} " + Tokenizer.TOK_MENTION_END
 )
@@ -132,42 +132,72 @@ def _transform_result(
     marked: bool = None,
     tokenizer: Tokenizer = None,
 ):
+
+    #
+    #  DISCLAIMER: you need to be very very careful when changing
+    #  this code and always make sure the same contexts are produced
+    #  for all modes (clean, marked, masked)!
+    #
+
+    def _map(sentence, mention):
+        sentence = " ".join(sentence.strip().split())
+
+        if masked:
+            assert not marked
+            # sentence = RE_MASKS.sub(tokenizer.base.mask_token, sentence)
+            sentence = sentence.replace(mention, tokenizer.base.mask_token)
+
+        if marked:
+            assert not masked
+            sentence = sentence.replace(
+                mention, MARKED.format(mention=mention)
+            )
+
+        return sentence
+
+    def _filter(sentence, mention):
+        return all(
+            (
+                len(sentence) > 50,
+                not sentence.startswith("File:"),
+                mention in sentence,
+            )
+        )
+
     def _flatten(nested):
-        return [
-            (sentence, mention)
-            for blob, mention in nested
-            for sentence in blob.split("\n")
-        ]
 
-    blobs = result.blobs_masked if masked else result.blobs
-    sentences, mentions = map(
-        list, zip(*_flatten(zip(blobs, result.mentions)))
-    )
+        # list(set(x)) is not possible because of the
+        # unpredictable python hash seeds
+        tuples, seen = [], set()
 
-    # do not use this anymore (mention mapping!)
-    result = None
+        for blob, mention in nested:
 
-    if masked:
-        assert not marked
-        sentences = [
-            RE_MASKS.sub(tokenizer.base.mask_token, s) for s in sentences
-        ]
+            # filter BEFORE mapping
+            gen = (s for s in blob.split("\n") if _filter(s, mention))
 
-    if marked:
-        assert not masked
-        sentences = [
-            s.replace(mention, MARKED.format(mention=mention))
-            for s, mention in zip(sentences, mentions)
-        ]
+            for sentence in gen:
+                if sentence in seen:
+                    continue
+
+                seen.add(sentence)
+                # map AFTER all checks
+                mapped = _map(sentence, mention)
+                tuples.append((mapped, mention))
+
+        return tuples
+
+    # blobs = result.blobs_masked if masked else result.blobs
+    flat = _flatten(zip(result.blobs, result.mentions))
+
+    # can not use list(set(X)) because of the python hash seed
+    if not flat:
+        return None
+
+    sentences, mentions = map(list, zip(*flat))
 
     # make sure a seed is set!
     random.shuffle(sentences)
-
-    return tuple(
-        # remove unnecessary whitespace
-        " ".join(sentence.split())
-        for sentence in sentences[:amount]
-    )
+    return tuple(sentences[:amount])
 
 
 def _transform_split(
