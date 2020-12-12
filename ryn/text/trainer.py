@@ -10,6 +10,7 @@ from ryn.common import logging
 import pytorch_lightning as pl
 import horovod.torch as hvd
 
+import os
 import pathlib
 import dataclasses
 from datetime import datetime
@@ -270,7 +271,8 @@ def resume_from_kwargs(
 ):
 
     out = helper.path(path, exists=True)
-    config = Config.create(configs=[out / "config.yml"], **kwargs)
+    config_file = out / "config.yml"
+    config = Config.create(configs=[config_file], **kwargs)
 
     config.out = out
     config.wandb_args.update(
@@ -301,9 +303,9 @@ def resume_from_kwargs(
     # with pytorch lightning - so we need to fumble around
     # with os.environ...
     # (see pytorch_lightning/loggers/wandb.py:127)
-    # run_id = checkpoint.parent.parent.name
-    # os.environ["WANDB_RUN_ID"] = run_id
-    # log.info(f"! resuming from run id: {run_id}")
+    run_id = checkpoint.parent.parent.name
+    os.environ["WANDB_RUN_ID"] = run_id
+    log.info(f"! resuming from run id: {run_id}")
 
     logger = _init_logger(
         debug=debug,
@@ -312,8 +314,7 @@ def resume_from_kwargs(
         kgc_model_name=rync.kgc_model_name,
         text_encoder_name=config.text_encoder,
         text_dataset_name=datamodule.text.name,
-        resume=False,
-        # resume=True,
+        resume=True,
     )
 
     trainer = _init_trainer(
@@ -322,6 +323,10 @@ def resume_from_kwargs(
         debug=debug,
         resume_from_checkpoint=str(checkpoint),
     )
+
+    helper.path_rotate(config_file)
+    config = dataclasses.replace(config, out=str(out))
+    config.save(config_file)
 
     _fit(
         trainer=trainer,
