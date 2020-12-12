@@ -102,6 +102,18 @@ scheduler_args:
   num_warmup_steps: null
   # ...
 
+# early stopping
+# supported arguments:
+# https://pytorch-lightning.readthedocs.io/en/latest/early_stopping.html
+# https://pytorch-lightning.readthedocs.io/en/latest/api/pytorch_lightning.callbacks.early_stopping.html#pytorch_lightning.callbacks.early_stopping.EarlyStopping
+early_stopping: null
+early_stopping_args:
+  monitor: null
+  min_delta: null
+  patience: null
+  mode: null
+  # ...
+
 #
 #  MAPPER
 #

@@ -113,6 +113,14 @@ def _init_trainer(
         )
     )
 
+    if config.early_stopping:
+        log.info(f"adding early stopping: '{config.early_stopping_args}'")
+        callbacks.append(
+            pl.callbacks.early_stopping.EarlyStopping(
+                **config.early_stopping_args
+            )
+        )
+
     trainer_args = dict(
         callbacks=callbacks,
         deterministic=True,

@@ -99,6 +99,9 @@ class Config:
     scheduler: Optional[str] = None
     scheduler_args: Optional[Dict[str, Any]] = None
 
+    early_stopping: bool = False
+    early_stopping_args: Optional[Dict[str, Any]] = None
+
     # ow_valid is split for the training
     # into validation and testing data
     valid_split: Optional[int] = None
