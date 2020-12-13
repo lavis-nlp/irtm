@@ -18,7 +18,6 @@ class ENV:
     LIB_DIR:   pathlib.Path = _root_path / 'lib'
     CONF_DIR:  pathlib.Path = _root_path / 'conf'
     SRC_DIR:   pathlib.Path = _root_path / 'ryn'
-    TEST_DIR:  pathlib.Path = _root_path / 'ryn' / 'tests'
 
     # data heap
 
