@@ -399,22 +399,40 @@ class Dataset(keen_datasets_base.Dataset):
 
         # keen uses its own internal indexing
         # so strip own indexes and create "translated" triple matrix
-        train = keen_triples.TriplesFactory.from_labeled_triples(
+        training = keen_triples.TriplesFactory.from_labeled_triples(
             to_a(split_dataset.cw_train.triples),
         )
 
-        # default split is 80/20
-        training, validation = train.split(
-            split_dataset.cfg.cw_train_split,
-            random_state=split_dataset.cfg.seed,
-        )
+        if split_dataset.cfg.cw_train_split != -1:
+            log.info(
+                "splitting training data with ratio"
+                f" {split_dataset.cfg.cw_train_split}"
+            )
 
-        # re-use existing entity/relation mappings
-        testing = keen_triples.TriplesFactory.from_labeled_triples(
-            to_a(split_dataset.cw_valid.triples),
-            entity_to_id=train.entity_to_id,
-            relation_to_id=train.relation_to_id,
-        )
+            # default split is 80/20
+            training, validation = training.split(
+                split_dataset.cfg.cw_train_split,
+                random_state=split_dataset.cfg.seed,
+            )
+
+            # re-use existing entity/relation mappings
+            testing = keen_triples.TriplesFactory.from_labeled_triples(
+                to_a(split_dataset.cw_valid.triples),
+                entity_to_id=training.entity_to_id,
+                relation_to_id=training.relation_to_id,
+            )
+
+        else:
+            log.info("split dataset has no test data")
+
+            # re-use existing entity/relation mappings
+            validation = keen_triples.TriplesFactory.from_labeled_triples(
+                to_a(split_dataset.cw_valid.triples),
+                entity_to_id=training.entity_to_id,
+                relation_to_id=training.relation_to_id,
+            )
+
+            testing = None
 
         # ---
 
@@ -442,7 +460,7 @@ class Dataset(keen_datasets_base.Dataset):
 # need to ninja-register this dataset with a string
 # as otherwise wandb param updates do not work as types (.__class__)
 # are not json serializable
-keen_datasets.datasets[Dataset.NAME] = Dataset
+# keen_datasets.datasets[Dataset.NAME] = Dataset
 
 
 @dataclass
@@ -789,7 +807,9 @@ class Model:
             evaluation_result = None
 
         split_dataset = split.Dataset.load(path=split_dataset)
-        assert config.general.dataset == split_dataset.name
+        assert (
+            config.general.dataset == split_dataset.name
+        ), f"{config.general.dataset=} {split_dataset.name=}"
 
         keen_dataset = Dataset.from_split_dataset(split_dataset)
 

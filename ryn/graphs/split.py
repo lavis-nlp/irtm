@@ -66,6 +66,10 @@ class Config:
     blacklist: Set[str]
     whitelist: Set[str]
 
+    # strict checks (deactivated for other splits such as vll.fb15k237-OWE)
+    # (see Dataset.check for the constraints)
+    strict: bool = True
+
     # post-init
 
     git: str = None  # revision hash
@@ -329,15 +333,27 @@ class Dataset:
         assert (
             self.cw_train.owe == self.cw_train.entities
         ), "cw.train owe != cw.train entities"
-        assert not len(self.cw_valid.owe), "cw.valid contains owe entities"
+
+        if self.cfg.strict:
+            assert not len(self.cw_valid.owe), "cw.valid contains owe entities"
+        else:
+            log.warning("cw.valid contains owe entities!")
 
         seen = self.cw_train.entities | self.cw_valid.entities
-        assert self.ow_valid.owe.isdisjoint(
-            seen
-        ), "entities in ow valid leaked"
+        if self.cfg.strict:
+            assert self.ow_valid.owe.isdisjoint(
+                seen
+            ), "entities in ow valid leaked"
+        else:
+            log.warning("entities in ow valid leaked!")
 
         seen |= self.ow_valid.entities
-        assert self.ow_test.owe.isdisjoint(seen), "entities in ow test leaked)"
+        if self.cfg.strict:
+            assert self.ow_test.owe.isdisjoint(
+                seen
+            ), "entities in ow test leaked)"
+        else:
+            log.warning("entities in ow test leaked!")
 
         # each triple of the open world splits must contain at least
         # one open world entity
@@ -347,16 +363,18 @@ class Dataset:
                 for h, t, r in part.triples
                 if h not in part.owe and t not in part.owe
             )
-            # deactivate for fb15k237-owe
-            assert not len(
-                undesired
-            ), f"found undesired triples: len({undesired})"
 
-            # if len(undesired):
-            #     log.error(
-            #         f"there are {len(undesired)} triples containing"
-            #         f" only closed world entities in {part.name}"
-            #     )
+            if self.cfg.strict:
+                # deactivate for fb15k237-owe
+                assert not len(
+                    undesired
+                ), f"found undesired triples: len({undesired})"
+
+            if len(undesired):
+                log.error(
+                    f"there are {len(undesired)} triples containing"
+                    f" only closed world entities in {part.name}"
+                )
 
     @classmethod
     @helper.cached(".cached.graphs.split.dataset.pkl")
