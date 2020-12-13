@@ -55,4 +55,4 @@ optimizer_args:
 
 projector_args:
   input_dims: 768
-  output_dims: 500
+  output_dims: 450

@@ -29,7 +29,6 @@ import numpy as np
 import pandas as pd
 
 from pykeen import triples as keen_triples
-from pykeen import datasets as keen_datasets
 from pykeen.models import base as keen_models_base
 from pykeen.datasets import base as keen_datasets_base
 
@@ -245,7 +244,7 @@ class Dataset(keen_datasets_base.Dataset):
             testing=self.testing,
         )
 
-    @helper.notnone
+    # @helper.notnone
     def __init__(
         self,
         *,
@@ -254,7 +253,7 @@ class Dataset(keen_datasets_base.Dataset):
         split_dataset: split.Dataset = None,
         training: keen_triples.TriplesFactory = None,
         validation: keen_triples.TriplesFactory = None,
-        testing: keen_triples.TriplesFactory = None,
+        testing: Optional[keen_triples.TriplesFactory] = None,
     ):
 
         self._name = name
@@ -265,14 +264,20 @@ class Dataset(keen_datasets_base.Dataset):
         self.validation = validation
         self.testing = testing
 
+    @property
+    def _factories(self):
+        tuples = [("training", self.training), ("validation", self.validation)]
+
+        if self.testing:
+            tuples.append(("testing", self.testing))
+
+        return tuples
+
     def __str__(self) -> str:
         return f"keen: [{self.name}]: " + (
             " | ".join(
                 f"{name}={factory.num_triples}"
-                for name, factory in zip(
-                    ("training", "validation", "testing"),
-                    (self.training, self.validation, self.testing),
-                )
+                for name, factory in self._factories
             )
         )
 
@@ -281,11 +286,7 @@ class Dataset(keen_datasets_base.Dataset):
         s = "ryn pykeen dataset\n"
         s += f"{self.name}\n"
 
-        for name, factory in zip(
-            ("training", "validation", "testing"),
-            (self.training, self.validation, self.testing),
-        ):
-
+        for name, factory in self._factories:
             content = textwrap.indent(
                 f"entities: {factory.num_entities}\n"
                 f"relations: {factory.num_relations}\n"
@@ -304,10 +305,12 @@ class Dataset(keen_datasets_base.Dataset):
 
         assert (
             self.validation.num_entities <= self.training.num_entities
-        ), f"{self.validation.num_entities=} > {self.training.num_entities=}"
-        assert (
-            self.testing.num_entities <= self.training.num_entities
-        ), f"{self.testing.num_entities=} > {self.validation.num_entities=}"
+        ), f"{self.validation.num_entities=}>{self.training.num_entities=}"
+
+        if self.testing:
+            assert (
+                self.testing.num_entities <= self.training.num_entities
+            ), f"{self.testing.num_entities=}>{self.validation.num_entities=}"
 
         # all entities must be known at training time
         # (this implicitly checks if there are entities with the same name)
@@ -325,7 +328,7 @@ class Dataset(keen_datasets_base.Dataset):
             arr = triples_to_ndarray(ds.g, triples)
             return set(arr[:, indexes].flatten())
 
-        for factory in (self.training, self.validation, self.testing):
+        for _, factory in self._factories:
 
             _mapped = _triples_to_set(ds.cw_train.triples, entities)
             assert (
