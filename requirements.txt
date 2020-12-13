@@ -4,18 +4,13 @@ wandb
 numpy
 pandas
 pykeen
-inotify
 networkx
 tabulate
-streamlit
 configobj
 gitpython
 transformers
 pretty-errors
 pytorch-lightning
-
-# tests
-inotify
 
 # notes
 jupyter
@@ -23,6 +18,7 @@ matplotlib
 
 # dev
 ipdb
+black
 flake8
 autopep8
 ipython

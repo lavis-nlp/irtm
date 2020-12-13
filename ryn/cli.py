@@ -57,7 +57,6 @@ def run(name: str = None):
 # not a super nice solution, but it works well
 
 import ryn.common  # noqa: E402
-import ryn.app  # noqa: E402
 import ryn.kgc  # noqa: E402
 import ryn.text  # noqa: E402
 import ryn.graphs  # noqa: E402
