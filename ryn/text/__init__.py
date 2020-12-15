@@ -124,6 +124,17 @@ def transform(
         **kwargs)
 
 
+@text.command()
+@click.option(
+    '--text-dataset', type=str,
+    help="path to text dataset")
+@click.option(
+    '--sentences', type=int,
+    help="number of sentences to retain")
+def reduce(**kwargs):
+    data.reduce(**kwargs)
+
+
 # shared options
 
 _shared_options_mapper = [

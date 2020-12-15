@@ -24,7 +24,9 @@ from datetime import datetime
 from functools import partial
 from functools import lru_cache
 from dataclasses import field
+from dataclasses import replace
 from dataclasses import dataclass
+from collections import Counter
 from collections import defaultdict
 
 import numpy as np
@@ -101,8 +103,6 @@ class Tokenizer:
 @dataclass
 class TransformContext:
 
-    select: ryn_loader.Loader
-
     fd_indexes: IO[str]
     fd_sentences: IO[str]
     fd_tokens: IO[str]
@@ -113,6 +113,8 @@ class TransformContext:
     dataset: split.Dataset
     sentences: int
     tokens: int
+
+    select: Optional[ryn_loader.Loader] = None
 
 
 # this matches masked sequences of the upstream sqlite context dbs
@@ -340,8 +342,14 @@ class WorkerArgs:
     dataset: split.Dataset
 
 
-def _transform_get_ctx(stack, split: str, args: WorkerArgs):
-    gopen = partial(gzip.open, mode="wb")
+def _transform_get_ctx(stack, split: str, args: WorkerArgs, file_mode: str):
+    gopen = partial(gzip.open, mode=file_mode)
+
+    select = None
+    if args.loader:
+        select = stack.enter_context(
+            ryn_loader.LOADER[args.loader](**args.loader_args)
+        )
 
     ctx = TransformContext(
         fd_tokens=stack.enter_context(
@@ -356,13 +364,11 @@ def _transform_get_ctx(stack, split: str, args: WorkerArgs):
         fd_nocontext=stack.enter_context(
             gopen(str(args.p_out / f"{split}-nocontext.txt.gz"))
         ),
-        select=stack.enter_context(
-            ryn_loader.LOADER[args.loader](**args.loader_args)
-        ),
         tokenizer=Tokenizer(model=args.model),
         dataset=args.dataset,
         sentences=args.sentences,
         tokens=args.tokens,
+        select=select,
     )
 
     return ctx
@@ -375,7 +381,7 @@ def _transform_worker(packed):
         log.info(f"! dispatching worker #{wid} for {split}")
 
         part = args.dataset[split]
-        ctx = _transform_get_ctx(stack, split, args)
+        ctx = _transform_get_ctx(stack, split, args, "wb")
 
         _transform_split(wid, ctx, part, **kwargs)
 
@@ -424,13 +430,13 @@ def transform(
     # ---
 
     if masked:
-        _mode = "masked"
+        mode = "masked"
     elif marked:
-        _mode = "marked"
+        mode = "marked"
     else:
-        _mode = "clean"
+        mode = "clean"
 
-    name = f"{model}.{sentences}.{tokens}.{_mode}"
+    name = f"{model}.{sentences}.{tokens}.{mode}"
     if suffix:
         name = f"{name}-{suffix}"
 
@@ -455,6 +461,7 @@ def transform(
             sentences=sentences,
             tokens=tokens,
             model=model,
+            mode=mode,
         )
 
         json.dump(info, fd, indent=2)
@@ -481,6 +488,95 @@ def transform(
                 (3, "ow.test", args, kwargs),
             ],
         )
+
+
+@helper.notnone
+def reduce(
+    text_dataset: Union[str, pathlib.Path] = None,
+    sentences: int = None,
+):
+    path = helper.path(
+        text_dataset, exists=True, message="reducing {path_abbrv}"
+    )
+
+    with (path / "info.json").open(mode="r") as fd:
+        info = json.load(fd)
+
+    model, old_sentences, tokens, mode = path.name.split(".")
+    old_sentences = int(old_sentences)
+    tokens = int(tokens)
+
+    assert info["model"] == model
+    assert info["sentences"] == old_sentences
+
+    if old_sentences <= sentences:
+        raise ryn.RynError("nothing to reduce")
+
+    log.info(f"reducing from {old_sentences} to {sentences} sentences")
+
+    name = f"{model}.{sentences}.{tokens}.{mode}"
+    p_out = helper.path(
+        path.parent / name, create=True, message="writing to {path_abbrv}"
+    )
+
+    # --
+
+    tokenizer = Tokenizer.load(text_dataset)
+    tokenizer.save(p_out)
+
+    info["created"] = datetime.now().isoformat()
+    info["sentences"] = sentences
+    info["git_hash"] = helper.git_hash()
+    with (p_out / "info.json").open(mode="w") as fd:
+        json.dump(info, fd, indent=2)
+
+    # --
+
+    in_args = WorkerArgs(
+        # copy
+        model=info["model"],
+        dataset=info["dataset"],
+        tokens=tokens,
+        sentences=old_sentences,
+        p_out=path,
+        # unused
+        loader=None,
+        loader_args=None,
+    )
+
+    out_args = replace(in_args, p_out=p_out, sentences=sentences)
+
+    def _write(out_ctx, sentence, indexes, tokens):
+        out_ctx.fd_sentences.write(sentence)
+        out_ctx.fd_indexes.write(indexes)
+        out_ctx.fd_tokens.write(tokens)
+
+    for part in ("cw.train", "ow.valid", "ow.test"):
+        with contextlib.ExitStack() as stack:
+            in_ctx = _transform_get_ctx(stack, part, in_args, "rb")
+            out_ctx = _transform_get_ctx(stack, part, out_args, "wb")
+
+            header, *lines = zip(
+                *(
+                    in_ctx.fd_sentences.readlines(),
+                    in_ctx.fd_indexes.readlines(),
+                    in_ctx.fd_tokens.readlines(),
+                )
+            )
+
+            # copy header line
+            _write(out_ctx, *header)
+
+            gen = (
+                (int(sent.decode().split(SEP, maxsplit=1)[0]), [sent] + other)
+                for sent, *other in lines
+            )
+
+            counts = Counter()
+            for e, lines in helper.tqdm(gen, unit=" sentence"):
+                if counts[e] < sentences:
+                    counts[e] += 1
+                    _write(out_ctx, *lines)
 
 
 @dataclass
