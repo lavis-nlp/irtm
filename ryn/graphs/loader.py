@@ -4,8 +4,10 @@ import ryn
 from ryn import RynError
 from ryn.graphs import graph
 from ryn.common import config
+from ryn.common import helper
 from ryn.common import logging
 
+import json
 import pathlib
 from dataclasses import dataclass
 
@@ -17,6 +19,87 @@ from typing import Generator
 
 
 log = logging.get("graphs.loader")
+
+
+# --- | CODEX IMPORTER
+#       https://github.com/tsafavi/codex
+
+
+def load_cde(
+    f_triples, f_rel2id: str = None, f_ent2id: str = None
+) -> graph.GraphImport:
+    """
+
+    Load CoDEx-like benchmark files
+
+    Structure is as follows:
+
+    f_triples: the graph as (
+      head-wikidata-id, relation-wikidata-id, tail-wikidata-id
+    ) triples
+
+    f_rel2id: json file containing wikidata-id -> label mappings
+    f_ent2id: json file containing wikidata-id -> label mappings
+
+    """
+    p_triples = helper.path(
+        f_triples,
+        exists=True,
+        message="loading CoDEx-like graph from {path_abbrv}",
+    )
+
+    with helper.path(
+        f_rel2id,
+        exists=True,
+        message="loading relation labels from {path_abbrv}",
+    ).open(mode="r") as fd:
+        rel2label = json.load(fd)
+
+    with helper.path(
+        f_ent2id,
+        exists=True,
+        message="loading entity labels from {path_abbrv}",
+    ).open(mode="r") as fd:
+        ent2label = json.load(fd)
+
+    triples = []
+    refs = {
+        "ents": {"counter": 0, "dic": {}},
+        "rels": {"counter": 0, "dic": {}},
+    }
+
+    def _get(kind: str, key: str):
+        dic = refs[kind]["dic"]
+
+        if key not in dic:
+            dic[key] = refs[kind]["counter"]
+            refs[kind]["counter"] += 1
+
+        return dic[key]
+
+    with p_triples.open(mode="r") as fd:
+        for line in fd:
+            gen = zip(("ents", "rels", "ents"), line.strip().split())
+            h, r, t = map(lambda a: _get(*a), gen)
+            triples.append((h, t, r))  # mind the switch
+
+    gi = graph.GraphImport(
+        triples=triples,
+        rels={
+            idx: f"{wid}:{rel2label[wid]['label']}"
+            for wid, idx in refs["rels"]["dic"].items()
+        },
+        ents={
+            idx: f"{wid}:{ent2label[wid]['label']}"
+            for wid, idx in refs["ents"]["dic"].items()
+        },
+    )
+
+    return gi
+
+
+# --- | OPEN KE IMPORTER
+#       https://github.com/thunlp/OpenKE
 
 
 def _oke_fn_triples(line: str):
@@ -39,16 +122,14 @@ def _oke_parse(path: str = None, fn=None) -> Generator[Any, None, None]:
             yield line if fn is None else fn(line)
 
 
-# --- | OPEN KE IMPORTER
-#       https://github.com/thunlp/OpenKE
-
-
 def load_oke(
-    f_triples: str, f_rel2id: str = None, f_ent2id: str = None
+    f_triples, f_rel2id: str = None, f_ent2id: str = None
 ) -> graph.GraphImport:
     """
 
-    Load OpenKE-like benchmark files. Structure is as follows:
+    Load OpenKE-like benchmark files
+
+    Structure is as follows:
 
     f_triples: the graph as (eid-1, eid-2, rid) triples
     f_rel2id: relation names as (name, rid) tuples
@@ -122,6 +203,7 @@ def load_vll(f_triples: str) -> graph.GraphImport:
 LOADER = {
     "vll": load_vll,
     "oke": load_oke,
+    "cde": load_cde,
 }
 
 
