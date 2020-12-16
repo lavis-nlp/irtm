@@ -784,9 +784,10 @@ class TextDataset:
     created: datetime
     git_hash: str
 
-    model: str
-    dataset: str
-    database: str
+    mode: str  # clean, marked, masked
+    model: str  # bert-base-cased
+    dataset: str  # oke.fb15k237_26041992_100, ...
+    database: str  # entity2wikidata.json, ...
 
     max_sentence_count: int
     max_token_count: int
@@ -820,6 +821,31 @@ class TextDataset:
             f"{self.dataset}/{self.database}/{self.model}"
             f".{self.max_sentence_count}.{self.max_token_count}"
         )
+
+    @property
+    def identifier(self) -> str:
+        trail = []
+
+        # translate internal naming schemes to the public one
+        datasets = {
+            "oke.fb15k237_26041992_100": ["irt", "fb"],
+            "vll.fb15k237-owe_2041992": ["owe"],
+        }
+
+        assert self.dataset in datasets
+        trail += datasets[self.dataset]
+
+        text_sources = {
+            "contexts-v7-enwiki-20200920-100-500.db": [],
+            "entity2wikidata.json": ["owe"],
+        }
+
+        assert self.database in text_sources
+        trail += text_sources[self.database]
+        trail += [str(self.max_sentence_count)]
+        trail += [self.mode]
+
+        return ".".join(trail)
 
     def __str__(self) -> str:
         buf = "\n".join(
@@ -893,12 +919,13 @@ class TextDataset:
         # closed world entities to measure transductive projection loss
         cw_train, cw_transductive = cw_train.split_text_contexts(ratio=ratio)
 
-        self = TextDataset(
+        self = K(
             ratio=ratio,
             # update
             created=datetime.now().isoformat(),
             git_hash=helper.git_hash(),
             # copy
+            mode=info["mode"],
             model=info["model"],
             dataset=info["dataset"],
             database=info["database"],
@@ -933,11 +960,12 @@ class TextDataset:
 
         with (path / "info.json").open(mode="r") as fd:
             info = json.load(fd)
-        self = TextDataset(
+        self = K(
             # update
             created=datetime.now().isoformat(),
             git_hash=helper.git_hash(),
             # copy
+            mode=info["mode"],
             model=info["model"],
             dataset=info["dataset"],
             database=info["database"],

@@ -44,6 +44,7 @@ def _init_logger(
     kgc_model_name: str = None,
     text_encoder_name: str = None,
     text_dataset_name: str = None,
+    text_dataset_identifier: str = None,
     resume: bool = None,
 ):
 
@@ -223,6 +224,7 @@ def train(*, config: Config = None, debug: bool = False):
         kgc_model_name=rync.kgc_model_name,
         text_encoder_name=config.text_encoder,
         text_dataset_name=datamodule.text.name,
+        text_dataset_identifier=datamodule.text.identifier,
         resume=False,
     )
 
@@ -322,6 +324,7 @@ def resume_from_kwargs(
         kgc_model_name=rync.kgc_model_name,
         text_encoder_name=config.text_encoder,
         text_dataset_name=datamodule.text.name,
+        text_dataset_identifier=datamodule.text.identifier,
         resume=True,
     )
 
