@@ -220,6 +220,9 @@ def train(*, config=None, **kwargs):
 @click.option(
     '--checkpoint', type=str, required=True,
     help='path to model checkpoint')
+@click.option(
+    '-c', '--config', type=str, multiple=True,
+    help='one or more configuration files')
 @_add_options(_shared_options_mapper)
 def resume(**kwargs):
     """

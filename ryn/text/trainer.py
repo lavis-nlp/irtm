@@ -277,12 +277,13 @@ def resume_from_kwargs(
     checkpoint: str = None,
     debug: bool = None,
     offline: bool = None,
+    config: List[str] = None,
     **kwargs,
 ):
 
     out = helper.path(path, exists=True)
     config_file = out / "config.yml"
-    config = Config.create(configs=[config_file], **kwargs)
+    config = Config.create(configs=[config_file] + list(config), **kwargs)
 
     config.out = out
     config.wandb_args.update(
