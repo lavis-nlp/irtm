@@ -1,0 +1,9 @@
+trainer_args:
+  max_epochs: 2000
+
+early_stopping: true
+early_stopping_args:
+  monitor: inductive/hits_at_k/both/avg/10
+  mode: max
+  min_delta: 0.00001
+  patience: 30

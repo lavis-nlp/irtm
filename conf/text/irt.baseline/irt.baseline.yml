@@ -18,7 +18,6 @@ wandb_args:
 
 trainer_args:
   gpus: 1
-  max_epochs: 200
   check_val_every_n_epoch: 2
   fast_dev_run: False
   distributed_backend: horovod
@@ -31,13 +30,6 @@ checkpoint_args:
   mode: max
   monitor: inductive/hits_at_k/both/avg/10
   save_top_k: 10
-
-early_stopping: true
-early_stopping_args:
-  monitor: inductive/hits_at_k/both/avg/10
-  mode: max
-  min_delta: 0.00001
-  patience: 5
 
 dataloader_train_args:
   num_workers: 0
