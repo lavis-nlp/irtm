@@ -3,6 +3,7 @@
 
 import ryn
 from ryn.cli import main
+from ryn.text import prep
 from ryn.text import data
 from ryn.text import trainer
 from ryn.text import evaluator
@@ -117,7 +118,7 @@ def transform(
         loader_args = dict(database=sqlite_database)
 
     dataset = split.Dataset.load(path=dataset)
-    data.transform(
+    prep.transform(
         dataset=dataset,
         loader=loader,
         loader_args=loader_args,
@@ -132,7 +133,7 @@ def transform(
     '--sentences', type=int,
     help="number of sentences to retain")
 def reduce(**kwargs):
-    data.reduce(**kwargs)
+    prep.reduce(**kwargs)
 
 
 # shared options
