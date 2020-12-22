@@ -4,5 +4,3 @@ comparator: euclidean 1
 comparator_args: {}
 freeze_text_encoder: true
 projector: affine 1
-
-text_dataset: data/text/data/oke.fb15k237_26041992_100/contexts-v7-enwiki-20200920-100-500.db/bert-base-cased.30.768.clean
