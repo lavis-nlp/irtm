@@ -256,16 +256,12 @@ def train(*, config: Config = None, debug: bool = False):
 @helper.notnone
 def train_from_kwargs(
     debug: bool = False,
-    offline: bool = False,
     config: List[str] = None,
     **kwargs,
 ):
 
     if debug:
         log.warning("debug run")
-
-    if offline:
-        log.warning("offline run")
 
     config = Config.create(configs=config, **kwargs)
     train(config=config, debug=debug)
@@ -276,7 +272,6 @@ def resume_from_kwargs(
     path: str = None,
     checkpoint: str = None,
     debug: bool = None,
-    offline: bool = None,
     config: List[str] = None,
     **kwargs,
 ):
@@ -286,12 +281,6 @@ def resume_from_kwargs(
     config = Config.create(configs=[config_file] + list(config), **kwargs)
 
     config.out = out
-    config.wandb_args.update(
-        dict(
-            offline=offline,
-        )
-    )
-
     datamodule, rync = load_from_config(config=config)
 
     checkpoint = helper.path(

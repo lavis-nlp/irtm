@@ -195,9 +195,6 @@ def _add_options(options):
     '--debug', is_flag=True,
     help='only test a model and do not log')
 @click.option(
-    '--offline', is_flag=True,
-    help='run a complete training, but do so locally (wandb)')
-@click.option(
     '-c', '--config', type=str, multiple=True,
     help='one or more configuration files')
 @_add_options(_shared_options_mapper)
@@ -212,9 +209,6 @@ def train(*, config=None, **kwargs):
 @click.option(
     '--debug', is_flag=True,
     help='only test a model and do not log')
-@click.option(
-    '--offline', is_flag=True,
-    help='run a complete training, but do so locally (wandb)')
 @click.option(
     '--path', type=str, required=True,
     help='path to model directory')
