@@ -559,12 +559,12 @@ class TorchDataset(torch_data.Dataset):
         return self._name
 
     @property
-    def max_sequence_length(self):
-        return self._max_len
+    def max_context_idx(self) -> int:
+        return self._max_context_idx
 
     @property
-    def max_sequence_idx(self):
-        return self._max_idx
+    def max_context_size(self) -> Tuple[int]:
+        return self._max_context_size
 
     @property
     def degrees(self):
@@ -573,7 +573,7 @@ class TorchDataset(torch_data.Dataset):
     def __len__(self):
         return len(self._flat)
 
-    def __getitem__(self, idx: int) -> Tuple[torch.Tensor, int]:
+    def __getitem__(self, idx: int) -> Tuple[int, torch.Tensor]:
         return self._flat[idx]
 
     def __init__(
@@ -590,19 +590,18 @@ class TorchDataset(torch_data.Dataset):
         super().__init__()
         self._name = name
 
-        self._flat = [
-            (torch.Tensor(idxs).to(dtype=torch.long), e)
-            for e, idx_lists in part.id2idxs.items()
-            for idxs in idx_lists
+        self._flat = [(e, idxs) for e, idxs in part.id2idxs.items()]
+        shapes = [
+            [len(idxs), max(len(sentence) for sentence in idxs)]
+            for _, idxs in self._flat
         ]
 
-        lens = np.array([len(idxs) for idxs, _ in self._flat])
-        self._max_idx = np.argmax(lens)
-        self._max_len = lens[self.max_sequence_idx]
+        self._max_context_idx = np.argmax([x * y for x, y in shapes])
+        self._max_context_size = shapes[self.max_context_idx]
 
         log.info(
             f"initialized torch dataset {name}: samples={len(self)};"
-            f" max sequence length: {self.max_sequence_length}"
+            f" max context size: {self.max_context_size}"
         )
 
         if not triples:
@@ -612,8 +611,9 @@ class TorchDataset(torch_data.Dataset):
         # note: this does not consider direction; nodes with an
         #  out_degree of 0 can still have a large in_degree
         self._degrees = torch.Tensor(
-            [triples.g.nx.degree[e] for _, e in self._flat]
+            [triples.g.nx.degree[e] for e, _ in self._flat]
         )
+
         assert (
             len(self.degrees[self.degrees == 0]) == 0
         ), "found disconnected nodes"
@@ -623,27 +623,25 @@ class TorchDataset(torch_data.Dataset):
             f" std={self.degrees.std():2.2f}"
         )
 
-    @property
-    def collator(self):
-        # TODO use trainer callback instead
-        max_len = self._max_len
-
-        def _collate_fn(batch: List[Tuple]):
-            ents, idxs = zip(*batch)
-
-            padded = pad_sequence(idxs, batch_first=True)
-            shape = padded.shape[0], max_len
-            bowl = torch.zeros(shape).to(dtype=torch.long)
-            bowl[:, : padded.shape[1]] = padded
-
-            return bowl, ents
-
-        return _collate_fn
-
     @staticmethod
-    def collate_fn(batch: List[Tuple]):
-        idxs, ents = zip(*batch)
-        return pad_sequence(idxs, batch_first=True), ents
+    def collate_fn(
+        batch: List[Tuple[int, torch.Tensor]]
+    ) -> Tuple[torch.Tensor]:
+
+        # flatten entities to match context counts
+        ents = tuple([ent for ent, ctx in batch for _ in ctx])
+
+        # flatten and pad context sentences
+        ctxs = pad_sequence(
+            [
+                torch.Tensor(sentence).to(torch.long)
+                for _, ctx in batch
+                for sentence in ctx
+            ],
+            batch_first=True,
+        )
+
+        return (ents, ctxs)
 
 
 @dataclass
@@ -686,6 +684,19 @@ class Models:
         )
 
 
+class DataLoader(torch_data.DataLoader):
+    @property
+    def subbatch_size(self):
+        return self._subbatch_size
+
+    @helper.notnone
+    def __init__(self, dataset, *args, subbatch_size: int = None, **kwargs):
+        super().__init__(
+            dataset, *args, collate_fn=dataset.collate_fn, **kwargs
+        )
+        self._subbatch_size = subbatch_size
+
+
 class DataModule(pl.LightningDataModule):
     @property
     def config(self) -> Config:
@@ -726,6 +737,12 @@ class DataModule(pl.LightningDataModule):
 
     def should_evaluate_kgc(self, dataloader_idx: Optional[int]) -> bool:
         return dataloader_idx is None or dataloader_idx == 2
+
+    def subbatch_size(self, dataloader_idx) -> int:
+        if not self.has_geometric_validation():
+            return self.val_dataloader()[0].subbatch_size
+
+        return self.val_dataloader()[dataloader_idx].subbatch_size
 
     @property
     def kgc_dataloader(self):
@@ -806,6 +823,7 @@ class DataModule(pl.LightningDataModule):
                     part=self.text.ow_valid,
                 ),
             )
+
         else:
             log.info("! dataset offers no geometric validation")
 
@@ -823,7 +841,7 @@ class DataModule(pl.LightningDataModule):
 
     # FOR LIGHTNING
 
-    def train_dataloader(self) -> torch_data.DataLoader:
+    def train_dataloader(self) -> DataLoader:
         sampler = None
         if self.config.sampler:
             assert self.config.sampler == "node degree"  # TODO define registry
@@ -844,29 +862,26 @@ class DataModule(pl.LightningDataModule):
                 f"using node degreee sampler {num_samples=} {replacement=}"
             )
 
-        return torch_data.DataLoader(
+        return DataLoader(
             self._train_set,
-            collate_fn=TorchDataset.collate_fn,
             sampler=sampler,
             **self.config.dataloader_train_args,
         )
 
-    def val_dataloader(self) -> torch_data.DataLoader:
+    def val_dataloader(self) -> DataLoader:
         assert self._valid_sets
 
         return [
-            torch_data.DataLoader(
+            DataLoader(
                 dataset,
-                collate_fn=TorchDataset.collate_fn,
                 **self.config.dataloader_valid_args,
             )
             for dataset in self._valid_sets
         ]
 
-    def test_dataloader(self) -> torch_data.DataLoader:
+    def test_dataloader(self) -> DataLoader:
         # see evaluator.py
-        return torch_data.DataLoader(
+        return DataLoader(
             self._test_set,
-            collate_fn=TorchDataset.collate_fn,
             **self.config.dataloader_test_args,
         )

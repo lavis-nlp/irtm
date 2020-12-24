@@ -170,6 +170,7 @@ _shared_options_mapper = [
     click.option('--text-encoder', type=str),
     click.option('--freeze-text-encoder', type=bool),
     click.option('--aggregator', type=str),
+    click.option('--reductor', type=str),
     click.option('--projector', type=str),
     click.option('--projector-args--input-dims', type=int),
     click.option('--projector-args--output-dims', type=int),

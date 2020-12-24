@@ -25,12 +25,14 @@ import yaml
 from itertools import count
 from itertools import repeat
 from itertools import groupby
+from itertools import zip_longest
+from functools import partial
 from dataclasses import dataclass
 from collections import defaultdict
 
 from typing import Dict
 from typing import Tuple
-from typing import Optional
+from typing import Sequence
 
 
 log = logging.get("text.mapper")
@@ -173,15 +175,71 @@ class CLSDropoutAggregator_1(Aggregator):
         return self.dropout(X[:, 0])
 
 
+# --- CONTEXT MERGES
+
+
+class Reductor(Base):
+    """
+    Might reduce whole context to single representation
+    """
+
+    pass
+
+
+@Reductor.module
+class IndependentReductor_1(Reductor):
+
+    name = "independent 1"
+
+    def forward(self, entities: Tuple[int], context: torch.Tensor):
+        return entities, context
+
+
+@Reductor.module
+class MaxReductor_1(Reductor):
+
+    name = "max 1"
+
+    def forward(self, entities: Tuple[int], context: torch.Tensor):
+        # inner-batch indexes
+        counter = count()
+
+        # e.g. given two entities and a batch_size of 5:
+        # (8, 8, 8, 7, 7) -> [(8, [0, 1, 2]), (7, [3, 4])]
+        grouped = [
+            (entity, [next(counter) for _ in grouper])
+            for entity, grouper in groupby(entities)
+        ]
+
+        # batch x kge_dims -> unique entities x kge_dims
+        # black formats this rather strangely
+        # fmt: off
+        pooled = torch.vstack(tuple(
+            context[idxs].max(axis=0).values
+            for _, idxs in grouped
+        ))
+        # fmt: on
+
+        unique_entities = tuple(zip(*grouped))[0]
+        return unique_entities, pooled
+
+
 # --- PROJECTION
 
 
 class Projector(Base):
+    """
+    Map a text context into KGE-space
+    """
+
     pass
 
 
 @Projector.module
 class AffineProjector_1(Projector):
+    """
+    Ax + b
+    """
 
     name = "affine 1"
 
@@ -198,93 +256,14 @@ class AffineProjector_1(Projector):
         super().__init__(*args, config=config, **kwargs)
         self.projector = nn.Linear(config.input_dims, config.output_dims)
 
-    # batch x text_dims, batch -> entities x kge_dims
-    def forward(self, X: torch.Tensor, entities: Tuple[int]) -> torch.Tensor:
-        return self.projector(X), entities
-
-
-@Projector.module
-class AffineProjectorWithPooling_1(Projector):
-    """
-
-    Project and aggregate entities
-
-    """
-
-    name = "affine pooling 1"
-
-    @dataclass
-    class Config(Base.Config):
-
-        POOLING = ("max",)  # later: avg, min+max, max+avg etc.
-
-        input_dims: int
-        output_dims: int
-        pooling: str
-        dropout: bool
-        dropout_p: Optional[float] = None
-
-        def __post_init__(self):
-            if self.pooling not in AffineProjectorWithPooling_1.Config.POOLING:
-                raise ryn.RynError(f"unsupported pooling: '{self.pooling}'")
-
-            if self.dropout and not self.dropout_p:
-                raise ryn.RynError("dropout_p missing")
-
-    # ---
-
-    def __init__(
-        self, *args, config: "AffineProjectorWithPooling_1.Config", **kwargs
-    ):
-        super().__init__(*args, config=config, **kwargs)
-        if self.config.dropout:
-            self.dropout = nn.Dropout(config.dropout_p)
-
-        self.projector = nn.Linear(config.input_dims, config.output_dims)
-
-    # batch x text_dims, batch -> unique entities x kge_dims
-    def forward(self, X: torch.Tensor, entities: Tuple[int]):
-
-        if self.config.dropout:
-            X = self.dropout(X)
-
-        # inner-batch indexes
-        counter = count()
-
-        # e.g. given two entities and a batch_size of 5:
-        # (8, 8, 8, 7, 7) -> [(8, [0, 1, 2]), (7, [3, 4])]
-        grouped = [
-            (entity, [next(counter) for _ in grouper])
-            for entity, grouper in groupby(entities)
-        ]
-
-        # batch x kge_dims -> unique entities x kge_dims
-        # black formats this rather strangely
-        # fmt: off
-        pooled = torch.vstack(tuple(
-            X[idxs, ].max(axis=0).values
-            for _, idxs in grouped
-        ))
-        # fmt: on
-
-        unique_entities = tuple(zip(*grouped))[0]
-
-        # batch x text_dims -> batch x kge_dims
-        projected = self.projector(pooled)
-
-        assert len(projected) == len(grouped)
-        assert len(projected) == len(unique_entities)
-        assert projected.shape[1] == self.config.output_dims
-
-        return projected, unique_entities
+    def forward(self, X: torch.Tensor) -> torch.Tensor:
+        return self.projector(X)
 
 
 @Projector.module
 class MLPProjector_1(Projector):
     """
-
     One hidden layer, ReLU for hidden and tanh for output
-
     """
 
     name = "mlp 1"
@@ -309,8 +288,8 @@ class MLPProjector_1(Projector):
         )
 
     # batch x text_dims -> batch x kge_dims
-    def forward(self, X: torch.Tensor, entities: Tuple[int]) -> torch.Tensor:
-        return self.projector(X), entities
+    def forward(self, X: torch.Tensor) -> torch.Tensor:
+        return self.projector(X)
 
 
 # --- COMPARING
@@ -383,16 +362,16 @@ class Components:
     # text encoder
     text_encoder: tf.BertModel
 
-    # takes token representations and maps them to
-    # a single vector for the projector
+    # takes token representations and maps them to a single vector
     aggregator: Aggregator
 
-    # takes an aggeragated vector of text embeddings
-    # and projects them to the kg embeddings
+    # takes sentence representations and (maybe) reduce them per entity
+    reductor: Reductor
+
+    # takes the context representation(s) and maps them to KGE space
     projector: Projector
 
-    # compares the projected text embeddings
-    # to the target kg embeddings
+    # compares the projected text embeddings to the target kg embeddings
     comparator: Comparator
 
     # the projection target
@@ -408,6 +387,8 @@ class Components:
         aggregator = Aggregator.init(
             name=config.aggregator, **config.aggregator_args
         )
+
+        reductor = Reductor.init(name=config.reductor, **config.reductor_args)
 
         projector = Projector.init(
             name=config.projector, **config.projector_args
@@ -426,6 +407,7 @@ class Components:
             config=config,
             text_encoder=models.text_encoder,
             aggregator=aggregator,
+            reductor=reductor,
             projector=projector,
             comparator=comparator,
             kgc_model=models.kgc_model,
@@ -482,31 +464,14 @@ class Mapper(pl.LightningModule):
         return self._data
 
     @property
-    def projection_aggregation(self) -> str:
-        return self._projection_aggregation
-
-    @projection_aggregation.setter
-    def projection_aggregation(self, projection_aggregation):
-        if not any(
-            (
-                projection_aggregation == "max",
-                projection_aggregation == "avg",
-                projection_aggregation == "last",
-            )
-        ):
-            raise ryn.RynError(
-                "unknown projection aggregation:" f" {projection_aggregation}"
-            )
-
-        self._projection_aggregation = projection_aggregation
+    def automatic_optimization(self) -> bool:
+        return False
 
     def __init__(
         self,
         data=None,  # data.DataModule
         rync: Components = None,
         freeze_text_encoder: bool = False,
-        # supported are: avg, max, last
-        projection_aggregation: str = "avg",
     ):
         assert data is not None
         assert rync is not None
@@ -520,12 +485,12 @@ class Mapper(pl.LightningModule):
 
         self._data = data
         self._rync = rync
-        self.projection_aggregation = projection_aggregation
 
         # parameters
 
         self.encode = rync.text_encoder
         self.aggregate = rync.aggregator
+        self.reduce = rync.reductor
         self.project = rync.projector
         self.loss = rync.comparator
 
@@ -587,79 +552,126 @@ class Mapper(pl.LightningModule):
     def update_projections(self, entities=None, projected=None):
         for e, v in zip(entities, projected.detach()):
             idx = self.data.kgc.ryn2keen[e]
-
-            if self.projection_aggregation == "max":
-                self.projections[idx] = torch.max(self.projections[idx], v)
-                self.projections_counts[idx] = 1
-
-            if self.projection_aggregation == "avg":
-                self.projections[idx] += v
-                self.projections_counts[idx] += 1
-
-            if self.projection_aggregation == "last":
-                self.projections[idx] = v
-                self.projections_counts = 1
+            self.projections[idx] += v
+            self.projections_counts[idx] += 1
 
     # ---
 
-    def forward_sentences(self, sentences: torch.Tensor):
+    def forward_context(self, context: torch.Tensor):
         # mask padding and [MASK] tokens
 
         mask = 103  # TODO BERT specific!
-        attention_mask = (sentences > 0) | (sentences == mask)
+        attention_mask = (context > 0) | (context == mask)
         attention_mask = attention_mask.to(dtype=torch.long)
 
-        return self.encode(input_ids=sentences, attention_mask=attention_mask)[
-            0
-        ]
+        Y = self.encode(input_ids=context, attention_mask=attention_mask)
+        return Y[0]
 
-    def forward_entities(self, entities: torch.Tensor):
-        return self.rync.kgc_model.embeddings(
+    def kge(self, entities: Tuple[int]):
+        assert set(entities).issubset(self.data.split.cw_train.owe)
+
+        embeddings = self.rync.kgc_model.embeddings(
             entities=entities, device=self.device
         )
 
+        return embeddings
+
     @helper.notnone
+    def forward_subbatch(
+        self, ents: Tuple[int] = None, ctxs: torch.Tensor = None
+    ) -> Tuple[Tuple[int], torch.Tensor]:
+        # sub-batch x tokens x text_dims
+        encoded = self.forward_context(ctxs)
+
+        # sub-batch x text_dims
+        aggregated = self.aggregate(encoded)
+
+        # (unique) entities x text_dims
+        entities, reduced = self.reduce(ents, aggregated)
+
+        # (unique) entities x kge_dims
+        projected = self.project(reduced)
+
+        # update projections
+        self.update_projections(entities=entities, projected=projected)
+        return entities, projected
+
     def forward(
         self,
         *,
-        sentences: torch.Tensor = None,  # batch x tokens
-        entities: torch.Tensor = None,  # batch
+        # entity -> [s1, s2, ...]
+        batch: Tuple[Tuple[int], torch.Tensor] = None,  # batch
+        subbatch_size: int = None,
+        optimize: bool = False,
+        calculate_loss: bool = False,
     ):
+        assert batch and subbatch_size
+        if optimize:
+            assert calculate_loss
 
-        # batch x tokens x text_dims
-        encoded = self.forward_sentences(sentences)
+        ents, ctxs = batch
+        optimizer = self.optimizers()
 
-        # batch x text_dims
-        aggregated = self.aggregate(encoded)
+        # return values
+        losses = [] if calculate_loss else None
+        loss, ret = None, {}
 
-        # entities x kge_dims
-        projected, entities = self.project(aggregated, entities)
+        # sub-batching
+        N = len(ents)
+        subbatch_size = subbatch_size or len(ents)
+        steps = range(0, N, subbatch_size)
 
-        return projected, entities
+        for j, k in zip_longest(steps, steps[1:], fillvalue=N):
+            entities, projected = self.forward_subbatch(
+                ents=ents[j:k], ctxs=ctxs[j:k]
+            )
+
+            if calculate_loss:
+                targets = self.kge(entities)
+                loss = self.loss(projected, targets)
+                losses.append(loss)
+
+            if optimize:
+                self.manual_backward(loss, optimizer)
+
+            ret.update(
+                {
+                    e: torch.vstack((ret[e].detach(), x)) if e in ret else x
+                    for e, x in zip(entities, projected)
+                }
+            )
+
+        if optimize:
+            optimizer.step()
+            optimizer.zero_grad()
+
+        if calculate_loss:
+            loss = torch.stack(losses).mean()
+
+        if calculate_loss:
+            return loss, ret
+        else:
+            assert loss is None
+            return ret
 
     #
     #   TRAINING
     #
 
-    def training_step(self, batch, batch_idx: int):
-        sentences, entities = batch
-
-        # batch x kge_dims
-        projected, entities = self.forward(
-            sentences=sentences, entities=entities
-        )
-        self.update_projections(projected=projected, entities=entities)
-
-        # entities x kge_dims
-        target = self.forward_entities(entities)
-        loss = self.loss(projected, target)
-
-        self.log_dict(
-            dict(
-                train_loss_step=loss,
-            )
+    def training_step(
+        self,
+        batch: Sequence[Tuple[torch.Tensor, torch.Tensor]],
+        batch_idx: int,
+    ):
+        # batch, batch x kge_dims
+        loss, projections = self.forward(
+            batch=batch,
+            optimize=True,
+            calculate_loss=True,
+            subbatch_size=self.data.train_dataloader().subbatch_size,
         )
 
+        self.log("train_loss_step", loss)
         return loss
 
     #
@@ -669,57 +681,52 @@ class Mapper(pl.LightningModule):
     @helper.notnone
     def _geometric_validation_step(
         self,
-        sentences=None,
-        entities=None,
+        batch=None,
         kind: str = None,
+        subbatch_size: int = None,
     ):
-        # batch x kge_dims
-        projected, entities = self.forward(
-            sentences=sentences, entities=entities
+        # partition losses for inductive and transductive
+        loss, _ = self.forward(
+            batch=batch,
+            subbatch_size=subbatch_size,
+            calculate_loss=True,
         )
-        self.update_projections(projected=projected, entities=entities)
 
-        # entities x kge_dims
-        target = self.forward_entities(entities)
-
-        # entities
-        losses = self.loss(projected, target)
-
-        # partition losses into inductive and transductive
-        self.log_dict({f"{kind}.valid_loss_step": losses})
+        self.log_dict({f"{kind}.valid_loss_step": loss})
 
     @helper.notnone
     def _kgc_validation_step(
         self,
-        sentences=None,
-        entities=None,
+        batch=None,
         batch_idx=None,
+        subbatch_size=None,
     ):
-        projected, entities = self.forward(
-            sentences=sentences, entities=entities
-        )
-        self.update_projections(projected=projected, entities=entities)
+        # it updates the projections buffer
+        self.forward(batch=batch, subbatch_size=subbatch_size)
+
+        # after last batch: run pykeen evaluation
         if batch_idx == self._ow_validation_batches - 1:
             self._run_kgc_evaluations()
 
-    def validation_step(self, batch, batch_idx: int, *args):
+    def validation_step(
+        self, batch: Sequence[Tuple[int, torch.Tensor]], batch_idx: int, *args
+    ):
         dataloader_idx = args[0] if args else None  # nasty!
-        sentences, entities = batch
 
         if self.data.should_evaluate_geometric(dataloader_idx):
             self._geometric_validation_step(
-                sentences=sentences,
-                entities=entities,
+                batch=batch,
                 kind=self.data.geometric_validation_kind(dataloader_idx),
+                subbatch_size=self.data.subbatch_size(dataloader_idx),
             )
         elif self.data.should_evaluate_kgc(dataloader_idx):
             self._kgc_validation_step(
-                sentences=sentences,
-                entities=entities,
+                batch=batch,
                 batch_idx=batch_idx,
+                subbatch_size=self.data.subbatch_size(dataloader_idx),
             )
         else:
-            assert False
+            assert False, "unknown validation dataloader"
 
     @helper.notnone
     def run_kgc_evaluation(
@@ -892,6 +899,7 @@ class Mapper(pl.LightningModule):
         # allocated memory is not visible
         device_properties = torch.cuda.get_device_properties(self.device)
         total_memory = int(device_properties.total_memory * 0.9)
+
         log.info(
             f"checking {device_properties.name} with around "
             f" ~{total_memory // 1024**3}GB"
@@ -908,33 +916,50 @@ class Mapper(pl.LightningModule):
         )
 
         for loader in loaders:
+            train = loader.dataset.name.endswith("train")  # TODO
+
             # moving some noise with the shape of the largest
             # possible sample through the model to detect oom problems
 
             log.info(
-                f"checking {loader.dataset.name} (max sequence length:"
-                f" {loader.dataset.max_sequence_length})"
+                f"checking {loader.dataset.name} (largest batch:"
+                f" {loader.dataset.max_context_size})"
             )
 
-            sample = loader.dataset[loader.dataset.max_sequence_idx]
-            batch = repeat(sample, loader.batch_size)
-            sentences, entities = loader.collate_fn(batch)
+            sample = loader.dataset[loader.dataset.max_context_idx]
+            samples = repeat(sample, loader.batch_size * loader.subbatch_size)
+            batch = loader.collate_fn(list(samples))
+            batch = batch[0], batch[1].to(self.device)
 
-            log.info(f"trying batch with {sentences.shape}")
+            log.info(
+                f"trying batch with {batch[1].shape}"
+                f" subbatch size: {loader.subbatch_size}"
+            )
 
-            sentences = sentences.to(self.device)
-            self.forward(sentences=sentences, entities=entities)
+            forward = partial(
+                self.forward,
+                batch=batch,
+                optimize=train,
+                calculate_loss=train,
+                subbatch_size=loader.subbatch_size,
+            )
 
+            if not train:
+                with torch.no_grad():
+                    forward()
+            else:
+                forward()
+
+            # can be > 100 sometimes...
             res_memory = torch.cuda.memory_reserved(self.device)
             memory_usage = (res_memory / total_memory) * 100
+
             log.info(
                 f"! {loader.dataset.name} is using"
                 f" ~{int(memory_usage)}% memory"
             )
 
             del batch
-            del sentences
-
             gc.collect()
             torch.cuda.empty_cache()
 
@@ -953,11 +978,6 @@ class Mapper(pl.LightningModule):
         self._ow_validation_batches = math.ceil(
             len(self.data.kgc_dataloader) / hvd.size()
         )
-
-        if hvd.size() != 1 and self.projection_aggregation == "max":
-            raise ryn.RynError(
-                "max pooling is not supported for multi-gpu setups"
-            )
 
         # --
 

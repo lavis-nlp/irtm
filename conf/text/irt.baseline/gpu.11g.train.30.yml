@@ -1,16 +1,15 @@
 # 11GB GPU RAM configuration
-# - used for split seed=30061990 ratio=0.9 with 30 sentences
 # - tested with GTX 1080 TI
 
-# max sequence length: 403
 dataloader_train_args:
-  batch_size: 15
+  batch_size: 1
+  subbatch_size: 20
 
-# max sequence length: 290
 dataloader_valid_args:
-  batch_size: 20
+  batch_size: 1
+  subbatch_size: 30
 
-# max sequence length: 338
 dataloader_test_args:
-  batch_size: 15
+  batch_size: 1
+  subbatch_size: 30
 

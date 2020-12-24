@@ -86,10 +86,12 @@ class Config:
     # necessary configuration
 
     aggregator: str
+    reductor: str
     projector: str
     comparator: str
 
     aggregator_args: Dict[str, Any] = field(default_factory=dict)
+    reductor_args: Dict[str, Any] = field(default_factory=dict)
     projector_args: Dict[str, Any] = field(default_factory=dict)
     comparator_args: Dict[str, Any] = field(default_factory=dict)
 
@@ -119,17 +121,6 @@ class Config:
 
     # directory to save everything to
     out: Union[str, pathlib.Path] = None
-
-    # ---
-
-    def __post_init__(self):
-        if (
-            self.projector.startswith("affine pooling")
-            and self.dataloader_train_args["shuffle"]
-        ):
-            raise MisconfigurationError(
-                "do not shuffle samples when using affine pooling"
-            )
 
     # ---
 
