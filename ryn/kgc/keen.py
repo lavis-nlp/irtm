@@ -817,7 +817,6 @@ class Model:
         keen_dataset = Dataset.from_split_dataset(split_dataset)
 
         # TODO different triple split?
-        # __import__("pdb").set_trace()
         assert keen_dataset.training.mapped_triples.equal(
             training_result.model.triples_factory.mapped_triples
         ), "cannot reproduce triple split"
