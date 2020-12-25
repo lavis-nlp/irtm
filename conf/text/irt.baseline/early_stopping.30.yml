@@ -1,5 +1,5 @@
-
-# early stopping for 30 contexts per entity
+trainer_args:
+  max_epochs: 1000
 
 early_stopping: true
 early_stopping_args:

@@ -3,7 +3,7 @@
 
 dataloader_train_args:
   batch_size: 1
-  subbatch_size: 20
+  subbatch_size: 15
 
 dataloader_valid_args:
   batch_size: 1
