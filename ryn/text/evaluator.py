@@ -65,18 +65,10 @@ def _create_projections(
                 desc=f"{loader.dataset.name} samples ",
             )
 
-            for batch_idx, batch in gen:
-                sentences, entities = batch
-                sentences = sentences.to(device=model.device)
-                projected, entities = model.forward(
-                    sentences=sentences, entities=entities
-                )
-
-                model.update_projections(
-                    projected=projected,
-                    entities=entities,
-                )
-
+            for batch_idx, batch in (
+                (b[0], b[1].to(model.device)) for b in gen
+            ):
+                model.forward(batch=batch, subbatch_size=loader.subbatch_size)
                 if debug:
                     break
 
