@@ -927,7 +927,7 @@ class Mapper(pl.LightningModule):
             )
 
             sample = loader.dataset[loader.dataset.max_context_idx]
-            samples = repeat(sample, loader.batch_size * loader.subbatch_size)
+            samples = repeat(sample, loader.batch_size)
             batch = loader.collate_fn(list(samples))
             batch = batch[0], batch[1].to(self.device)
 
