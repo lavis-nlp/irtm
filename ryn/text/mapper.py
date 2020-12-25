@@ -608,9 +608,9 @@ class Mapper(pl.LightningModule):
         assert batch and subbatch_size
         if optimize:
             assert calculate_loss
+            optimizer = self.optimizers()
 
         ents, ctxs = batch
-        optimizer = self.optimizers()
 
         # return values
         losses = [] if calculate_loss else None
