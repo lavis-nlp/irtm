@@ -806,6 +806,28 @@ class DataModule(pl.LightningDataModule):
             triples=self.kgc.transductive,
         )
 
+        self._sampler = None
+        if self.config.sampler:
+            assert self.config.sampler == "node degree"  # TODO define registry
+
+            num_samples = self.config.sampler_args["num_samples"]
+            if num_samples.startswith("x"):
+                num_samples = len(self._train_set) * int(num_samples[1:])
+            elif num_samples == "triples":
+                num_samples = int(sum(self._train_set.degrees) // 2)
+
+            replacement = self.config.sampler_args["replacement"]
+
+            self._sampler = torch_data.WeightedRandomSampler(
+                weights=self._train_set.degrees,
+                num_samples=num_samples,
+                replacement=replacement,
+            )
+
+            log.info(
+                f"using node degreee sampler {num_samples=} {replacement=}"
+            )
+
         if self.has_geometric_validation():
             log.info("! dataset offers geometric validation")
 
@@ -842,29 +864,11 @@ class DataModule(pl.LightningDataModule):
     # FOR LIGHTNING
 
     def train_dataloader(self) -> DataLoader:
-        sampler = None
-        if self.config.sampler:
-            assert self.config.sampler == "node degree"  # TODO define registry
-
-            num_samples = self.config.sampler_args["num_samples"]
-            if num_samples.startswith("x"):
-                num_samples = len(self._train_set) * int(num_samples[1:])
-
-            replacement = self.config.sampler_args["replacement"]
-
-            sampler = torch_data.WeightedRandomSampler(
-                weights=self._train_set.degrees,
-                num_samples=num_samples,
-                replacement=replacement,
-            )
-
-            log.info(
-                f"using node degreee sampler {num_samples=} {replacement=}"
-            )
+        log.error("train dataloader")
 
         return DataLoader(
             self._train_set,
-            sampler=sampler,
+            sampler=self._sampler,
             **self.config.dataloader_train_args,
         )
 
