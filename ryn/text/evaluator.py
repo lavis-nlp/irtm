@@ -14,6 +14,7 @@ from tqdm import tqdm as _tqdm
 
 import pathlib
 from functools import partial
+from dataclasses import replace
 
 from typing import List
 from typing import Dict
@@ -143,6 +144,11 @@ def _evaluation_uncached(
 ):
 
     config = Config.create(configs=[out / "config.yml"] + list(config))
+
+    # important for multi-context models where we want to utilize
+    # all available sentences in a single projection step
+    config = replace(config, split_text_dataset=False)
+
     datamodule, rync = trainer.load_from_config(config=config)
 
     datamodule.prepare_data()
