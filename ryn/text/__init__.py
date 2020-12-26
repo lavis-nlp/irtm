@@ -272,8 +272,7 @@ def evaluate_baseline(**kwargs):
 
 @text.command()
 @click.option(
-    '--root', type=str, required=True,
-    help='')
+    '--root', type=str, required=True)
 @click.option(
     '-c', '--config', type=str, multiple=True,
     help='one or more configuration files')
@@ -285,3 +284,21 @@ def evaluate_all(**kwargs):
     Run evaluations for all saved checkpoints
     """
     evaluator.evaluate_all(**kwargs)
+
+
+@text.command()
+@click.option(
+    '--csv-file', type=str, required=True)
+@click.option(
+    '--experiment-dir', type=str, required=True)
+@click.option(
+    '-c', '--config', type=str, multiple=True,
+    help='one or more configuration files')
+@click.option(
+    '--debug', is_flag=True,
+    help='run everything fast, do not write anything')
+def evaluate_csv(**kwargs):
+    """
+    Run evaluations based on the csv file
+    """
+    evaluator.evaluate_csv(**kwargs)

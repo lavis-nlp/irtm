@@ -7,6 +7,7 @@ from ryn.text.config import Config
 from ryn.common import helper
 from ryn.common import logging
 
+import csv
 import yaml
 import torch
 import horovod.torch as hvd
@@ -299,7 +300,7 @@ def evaluate_baseline(
 
 
 @helper.notnone
-def evaluate_all(root: pathlib.Path = None, **kwargs):
+def evaluate_all(root: Union[str, pathlib.Path] = None, **kwargs):
     """
     Run evaluation for all saved checkpoints
     """
@@ -309,3 +310,50 @@ def evaluate_all(root: pathlib.Path = None, **kwargs):
         # <path>/weights/<PROJECT_NAME>/<RUN_ID>/checkpoints/epoch=*-step=*.ckpt
         path = checkpoint.parents[4]
         evaluate_from_kwargs(path=path, checkpoint=checkpoint, **kwargs)
+
+
+@helper.notnone
+def evaluate_csv(
+    csv_file: Union[str, pathlib.Path] = None,
+    experiment_dir: Union[str, pathlib.Path] = None,
+    **kwargs,
+):
+    """
+    Run evaluations based on a csv file
+    """
+
+    def shorthand(row):
+        return ".".join(
+            [
+                row[k]
+                for k in ("exp", "split", "graph", "text", "#sents", "mode")
+            ]
+        )
+
+    csv_file = helper.path(csv_file, exists=True)
+    experiment_dir = helper.path(experiment_dir, exists=True)
+
+    with csv_file.open(mode="r") as fd:
+        reader = csv.DictReader(fd)
+        for row in reader:
+            if not row["name"]:
+                print(f"skipping {shorthand(row)}")
+                continue
+
+            checkpoint = helper.path(
+                experiment_dir
+                / row["name"]
+                / "weights"
+                / "ryn-text"
+                / row["run"]
+                / "checkpoints"
+                / row["checkpoint"],
+                exists=True,
+            )
+
+            print(f"evaluating {shorthand(row)}")
+            evaluate_from_kwargs(
+                path=experiment_dir / row["name"],
+                checkpoint=checkpoint,
+                **kwargs,
+            )
