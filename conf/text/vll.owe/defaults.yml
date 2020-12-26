@@ -12,13 +12,15 @@ kgc_model: data/kgc/vll.fb15k237-owe_2041992/distmult/trial-0046
 split_dataset: data/split/vll.fb15k237-owe_2041992
 text_dataset: data/text/data/vll.fb15k237-owe_2041992/entity2wikidata.json/bert-base-cased.1.768.clean
 
+reductor: 'independent 1'
+
 wandb_args:
   project: ryn-text
   log_model: false
 
 trainer_args:
   gpus: 1
-  max_epochs: 2000
+  max_epochs: 5000
   check_val_every_n_epoch: 2
   fast_dev_run: false
   distributed_backend: horovod
@@ -36,12 +38,17 @@ early_stopping: true
 early_stopping_args:
   monitor: inductive/hits_at_k/both/avg/10
   mode: max
-  min_delta: 0.0001
-  patience: 5
+  min_delta: 0.00001
+  patience: 15
+
+sampler: 'node degree'
+sampler_args:
+  num_samples: 'triples'
+  replacement: true
 
 dataloader_train_args:
   num_workers: 0
-  shuffle: True
+  shuffle: false
 
 dataloader_valid_args:
   num_workers: 0
