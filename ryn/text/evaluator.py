@@ -27,16 +27,12 @@ log = logging.get("text.evaluator")
 def _init(
     *,
     model: mapper.Mapper = None,
-    run_memcheck: bool = None,
     debug: bool = None,
 ):
     model = model.to(device="cuda")
 
     hvd.init()
     assert hvd.local_rank() == 0, "no multi gpu support so far"
-
-    if run_memcheck:
-        model.run_memcheck(test=True)
 
     model.init_projections()
     model.debug = debug
@@ -59,15 +55,15 @@ def _create_projections(
     tqdm = partial(_tqdm, ncols=80, unit="batches")
     with torch.no_grad():
         for loader in loaders:
+
+            gen = ((b[0], b[1].to(model.device)) for b in loader)
             gen = tqdm(
-                enumerate(loader),
+                enumerate(gen),
                 total=len(loader),
                 desc=f"{loader.dataset.name} samples ",
             )
 
-            for batch_idx, batch in (
-                (b[0], b[1].to(model.device)) for b in gen
-            ):
+            for batch_idx, batch in gen:
                 model.forward(batch=batch, subbatch_size=loader.subbatch_size)
                 if debug:
                     break
@@ -85,18 +81,16 @@ def _run_kgc_evaluations(
         "test": datamodule.kgc.test,
     }
 
-    metrics = {}
-    metrics[model.projection_aggregation] = res = {}
-
+    ret = {}
     for kind, triples in triplesens.items():
         results = model.run_kgc_evaluation(
             kind=kind,
             triples=triples,
         )
 
-        res[kind] = results.metrics
+        ret[kind] = results.metrics
 
-    return metrics
+    return ret
 
 
 @helper.notnone
@@ -106,7 +100,7 @@ def evaluate(
     datamodule: data.DataModule = None,
     debug: bool = None,
 ):
-    _init(model=model, debug=debug, run_memcheck=True)
+    _init(model=model, debug=debug)
 
     print("\ncreating projections\n")
     _create_projections(
@@ -116,7 +110,10 @@ def evaluate(
     )
 
     print("\nrunning kgc evaluation\n")
-    results = _run_kgc_evaluations(model=model, datamodule=datamodule)
+    results = _run_kgc_evaluations(
+        model=model,
+        datamodule=datamodule,
+    )
 
     def _map(dic):
         mapped = {}
@@ -272,7 +269,7 @@ def evaluate_baseline(
         freeze_text_encoder=True,
     )
 
-    _init(model=model, debug=debug, run_memcheck=False)
+    _init(model=model, debug=debug)
 
     # control experiment that there's no test leakage
     model.debug = debug
