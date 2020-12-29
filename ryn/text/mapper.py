@@ -9,6 +9,7 @@ from ryn.common import helper
 from ryn.common import logging
 
 import gc
+import yaml
 import math
 import torch
 import torch.optim
@@ -16,11 +17,6 @@ from torch import nn
 import transformers as tf
 import pytorch_lightning as pl
 import horovod.torch as hvd
-
-# https://github.com/pykeen/pykeen/pull/132
-# from pykeen.nn import emb as keen_emb
-
-import yaml
 
 from itertools import count
 from itertools import repeat
@@ -668,7 +664,7 @@ class Mapper(pl.LightningModule):
             batch=batch,
             optimize=True,
             calculate_loss=True,
-            subbatch_size=self.data.train_dataloader().subbatch_size,
+            subbatch_size=self.data.subbatch_size(kind="train"),
         )
 
         self.log("train_loss_step", loss)
@@ -717,13 +713,17 @@ class Mapper(pl.LightningModule):
             self._geometric_validation_step(
                 batch=batch,
                 kind=self.data.geometric_validation_kind(dataloader_idx),
-                subbatch_size=self.data.subbatch_size(dataloader_idx),
+                subbatch_size=self.data.subbatch_size(
+                    kind="valid", dataloader_idx=dataloader_idx
+                ),
             )
         elif self.data.should_evaluate_kgc(dataloader_idx):
             self._kgc_validation_step(
                 batch=batch,
                 batch_idx=batch_idx,
-                subbatch_size=self.data.subbatch_size(dataloader_idx),
+                subbatch_size=self.data.subbatch_size(
+                    kind="valid", dataloader_idx=dataloader_idx
+                ),
             )
         else:
             assert False, "unknown validation dataloader"

@@ -18,6 +18,7 @@ import textwrap
 from itertools import count
 from datetime import datetime
 from functools import partial
+from functools import lru_cache
 from dataclasses import field
 from dataclasses import dataclass
 from collections import defaultdict
@@ -738,7 +739,16 @@ class DataModule(pl.LightningDataModule):
     def should_evaluate_kgc(self, dataloader_idx: Optional[int]) -> bool:
         return dataloader_idx is None or dataloader_idx == 2
 
-    def subbatch_size(self, dataloader_idx) -> int:
+    @lru_cache
+    def subbatch_size(
+        self, kind: str = None, dataloader_idx: int = None
+    ) -> int:
+        log.info(f"subbatch_size cache miss: {kind=} {dataloader_idx=}")
+
+        if kind == "train":
+            return self.train_dataloader().subbatch_size
+
+        assert kind == "valid"
         if not self.has_geometric_validation():
             return self.val_dataloader()[0].subbatch_size
 
@@ -864,8 +874,6 @@ class DataModule(pl.LightningDataModule):
     # FOR LIGHTNING
 
     def train_dataloader(self) -> DataLoader:
-        log.error("train dataloader")
-
         return DataLoader(
             self._train_set,
             sampler=self._sampler,
