@@ -7,23 +7,23 @@
 valid_split: 0.9
 text_encoder: bert-base-cased
 
-split_text_dataset: True
+split_text_dataset: true
 
 kgc_model: data/kgc/oke.fb15k237_26041992_100/distmult/trial-0017
 split_dataset: data/split/oke.fb15k237_26041992_100
 
 wandb_args:
   project: ryn-text
-  log_model: False
+  log_model: false
 
 trainer_args:
   gpus: 1
   check_val_every_n_epoch: 2
-  fast_dev_run: False
+  fast_dev_run: false
   distributed_backend: horovod
   accumulate_grad_batches: 10
   gradient_clip_val: 1
-  replace_sampler_ddp: False
+  replace_sampler_ddp: false
   log_every_n_steps: 5
 
 checkpoint_args:
@@ -33,7 +33,7 @@ checkpoint_args:
 
 dataloader_train_args:
   num_workers: 0
-  shuffle: True
+  shuffle: true
 
 dataloader_valid_args:
   num_workers: 0
