@@ -543,6 +543,41 @@ class Mapper(pl.LightningModule):
         log.info("clearing projections buffer")
         self.projections.zero_()
         self.projections_counts.zero_()
+        self._gathered_projections = False
+
+    def gather_projections(self):
+        log.info(
+            f"[{hvd.local_rank()}] gathered"
+            f" {int(self.projections_counts.sum().item())}"
+            " projections"
+        )
+
+        self.projections = hvd.allreduce(self.projections, op=hvd.Sum)
+        self.projections_counts = hvd.allreduce(
+            self.projections_counts, op=hvd.Sum
+        )
+
+        if hvd.local_rank() != 0:
+            log.info(
+                f"[{hvd.local_rank()}] servant skips kgc evaluation;"
+                " logging phony kgc result"
+            )
+
+            self._mock_kgc_results()
+            return
+
+        # calculate averages over all projections
+        mask = self.projections_counts != 0
+        self.projections[mask] /= self.projections_counts.unsqueeze(1)[mask]
+
+        log.info(
+            f"gathered {int(self.projections_counts.sum().item())}"
+            " projections from processes"
+        )
+
+        # TODO assert this reflect context
+        # counts of datasets (unless fast_dev_run)
+        self._gathered_projections = True
 
     @helper.notnone
     def update_projections(self, entities=None, projected=None):
@@ -732,6 +767,7 @@ class Mapper(pl.LightningModule):
     def run_kgc_evaluation(
         self, *, kind: str = None, triples=None
     ):  # data.Triples
+        assert self._gathered_projections, "run gather_projections()"
 
         global TQDM_KWARGS
         if hvd.size() == 1:
@@ -792,38 +828,7 @@ class Mapper(pl.LightningModule):
             self._mock_kgc_results()
             return
 
-        log.info(
-            f"[{hvd.local_rank()}] gathered"
-            f" {int(self.projections_counts.sum().item())}"
-            " projections"
-        )
-
-        self.projections = hvd.allreduce(self.projections, op=hvd.Sum)
-
-        self.projections_counts = hvd.allreduce(
-            self.projections_counts, op=hvd.Sum
-        )
-
-        if hvd.local_rank() != 0:
-            log.info(
-                f"[{hvd.local_rank()}] servant skips kgc evaluation;"
-                " logging phony kgc result"
-            )
-
-            self._mock_kgc_results()
-            return
-
-        # calculate averages over all projections
-        mask = self.projections_counts != 0
-        self.projections[mask] /= self.projections_counts.unsqueeze(1)[mask]
-
-        log.info(
-            f"gathered {int(self.projections_counts.sum().item())}"
-            " projections from processes"
-        )
-
-        # TODO assert this reflect context
-        # counts of datasets (unless fast_dev_run)
+        self.gather_projections()
 
         # --
 

@@ -70,6 +70,8 @@ def _create_projections(
                 if debug:
                     break
 
+    model.gather_projections()
+
 
 @helper.notnone
 def _run_kgc_evaluations(
