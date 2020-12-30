@@ -325,8 +325,8 @@ def evaluate_csv(
     def shorthand(row):
         return ".".join(
             [
-                row[k]
-                for k in ("exp", "split", "graph", "text", "#sents", "mode")
+                row[k].strip()
+                for k in ("exp", "identifier", "#sents", "mode")
             ]
         )
 
