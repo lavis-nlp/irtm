@@ -36,7 +36,6 @@ def _init(
     hvd.init()
     assert hvd.local_rank() == 0, "no multi gpu support so far"
 
-    model.init_projections()
     model.debug = debug
     model.eval()
 
@@ -48,6 +47,9 @@ def _create_projections(
     datamodule: data.DataModule = None,
     debug: bool = None,
 ):
+
+    model.init_projections()
+
     loaders = (
         [datamodule.train_dataloader()]
         + datamodule.val_dataloader()
@@ -147,9 +149,6 @@ def _evaluation_uncached(
 ):
 
     config = Config.create(configs=[out / "config.yml"] + list(config))
-
-    # important for multi-context models where we want to utilize
-    # all available sentences in a single projection step
     config = replace(config, split_text_dataset=False)
 
     datamodule, rync = trainer.load_from_config(config=config)
@@ -205,8 +204,9 @@ def _handle_results(
         with target_file.open(mode="w") as fd:
             fd.write(yaml.dump(runs))
 
-    print("\n\n")
-    print(yaml.dump(results))
+    else:
+        print("\n\n")
+        print(yaml.dump(results))
 
 
 @helper.notnone
@@ -226,12 +226,12 @@ def evaluate_from_kwargs(
         checkpoint, exists=True, message="loading checkpoint from {path_abbrv}"
     )
 
-    ryn_dir = path / "ryn"
-    helper.path(ryn_dir, create=True)
-
     print(f"\nEVALUATE {checkpoint.name}")
+    ryn_dir = path / "ryn"
 
     if not debug:
+        helper.path(ryn_dir, create=True)
+
         results = _evaluation_cached(
             # helper.cached
             path=ryn_dir,
@@ -354,8 +354,10 @@ def evaluate_csv(
             )
 
             print(f"evaluating {shorthand(row)}")
-            evaluate_from_kwargs(
+            _, results = evaluate_from_kwargs(
                 path=experiment_dir / row["name"],
                 checkpoint=checkpoint,
                 **kwargs,
             )
+
+            __import__("pdb").set_trace()
