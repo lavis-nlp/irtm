@@ -33,7 +33,8 @@ tqdm = partial(_tqdm, ncols=80)
 
 def notnone(fn):
 
-    # TODO let it work with f(foo=False)
+    # TODO let it work with default parameters: f(foo=False)
+    # TODO ignore None for typing.Optional
 
     # def f(a, b)
     # spec: args=['a', 'b'], defaults=None, kwonlyargs=[]
@@ -50,7 +51,8 @@ def notnone(fn):
     spec = inspect.getfullargspec(fn)
 
     try:
-        kwarg_names = spec.args[-len(spec.defaults) :]
+        n = len(spec.defaults)
+        kwarg_names = spec.args[-n:]
 
     # spec.defaults is None for kwonly functions
     except TypeError:
