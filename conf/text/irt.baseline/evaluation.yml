@@ -1,5 +1,3 @@
-reductor: independent 1
-
 dataloader_train_args:
   batch_size: 1
   subbatch_size: 30
