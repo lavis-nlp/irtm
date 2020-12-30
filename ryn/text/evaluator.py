@@ -326,10 +326,7 @@ def evaluate_csv(
 
     def shorthand(row):
         return ".".join(
-            [
-                row[k].strip()
-                for k in ("exp", "identifier", "#sents", "mode")
-            ]
+            [row[k].strip() for k in ("exp", "identifier", "#sents", "mode")]
         )
 
     csv_file = helper.path(csv_file, exists=True)
@@ -337,6 +334,8 @@ def evaluate_csv(
 
     with csv_file.open(mode="r") as fd:
         reader = csv.DictReader(fd)
+        results = []
+
         for row in reader:
             if not row["name"]:
                 print(f"skipping {shorthand(row)}")
@@ -354,10 +353,30 @@ def evaluate_csv(
             )
 
             print(f"evaluating {shorthand(row)}")
-            _, results = evaluate_from_kwargs(
+            _, ret = evaluate_from_kwargs(
                 path=experiment_dir / row["name"],
                 checkpoint=checkpoint,
                 **kwargs,
             )
 
-            __import__("pdb").set_trace()
+            results.append(ret)
+            break
+
+    # TODO not if debug
+
+    out_file = csv_file.parent / (csv_file.name + ".results.csv")
+    with out_file.open(mode="w") as fd:
+        writer = csv.writer(fd)
+        writer.writerows(
+            [
+                res["test"]["hits_at_k"]["both"]["avg"][1],
+                res["test"]["hits_at_k"]["both"]["avg"][5],
+                res["test"]["hits_at_k"]["both"]["avg"][10],
+                res["test"]["mean_reciprocal_rank"]["both"]["avg"],
+                res["inductive"]["hits_at_k"]["both"]["avg"][10],
+                res["inductive"]["mean_reciprocal_rank"]["both"]["avg"],
+                res["transductive"]["hits_at_k"]["both"]["avg"][10],
+                res["transductive"]["mean_reciprocal_rank"]["both"]["avg"],
+            ]
+            for res in results
+        )
