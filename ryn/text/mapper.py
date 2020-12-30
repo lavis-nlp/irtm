@@ -540,7 +540,20 @@ class Mapper(pl.LightningModule):
     #
 
     def init_projections(self):
+        """
+        Initialize projection buffer
+
+        This needs to be run before every dataloader iteration.
+        After text samples have been provided by calling forward(),
+        they need to reduced by invoking gather_projections().
+
+        (!) Indexes used for projections are the pykeen entity indexes.
+        A mapping of ryn indexes to pykeen indexes is given by
+        self.data.kgc.ryn2keen.
+
+        """
         log.info("clearing projections buffer")
+
         self.projections.zero_()
         self.projections_counts.zero_()
         self._gathered_projections = False
@@ -575,12 +588,12 @@ class Mapper(pl.LightningModule):
             " projections from processes"
         )
 
-        # TODO assert this reflect context
-        # counts of datasets (unless fast_dev_run)
+        # TODO assert this reflect context counts of datasets
+
         self._gathered_projections = True
 
     @helper.notnone
-    def update_projections(self, entities=None, projected=None):
+    def _update_projections(self, entities=None, projected=None):
         for e, v in zip(entities, projected.detach()):
             idx = self.data.kgc.ryn2keen[e]
             self.projections[idx] += v
@@ -624,7 +637,7 @@ class Mapper(pl.LightningModule):
         projected = self.project(reduced)
 
         # update projections
-        self.update_projections(entities=entities, projected=projected)
+        self._update_projections(entities=entities, projected=projected)
         return entities, projected
 
     def forward(
