@@ -60,6 +60,11 @@ optimizer: adam
 optimizer_args:
   lr: 1.0e-05
 
+scheduler: linear with warmup
+scheduler_args:
+  num_warmup_steps: 20000
+  num_training_steps: 60000
+
 projector_args:
   input_dims: 768
   output_dims: 450
