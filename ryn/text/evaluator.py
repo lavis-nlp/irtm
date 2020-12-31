@@ -226,7 +226,7 @@ def evaluate_from_kwargs(
         checkpoint, exists=True, message="loading checkpoint from {path_abbrv}"
     )
 
-    print(f"\nEVALUATE {checkpoint.name}")
+    print(f"\nevaluating {checkpoint.name}")
     ryn_dir = path / "ryn"
 
     if not debug:
@@ -355,7 +355,7 @@ def evaluate_csv(
                 exists=True,
             )
 
-            print(f"evaluating {shorthand(row)}")
+            print(f"\n{row['name']} {shorthand(row)}")
             _, ret = evaluate_from_kwargs(
                 path=experiment_dir / row["name"],
                 checkpoint=checkpoint,
