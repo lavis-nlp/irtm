@@ -318,6 +318,7 @@ def evaluate_all(root: Union[str, pathlib.Path] = None, **kwargs):
 def evaluate_csv(
     csv_file: Union[str, pathlib.Path] = None,
     experiment_dir: Union[str, pathlib.Path] = None,
+    debug: bool = None,
     **kwargs,
 ):
     """
@@ -329,7 +330,9 @@ def evaluate_csv(
             [row[k].strip() for k in ("exp", "identifier", "#sents", "mode")]
         )
 
-    csv_file = helper.path(csv_file, exists=True)
+    csv_file = helper.path(
+        csv_file, exists=True, message="loading csv data from {path_abbrv}"
+    )
     experiment_dir = helper.path(experiment_dir, exists=True)
 
     with csv_file.open(mode="r") as fd:
@@ -356,13 +359,14 @@ def evaluate_csv(
             _, ret = evaluate_from_kwargs(
                 path=experiment_dir / row["name"],
                 checkpoint=checkpoint,
+                debug=debug,
                 **kwargs,
             )
 
             results.append(ret)
-            break
 
-    # TODO not if debug
+    if debug:
+        return
 
     out_file = csv_file.parent / (csv_file.name + ".results.csv")
     with out_file.open(mode="w") as fd:
