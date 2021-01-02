@@ -406,16 +406,16 @@ def evaluate(
 def _get_mapped_triples(keen_dataset: keen.Dataset = None, mode: str = None):
 
     if mode == "testing":
-        selection = (keen_dataset.testing, )
+        selection = (keen_dataset.testing,)
 
     elif mode == "validation":
-        selection = (keen_dataset.validation, )
+        selection = (keen_dataset.validation,)
 
     elif mode == "all":
         selection = (
             keen_dataset.training,
             keen_dataset.validation,
-            keen_dataset.testing
+            keen_dataset.testing,
         )
     else:
         raise ryn.RynError(f"unknown mode: '{mode}'")
@@ -424,9 +424,7 @@ def _get_mapped_triples(keen_dataset: keen.Dataset = None, mode: str = None):
     mapped_triples = torch.zeros((0, ref.shape[1]), dtype=ref.dtype)
     for kind in filter(None, selection):
         log.info(f"adding {len(kind.mapped_triples)} triples")
-        mapped_triples = torch.vstack((
-            mapped_triples, kind.mapped_triples
-        ))
+        mapped_triples = torch.vstack((mapped_triples, kind.mapped_triples))
 
     return mapped_triples
 
@@ -458,7 +456,9 @@ def evaluate_glob(
 
         except FileNotFoundError:
 
-            mapped_triples = _get_mapped_triples(keen_dataset=keen_dataset, mode=mode)
+            mapped_triples = _get_mapped_triples(
+                keen_dataset=keen_dataset, mode=mode
+            )
             log.info(f"evaluting {len(mapped_triples)} triples")
 
             eval_result = evaluate(
@@ -499,7 +499,9 @@ def evaluate_from_kwargs(
 
 
 @helper.notnone
-def print_results(*, results, out: Union[str, pathlib.Path] = None, mode: str = None):
+def print_results(
+    *, results, out: Union[str, pathlib.Path] = None, mode: str = None
+):
     def _save_rget(dic, *args, default=None):
         ls = list(args)[::-1]
 
