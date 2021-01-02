@@ -379,8 +379,6 @@ def evaluate_csv(
                 res["test"]["mean_reciprocal_rank"]["both"]["avg"],
                 res["inductive"]["hits_at_k"]["both"]["avg"][10],
                 res["inductive"]["mean_reciprocal_rank"]["both"]["avg"],
-                res["transductive"]["hits_at_k"]["both"]["avg"][10],
-                res["transductive"]["mean_reciprocal_rank"]["both"]["avg"],
             ]
             for res in results
         )

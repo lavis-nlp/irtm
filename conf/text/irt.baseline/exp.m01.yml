@@ -1,12 +1,10 @@
 aggregator: cls 1
-aggregator_args: {}
 comparator: euclidean 1
-comparator_args: {}
 freeze_text_encoder: false
 projector: affine pooling 1
 projector_args:
   pooling: max
-  dropout: True
+  dropout: true
   dropout_p: 0.25
 dataloader_train_args:
-  shuffle: False
+  shuffle: false
