@@ -120,8 +120,8 @@ def single(
         config.training_loop,
         model=model,
         optimizer=optimizer,
-        negative_sampler_cls=config.sampler.constructor,
-        negative_sampler_kwargs=config.sampler.kwargs,
+        # negative_sampler_cls=config.sampler.constructor,
+        # negative_sampler_kwargs=config.sampler.kwargs,
     )
 
     # training
@@ -249,7 +249,7 @@ def multi(
 
         # obtain optuna suggestions
         config = base.suggest(trial)
-        name = f"{config.model.cls.lower()}-{trial.number}"
+        name = f"{config.general.dataset} {config.model.cls.lower()}-{trial.number}"
         path = out / f"trial-{trial.number:04d}"
 
         # update configuration
