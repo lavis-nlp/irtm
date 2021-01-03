@@ -1,0 +1,15 @@
+# 11GB GPU RAM configuration
+# - tested with GTX 1080 TI
+
+dataloader_train_args:
+  batch_size: 1
+  subbatch_size: 15
+
+dataloader_valid_args:
+  batch_size: 2
+  subbatch_size: 30
+
+dataloader_test_args:
+  batch_size: 2
+  subbatch_size: 30
+
