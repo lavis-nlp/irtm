@@ -8,7 +8,7 @@ text_encoder: bert-base-cased
 
 split_text_dataset: false
 
-kgc_model: data/kgc/vll.fb15k237-owe_2041992/distmult/trial-0046
+kgc_model: data/kgc/vll.fb15k237-owe_2041992/distmult/trial-0000
 split_dataset: data/split/vll.fb15k237-owe_2041992
 text_dataset: data/text/data/vll.fb15k237-owe_2041992/entity2wikidata.json/bert-base-cased.1.768.clean
 
@@ -67,4 +67,4 @@ scheduler_args:
 
 projector_args:
   input_dims: 768
-  output_dims: 450
+  output_dims: 250

@@ -22,8 +22,8 @@
   "optimizer": {
     "cls": "Adagrad",
     "lr": {
-      "low": 0.0001,
-      "high": 0.1,
+      "low": 0.001,
+      "high": 1,
       "step": null,
       "log": true,
       "initial": 0.01
@@ -45,9 +45,7 @@
     "normalize": true
   },
   "loss": {
-    "cls": "MarginRankingLoss",
-    "margin": 1.0,
-    "reduction": "mean"
+    "cls": "CrossEntropyLoss",
   },
   "stopper": {
     "cls": "EarlyStopper",
@@ -67,10 +65,10 @@
   },
   "training": {
     "num_epochs": 2000,
-    "batch_size": 200
+    "batch_size": 100
   },
   "training_loop": {
-    "cls": "SLCWATrainingLoop"
+    "cls": "LCWATrainingLoop"
   },
   "optuna": {
     "trials": 50,
