@@ -249,7 +249,13 @@ def multi(
 
         # obtain optuna suggestions
         config = base.suggest(trial)
-        name = f"{config.general.dataset} {config.model.cls.lower()}-{trial.number}"
+
+        name = (
+            f"{config.general.dataset} "
+            f"{config.model.cls.lower()}"
+            f"-{trial.number}"
+        )
+
         path = out / f"trial-{trial.number:04d}"
 
         # update configuration
@@ -257,18 +263,24 @@ def multi(
         # tracker = dataclasses.replace(config.tracker, experiment=name)
         # config = dataclasses.replace(config, tracker=tracker)
 
-        # run training
-        try:
-            result = single(config=config, **kwargs)
+        def _run(attempt: int = 1):
+            # run training
+            try:
+                log.info(f"running attempt {attempt}")
+                return single(config=config, **kwargs)
 
-        except RuntimeError as exc:
-            msg = f'objective: got runtime error "{exc}"'
-            log.error(msg)
+            except RuntimeError as exc:
+                msg = f'objective: got runtime error "{exc}"'
+                log.error(msg)
+                _run(attempt=attempt + 1)
 
-            # post mortem (TODO last model checkpoint)
-            config.save(path)
-            raise ryn.RynError(msg)
+                if attempt > 10:
+                    log.error("aborting attempts, something is wrong.")
+                    # post mortem (TODO last model checkpoint)
+                    config.save(path)
+                    raise ryn.RynError(msg)
 
+        result = _run()
         best_metric = result.stopper.best_metric
         log.info(
             f"! trial {trial.number} finished: " f"best metric = {best_metric}"
@@ -284,7 +296,7 @@ def multi(
         objective,
         n_trials=base.optuna.trials,
         gc_after_trial=True,
-        catch=(ryn.RynError,),
+        # catch=(ryn.RynError,),
     )
 
     log.info("finished study")

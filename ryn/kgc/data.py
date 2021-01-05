@@ -26,12 +26,7 @@ log = logging.get("kgc.data")
 @helper.notnone
 def load_datasets(path: Union[str, pathlib.Path] = None):
     split_dataset = split.Dataset.load(path=path)
-    keen_dataset = keen.Dataset.create(
-        name=split_dataset.name,
-        path=split_dataset.path,
-        split_dataset=split_dataset,
-    )
-
+    keen_dataset = keen.Dataset.from_split_dataset(split_dataset)
     return split_dataset, keen_dataset
 
 
