@@ -45,7 +45,7 @@
     "normalize": true
   },
   "loss": {
-    "cls": "CrossEntropyLoss",
+    "cls": "CrossEntropyLoss"
   },
   "stopper": {
     "cls": "EarlyStopper",
@@ -65,7 +65,7 @@
   },
   "training": {
     "num_epochs": 2000,
-    "batch_size": 100
+    "batch_size": 125
   },
   "training_loop": {
     "cls": "LCWATrainingLoop"
