@@ -290,8 +290,6 @@ def evaluate_all(**kwargs):
 @click.option(
     '--csv-file', type=str, required=True)
 @click.option(
-    '--experiment-dir', type=str, required=True)
-@click.option(
     '-c', '--config', type=str, multiple=True,
     help='one or more configuration files')
 @click.option(

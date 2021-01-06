@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 
+import ryn
 from ryn.text import data
 from ryn.text import mapper
 from ryn.text import trainer
@@ -226,7 +227,7 @@ def evaluate_from_kwargs(
         checkpoint, exists=True, message="loading checkpoint from {path_abbrv}"
     )
 
-    print(f"\nevaluating {checkpoint.name}")
+    print(f"evaluating {checkpoint.name}")
     ryn_dir = path / "ryn"
 
     if not debug:
@@ -314,10 +315,34 @@ def evaluate_all(root: Union[str, pathlib.Path] = None, **kwargs):
         evaluate_from_kwargs(path=path, checkpoint=checkpoint, **kwargs)
 
 
+def _csv_get_paths(row):
+    experiment_dir = helper.path(
+        ryn.ENV.TEXT_DIR
+        / "mapper"
+        / row["split"]
+        / row["text"]
+        / row["text-model"]
+        / row["kgc-model"],
+        exists=True,
+    )
+
+    checkpoint = helper.path(
+        experiment_dir
+        / row["name"]
+        / "weights"
+        / "ryn-text"
+        / row["run"]
+        / "checkpoints"
+        / row["checkpoint"],
+        exists=True,
+    )
+
+    return experiment_dir / row["name"], checkpoint
+
+
 @helper.notnone
 def evaluate_csv(
     csv_file: Union[str, pathlib.Path] = None,
-    experiment_dir: Union[str, pathlib.Path] = None,
     debug: bool = None,
     **kwargs,
 ):
@@ -326,14 +351,18 @@ def evaluate_csv(
     """
 
     def shorthand(row):
-        return ".".join(
-            [row[k].strip() for k in ("exp", "identifier", "#sents", "mode")]
+        trail = ".".join(
+            row[k].strip() for k in ("identifier", "#sents", "mode")
         )
+        name = f"{row['exp']} [{trail}]"
+        if row["name"]:
+            name += f" {row['name']}"
+
+        return name
 
     csv_file = helper.path(
         csv_file, exists=True, message="loading csv data from {path_abbrv}"
     )
-    experiment_dir = helper.path(experiment_dir, exists=True)
 
     with csv_file.open(mode="r") as fd:
         reader = csv.DictReader(fd)
@@ -344,26 +373,22 @@ def evaluate_csv(
                 print(f"skipping {shorthand(row)}")
                 continue
 
-            checkpoint = helper.path(
-                experiment_dir
-                / row["name"]
-                / "weights"
-                / "ryn-text"
-                / row["run"]
-                / "checkpoints"
-                / row["checkpoint"],
-                exists=True,
-            )
+            try:
+                path, checkpoint = _csv_get_paths(row)
 
-            print(f"\n{row['name']} {shorthand(row)}")
+            except ryn.RynError as exc:
+                print(str(exc))
+                continue
+
+            print(f"\n{shorthand(row)}")
             _, ret = evaluate_from_kwargs(
-                path=experiment_dir / row["name"],
+                path=path,
                 checkpoint=checkpoint,
                 debug=debug,
                 **kwargs,
             )
 
-            results.append(ret)
+            results.append((row, ret))
 
     if debug:
         return
@@ -373,6 +398,7 @@ def evaluate_csv(
         writer = csv.writer(fd)
         writer.writerows(
             [
+                shorthand(row),
                 res["test"]["hits_at_k"]["both"]["avg"][1],
                 res["test"]["hits_at_k"]["both"]["avg"][5],
                 res["test"]["hits_at_k"]["both"]["avg"][10],
@@ -380,5 +406,5 @@ def evaluate_csv(
                 res["inductive"]["hits_at_k"]["both"]["avg"][10],
                 res["inductive"]["mean_reciprocal_rank"]["both"]["avg"],
             ]
-            for res in results
+            for row, res in results
         )
