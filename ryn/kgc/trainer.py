@@ -143,16 +143,10 @@ def single(
 
     except RuntimeError as exc:
         log.error(f'training error: "{exc}"')
-        log.error("sweeping training loop memory up under the rug")
 
         # not working although documented?
         # result_tracker.wandb.alert(title='RuntimeError', text=msg)
         result_tracker.run.finish(exit_code=1)
-
-        gc.collect()
-        training_loop.optimizer.zero_grad()
-        training_loop._free_graph_and_cache()
-
         raise exc
 
     training_time = data.Time(start=ts, end=datetime.now())
@@ -272,13 +266,18 @@ def multi(
             except RuntimeError as exc:
                 msg = f'objective: got runtime error "{exc}"'
                 log.error(msg)
-                _run(attempt=attempt + 1)
 
                 if attempt > 10:
                     log.error("aborting attempts, something is wrong.")
                     # post mortem (TODO last model checkpoint)
                     config.save(path)
                     raise ryn.RynError(msg)
+
+                log.info("releasing memory manually")
+                gc.collect()
+                torch.cuda.empty_cache()
+
+                _run(attempt=attempt + 1)
 
         result = _run()
         best_metric = result.stopper.best_metric
