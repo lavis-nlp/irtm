@@ -7,10 +7,7 @@
 valid_split: 0.9
 text_encoder: bert-base-cased
 
-split_text_dataset: true
-
-kgc_model: data/kgc/oke.fb15k237_26041992_100/distmult/trial-0017
-split_dataset: data/split/oke.fb15k237_26041992_100
+split_text_dataset: false
 
 wandb_args:
   project: ryn-text
@@ -44,8 +41,4 @@ dataloader_test_args:
 optimizer: adam
 optimizer_args:
   lr: 1.0e-05
-
-projector_args:
-  input_dims: 768
-  output_dims: 500
 

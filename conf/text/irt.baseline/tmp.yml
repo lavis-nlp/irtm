@@ -1,6 +1,0 @@
-trainer_args:
-  gradient_clip_val: 0.5
-
-optimizer_args:
-  lr: 1.0e-06
-

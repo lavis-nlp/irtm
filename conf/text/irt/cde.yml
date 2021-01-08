@@ -1,0 +1,6 @@
+kgc_model: data/kgc/cde.m_8051991_27/distmult/trial-0012
+split_dataset: data/split/cde.m_8051991_27
+
+projector_args:
+  input_dims: 768
+  output_dims: 500
