@@ -86,6 +86,9 @@ def cli(dataset: str = None, ratio: float = None, seed: int = None):
     '--suffix', type=str,
     help='suffix to append to the dataset directory')
 @click.option(
+    '--shuffle/--no-shuffle', default=True,
+    help='whether to shuffle sentences before cropping')
+@click.option(
     '--sqlite-database', type=str,
     help='path to sqlite text database')
 @click.option(
@@ -94,17 +97,20 @@ def cli(dataset: str = None, ratio: float = None, seed: int = None):
 @click.option(
     '--json-idmap', type=str,
     help='if the internal ids need to be mapped to keys in the json')
+@click.option(
+    '--codex-directory', type=str,
+    help='path to the CoDEx directory containing entity descriptions')
 def transform(
         dataset: str = None,
         sqlite_database: str = None,
         json_file: str = None,
         json_idmap: str = None,
+        codex_directory: str = None,
         **kwargs):
     """
     Transform a graph.split.Dataset to a text.data.Dataset
     """
-    if json_file and sqlite_database:
-        raise ryn.RynError('cannot provide both sqlite and json')
+    dataset = split.Dataset.load(path=dataset)
 
     if json_file:
         loader = 'json'
@@ -117,7 +123,10 @@ def transform(
         loader = 'sqlite'
         loader_args = dict(database=sqlite_database)
 
-    dataset = split.Dataset.load(path=dataset)
+    if codex_directory:
+        loader = 'codex'
+        loader_args = dict(path=codex_directory, id2ent=dataset.g.source.ents)
+
     prep.transform(
         dataset=dataset,
         loader=loader,

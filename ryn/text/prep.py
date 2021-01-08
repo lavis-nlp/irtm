@@ -116,6 +116,7 @@ def _transform_result(
     masked: bool = None,
     marked: bool = None,
     tokenizer: Tokenizer = None,
+    shuffle: bool = True,
 ):
 
     #
@@ -145,7 +146,7 @@ def _transform_result(
             (
                 len(sentence) > 50,
                 not sentence.startswith("File:"),
-                mention in sentence,
+                # mention in sentence,
             )
         )
 
@@ -181,7 +182,9 @@ def _transform_result(
     sentences, mentions = map(list, zip(*flat))
 
     # make sure a seed is set!
-    random.shuffle(sentences)
+    if shuffle:
+        random.shuffle(sentences)
+
     return tuple(sentences[:amount])
 
 
@@ -191,9 +194,13 @@ def _transform_split(
     part: split.Part,
     masked: bool = False,
     marked: bool = False,
+    shuffle: bool = True,
 ):
 
-    log.info(f"! transforming split {part.name} " f"({masked=}, {marked=})")
+    log.info(
+        f"! transforming split {part.name} "
+        f"({masked=}, {marked=}) {shuffle=}"
+    )
     helper.seed(ctx.dataset.cfg.seed)
 
     # ---
@@ -268,6 +275,7 @@ def _transform_split(
             masked=masked,
             marked=marked,
             tokenizer=ctx.tokenizer,
+            shuffle=shuffle,
         )
 
         if not sentences:
@@ -390,6 +398,7 @@ def transform(
     loader_args: Dict[str, Any] = None,
     # optional
     suffix: str = None,
+    shuffle: bool = True,
 ):
     """
 
@@ -424,12 +433,7 @@ def transform(
         name = f"{name}-{suffix}"
 
     ds_name = dataset.name
-
-    if loader == "sqlite":
-        db_name = pathlib.Path(loader_args["database"]).name
-    elif loader == "json":
-        db_name = pathlib.Path(loader_args["fname"]).name
-        loader_args.update(dict(id2ent=dataset.g.source.ents))
+    db_name = ryn_loader.LOADER[loader].db_name(**loader_args)
 
     p_out = ryn.ENV.TEXT_DIR / "data" / ds_name / db_name / name
     p_out.mkdir(exist_ok=True, parents=True)
@@ -445,6 +449,7 @@ def transform(
             tokens=tokens,
             model=model,
             mode=mode,
+            shuffle=shuffle,
         )
 
         json.dump(info, fd, indent=2)
@@ -462,7 +467,7 @@ def transform(
             model=model,
         )
 
-        kwargs = dict(masked=masked, marked=marked)
+        kwargs = dict(masked=masked, marked=marked, shuffle=shuffle)
         pool.map(
             _transform_worker_wrapper,
             [

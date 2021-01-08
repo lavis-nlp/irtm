@@ -3,11 +3,14 @@
 
 import json
 import sqlite3
+import pathlib
 
+import ryn
 from ryn.common import helper
 from ryn.common import logging
 
 from functools import partial
+from functools import lru_cache
 from contextlib import closing
 from dataclasses import dataclass
 
@@ -89,9 +92,14 @@ class JSON(Loader):
 
     # ---
 
+    @staticmethod
+    def db_name(fname: str = None, **kwargs):
+        return fname
+
     @helper.notnone
     def __init__(
         self,
+        *,
         fname: str = None,
         # from ryn: graph.source.ents
         id2ent: Dict[int, str] = None,
@@ -268,8 +276,13 @@ class SQLite(Loader):
 
     # ---
 
+    @staticmethod
+    def db_name(database: str = None, **kwargs):
+        return database
+
     def __init__(self, *, database: str = None, to_memory: bool = False):
         log.info(f"connecting to database {database}")
+        self._database = database
 
         if to_memory:
             log.info("copying database to memory")
@@ -293,7 +306,83 @@ class SQLite(Loader):
         self._conn.close()
 
 
+# CoDEx --------------------
+
+
+class CoDEx(Loader):
+    """
+
+    Load CoDEx texts
+
+    """
+
+    class CoDExSelector(Selector):
+        def __init__(
+            self, *, path: pathlib.Path = None, ent2wiki: Dict[int, str] = None
+        ):
+            from nltk.tokenize import sent_tokenize
+
+            self.path = path
+            self.ent2wiki = ent2wiki
+            self.tokenize = sent_tokenize
+
+        @lru_cache
+        def by_entity(self, e: int) -> Optional[Result]:
+            wiki, name = self.ent2wiki[e]
+
+            try:
+                textfile = helper.path(
+                    self.path / (wiki + ".txt"), exists=True
+                )
+
+                with textfile.open(mode="r") as fd:
+                    raw = fd.read()
+
+            except ryn.RynError:
+                log.error(f"did not find {e=}: {self.ent2wiki[e]}")
+                return None
+
+            sentences = "\n".join(self.tokenize(raw))
+
+            return Result(
+                mentions=(name,),
+                blobs=(sentences,),
+                blobs_masked=[],
+            )
+
+    # ---
+
+    @staticmethod
+    def db_name(path: str = None, **kwargs):
+        path = helper.path(path)
+        return f"codex.{path.parts[-2]}"
+
+    @helper.notnone
+    def __init__(
+        self,
+        # path to folder with <ID>.txt files
+        path: str = None,
+        # from ryn: graph.source.ents
+        id2ent: Dict[int, str] = None,
+    ):
+        log.info(f"loading {len(id2ent)} mapped entities")
+        self._path = helper.path(path, exists=True)
+        self._ent2wiki = {
+            ent: (wiki, name)
+            for ent, wiki, name in (
+                [e] + s.split(":", maxsplit=1) for e, s in id2ent.items()
+            )
+        }
+
+    def __enter__(self):
+        return CoDEx.CoDExSelector(path=self._path, ent2wiki=self._ent2wiki)
+
+    def __exit__(self, *_):
+        pass
+
+
 LOADER = dict(
     sqlite=SQLite,
     json=JSON,
+    codex=CoDEx,
 )
