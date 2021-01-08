@@ -65,7 +65,7 @@ checkpoint_args:
 # if this is provided, set the trainer arg replace_sampler_ddp: False
 sampler: null
 sampler_args:
-  # either an integer or x<INT> - a multiplier
+  # either an integer, x<INT> (a multiplier), or 'triples'
   # e.g.: x3 means #samples * 3
   num_samples: null
   replacement: null
