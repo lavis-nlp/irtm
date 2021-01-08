@@ -683,18 +683,30 @@ class Mapper(pl.LightningModule):
         subbatch_size = subbatch_size or len(ents)
         steps = range(0, N, subbatch_size)
 
-        for j, k in zip_longest(steps, steps[1:], fillvalue=N):
+        # timing("pre-subbatch")
+        subbatches = list(zip_longest(steps, steps[1:], fillvalue=N))
+        for j, k in subbatches:
+            # timing(f"[{j}:{k}] enter loop")
+
             entities, projected = self.forward_subbatch(
                 ents=ents[j:k], ctxs=ctxs[j:k]
             )
+
+            # timing(f"[{j}:{k}] forward")
+            # entities = ents[j:k]
+            # projected = torch.rand((len(entities), 500))
+            # projected = projected.to(device=self.device)
+            # projected.requires_grad = calculate_loss
 
             if calculate_loss:
                 targets = self.kge(entities)
                 loss = self.loss(projected, targets)
                 losses.append(loss)
+                # timing(f"[{j}:{k}] loss")
 
             if optimize:
-                self.manual_backward(loss, optimizer)
+                self.manual_backward(loss / len(subbatches), optimizer)
+                # timing(f"[{j}:{k}] backward")
 
             ret.update(
                 {
@@ -703,12 +715,16 @@ class Mapper(pl.LightningModule):
                 }
             )
 
+            # timing(f"[{j}:{k}] ret update")
+
         if optimize:
             optimizer.step()
             optimizer.zero_grad()
+            # timing("optimizer step")
 
         if calculate_loss:
             loss = torch.stack(losses).mean()
+            # timing("loss calculation")
 
         if calculate_loss:
             return loss, ret
@@ -963,7 +979,9 @@ class Mapper(pl.LightningModule):
             )
 
             sample = loader.dataset[loader.dataset.max_context_idx]
-            samples = repeat(sample, loader.batch_size)
+            count = math.ceil(loader.subbatch_size / len(sample[1]))
+            samples = repeat(sample, count)
+
             batch = loader.collate_fn(list(samples))
             batch = batch[0], batch[1].to(self.device)
 
