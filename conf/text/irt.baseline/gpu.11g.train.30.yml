@@ -2,14 +2,13 @@
 # - tested with GTX 1080 TI
 
 dataloader_train_args:
-  batch_size: 1
+  batch_size: 10
   subbatch_size: 15
 
 dataloader_valid_args:
-  batch_size: 1
-  subbatch_size: 30
+  batch_size: 12
+  subbatch_size: 360
 
 dataloader_test_args:
-  batch_size: 1
-  subbatch_size: 30
-
+  batch_size: 12
+  subbatch_size: 360

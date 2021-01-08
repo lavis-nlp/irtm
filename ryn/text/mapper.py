@@ -649,7 +649,25 @@ class Mapper(pl.LightningModule):
         optimize: bool = False,
         calculate_loss: bool = False,
     ):
+        """
+
+        Single forward step
+
+
+
+        """
+
+        # _ts = datetime.now()
+        # _ts_last = _ts
+
+        # def timing(name):
+        #     nonlocal _ts_last
+        #     new = datetime.now()
+        #     log.info(f"! {new - _ts} {new - _ts_last} {name}")
+        #     _ts_last = new
+
         assert batch and subbatch_size
+
         if optimize:
             assert calculate_loss
             optimizer = self.optimizers()
