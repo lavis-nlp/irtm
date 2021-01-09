@@ -278,7 +278,7 @@ class SQLite(Loader):
 
     @staticmethod
     def db_name(database: str = None, **kwargs):
-        return database
+        return helper.path(database).name
 
     def __init__(self, *, database: str = None, to_memory: bool = False):
         log.info(f"connecting to database {database}")
