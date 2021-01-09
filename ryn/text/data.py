@@ -292,6 +292,7 @@ class TextDataset:
         # translate internal naming schemes to the public one
         datasets = {
             "oke.fb15k237_26041992_100": ["irt", "fb"],
+            "cde.m_8051991_27": ["irt", "cde"],
             "vll.fb15k237-owe_2041992": ["owe"],
         }
 
@@ -299,7 +300,9 @@ class TextDataset:
         trail += datasets[self.dataset]
 
         text_sources = {
-            "contexts-v7-enwiki-20200920-100-500.db": [],
+            "contexts-v7-enwiki-20200920-100-500.db": ["irt"],
+            "contexts-v7-2020-12-31.db": ["irt"],
+            "codex.en": ["cde"],
             "entity2wikidata.json": ["owe"],
         }
 
