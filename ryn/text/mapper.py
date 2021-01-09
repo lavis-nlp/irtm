@@ -708,6 +708,14 @@ class Mapper(pl.LightningModule):
                 self.manual_backward(loss / len(subbatches), optimizer)
                 # timing(f"[{j}:{k}] backward")
 
+                clip_val = self.rync.config.trainer_args["gradient_clip_val"]
+                if clip_val is not None:
+                    torch.nn.utils.clip_grad_norm_(
+                        self.parameters(),
+                        max_norm=float(clip_val),
+                        norm_type=2.0,
+                    )
+
             ret.update(
                 {
                     e: torch.vstack((ret[e].detach(), x)) if e in ret else x
@@ -879,15 +887,36 @@ class Mapper(pl.LightningModule):
 
         # --
 
+        def _save_run(kind, triples, attempt: int = 0):
+            if attempt > 5:
+                raise ryn.RynError("ran out of patience")
+
+            log.info(f"running kgc evaluation attempt {attempt}")
+
+            try:
+                torch.cuda.empty_cache()
+                result = self.run_kgc_evaluation(kind=kind, triples=triples)
+                self._log_kgc_results(kind=kind, metrics=result.metrics)
+
+                log.info(
+                    f"! finished {kind} kgc evaluation on attempt {attempt}"
+                )
+
+            except RuntimeError as exc:
+                log.error(f"registered error: {exc}")
+                torch.cuda.empty_cache()
+                _save_run(kind, triples, attempt=attempt + 1)
+
         for kind, triples in (
             ("transductive", self.data.kgc.transductive),
             ("inductive", self.data.kgc.inductive),
         ):
-
-            result = self.run_kgc_evaluation(kind=kind, triples=triples)
-            self._log_kgc_results(kind=kind, metrics=result.metrics)
-
-            log.info(f"! finished {kind} kgc evaluation")
+            try:
+                _save_run(kind, triples)
+            except ryn.RynError:
+                log.error("skipping kgc evaluation in this epoch :(")
+                self._mock_kgc_results()
+                break
 
     @helper.notnone
     def flatten_kgc_results(self, *, kind: str = None, metrics: Dict = None):
