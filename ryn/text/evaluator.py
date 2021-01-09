@@ -316,6 +316,18 @@ def evaluate_all(root: Union[str, pathlib.Path] = None, **kwargs):
 
 
 def _csv_get_paths(row):
+    for key in (
+        "split",
+        "text",
+        "text-model",
+        "kgc-model",
+        "name",
+        "run",
+        "checkpoint",
+    ):
+        if key not in row or not row[key]:
+            raise ryn.RynError(f"{row['name']} missing value in column: {key}")
+
     experiment_dir = helper.path(
         ryn.ENV.TEXT_DIR
         / "mapper"
