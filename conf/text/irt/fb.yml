@@ -1,6 +1,10 @@
 kgc_model: data/kgc/oke.fb15k237_26041992_100/distmult/trial-0017
 split_dataset: data/split/oke.fb15k237_26041992_100
 
+optimizer: adam
+optimizer_args:
+  lr: 1.0e-04
+
 projector_args:
   input_dims: 768
   output_dims: 500
