@@ -302,6 +302,9 @@ def evaluate_all(**kwargs):
     '-c', '--config', type=str, multiple=True,
     help='one or more configuration files')
 @click.option(
+    '--only-marked/--all', type=bool, default=False,
+    help='whether to evaluate all rows or only those marked "EVAL"')
+@click.option(
     '--debug', is_flag=True,
     help='run everything fast, do not write anything')
 def evaluate_csv(**kwargs):

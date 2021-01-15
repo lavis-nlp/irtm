@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 
 import ryn
+from ryn.text import util
 from ryn.text import data
 from ryn.text import mapper
 from ryn.text import trainer
@@ -315,102 +316,54 @@ def evaluate_all(root: Union[str, pathlib.Path] = None, **kwargs):
         evaluate_from_kwargs(path=path, checkpoint=checkpoint, **kwargs)
 
 
-def _csv_get_paths(row):
-    for key in (
-        "split",
-        "text",
-        "text-model",
-        "kgc-model",
-        "name",
-        "run",
-        "checkpoint",
-    ):
-        if key not in row or not row[key]:
-            raise ryn.RynError(f"{row['name']} missing value in column: {key}")
-
-    experiment_dir = helper.path(
-        ryn.ENV.TEXT_DIR
-        / "mapper"
-        / row["split"]
-        / row["text"]
-        / row["text-model"]
-        / row["kgc-model"],
-        exists=True,
-    )
-
-    checkpoint = helper.path(
-        experiment_dir
-        / row["name"]
-        / "weights"
-        / "ryn-text"
-        / row["run"]
-        / "checkpoints"
-        / row["checkpoint"],
-        exists=True,
-    )
-
-    return experiment_dir / row["name"], checkpoint
-
-
 @helper.notnone
 def evaluate_csv(
     csv_file: Union[str, pathlib.Path] = None,
     debug: bool = None,
+    only_marked: bool = None,
     **kwargs,
 ):
     """
     Run evaluations based on a csv file
     """
 
-    def shorthand(row):
-        trail = ".".join(
-            row[k].strip() for k in ("identifier", "#sents", "mode")
+    results = []
+    exps = util.Experiments(csv_file)
+
+    for exp in exps:
+        if not exp.name:
+            print(f"skipping {exp} (no name)")
+            continue
+
+        if only_marked and exp.note != "EVAL":
+            print(f"skipping {exp} (not marked EVAL)")
+
+        try:
+            path, checkpoint = exp.path, exp.path_checkpoint
+
+        except ryn.RynError as exc:
+            print(str(exc))
+            continue
+
+        print(f"\n{exp}")
+        _, ret = evaluate_from_kwargs(
+            path=path,
+            checkpoint=checkpoint,
+            debug=debug,
+            **kwargs,
         )
-        name = f"{row['exp']} [{trail}]"
-        if row["name"]:
-            name += f" {row['name']}"
 
-        return name
-
-    csv_file = helper.path(
-        csv_file, exists=True, message="loading csv data from {path_abbrv}"
-    )
-
-    with csv_file.open(mode="r") as fd:
-        reader = csv.DictReader(fd)
-        results = []
-
-        for row in reader:
-            if not row["name"]:
-                print(f"skipping {shorthand(row)}")
-                continue
-
-            try:
-                path, checkpoint = _csv_get_paths(row)
-
-            except ryn.RynError as exc:
-                print(str(exc))
-                continue
-
-            print(f"\n{shorthand(row)}")
-            _, ret = evaluate_from_kwargs(
-                path=path,
-                checkpoint=checkpoint,
-                debug=debug,
-                **kwargs,
-            )
-
-            results.append((row, ret))
+        results.append((exp, ret))
 
     if debug:
         return
 
-    out_file = csv_file.parent / (csv_file.name + ".results.csv")
+    out_file = exps.path.parent / (exps.path.name + ".results.csv")
     with out_file.open(mode="w") as fd:
         writer = csv.writer(fd)
         writer.writerows(
             [
-                shorthand(row),
+                str(exp),
                 res["test"]["hits_at_k"]["both"]["avg"][1],
                 res["test"]["hits_at_k"]["both"]["avg"][5],
                 res["test"]["hits_at_k"]["both"]["avg"][10],
@@ -418,5 +371,5 @@ def evaluate_csv(
                 res["inductive"]["hits_at_k"]["both"]["avg"][10],
                 res["inductive"]["mean_reciprocal_rank"]["both"]["avg"],
             ]
-            for row, res in results
+            for exp, res in results
         )
