@@ -33,6 +33,8 @@ class Experiment:
     text_model: str
     comment: Optional[str]
 
+    metrics: Optional[Dict] = None
+
     def __str__(self):
         trail = ".".join((self.identifier, str(self.sentences), self.mode))
         name = f"{self.exp} [{trail}]"
@@ -109,28 +111,20 @@ class Experiment:
         )
 
 
-class Experiments:
+class Experiments(list):
     @property
     def path(self) -> pathlib.Path:
         return self._path
-
-    @property
-    def exps(self):
-        return self._exps
 
     def __init__(self, path: Union[str, pathlib.Path]):
         self._path = helper.path(
             path, exists=True, message="loading csv data from {path_abbrv}"
         )
 
-        self._exps = []
         with self.path.open(mode="r") as fd:
             for row in csv.DictReader(fd):
                 if row["identifier"]:
-                    self._exps.append(Experiment.from_row(row))
-
-    def __iter__(self):
-        return iter(self._exps)
+                    self.append(Experiment.from_row(row))
 
 
 @helper.notnone
