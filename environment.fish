@@ -4,7 +4,7 @@
 #
 
 set cuda /usr/local/cuda-11.1
-set conda $CONDA_PREFIX/envs/ryn
+set conda $CONDA_PREFIX/envs/irtm
 
 #
 # --------------------
@@ -12,7 +12,7 @@ set conda $CONDA_PREFIX/envs/ryn
 
 echo
 echo '-------------------------'
-echo '          R Y N'
+echo '        I R T M'
 echo '-------------------------'
 echo
 
@@ -71,7 +71,7 @@ or _abort
 exit
 
 echo 'activating environment'
-conda activate ryn
+conda activate irtm
 or _abort
 
 echo 'checking horovod'

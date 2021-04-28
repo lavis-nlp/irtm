@@ -1,8 +1,8 @@
-from ryn.kgc import keen
-from ryn.kgc.config import Config
-from ryn.graphs import split
-from ryn.common import helper
-from ryn.common import logging
+from irtm.kgc import keen
+from irtm.kgc.config import Config
+from irtm.graphs import split
+from irtm.common import helper
+from irtm.common import logging
 
 import torch
 

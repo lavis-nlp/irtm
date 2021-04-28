@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 
-import ryn
-from ryn.common import ryaml
-from ryn.common import helper
+import irtm
+from irtm.common import ryaml
+from irtm.common import helper
 
 import yaml
 
@@ -18,7 +18,7 @@ from typing import Optional
 from typing import Sequence
 
 
-class MisconfigurationError(ryn.RynError):
+class MisconfigurationError(irtm.IRTMError):
     pass
 
 
@@ -65,19 +65,19 @@ class Config:
     optimizer: str
     optimizer_args: Dict[str, Any]
 
-    # RYN
+    # IRTM
     # ----------------------------------------
 
     # the trained knowledge graph completion model
-    # for more information see ryn.kgc.keen.Model
+    # for more information see irtm.kgc.keen.Model
     kgc_model: Union[str, pathlib.Path]
 
     # this is the pre-processed text data
     # and it also determines the upstream text encoder
-    # (ryn.text.data.Dataset)
+    # (irtm.text.data.Dataset)
     text_dataset: Union[str, pathlib.Path]
 
-    # the triple split (ryn.graphs.split.Dataset)
+    # the triple split (irtm.graphs.split.Dataset)
     split_dataset: Union[str, pathlib.Path]
 
     # see the respective <Class>.impl dictionary
@@ -146,6 +146,6 @@ class Config:
     def create(
         K, configs: Sequence[Union[str, pathlib.Path]] = None, **kwargs
     ) -> "Config":
-        configs = [ryn.ENV.CONF_DIR / "text" / "defaults.yml"] + list(configs)
+        configs = [irtm.ENV.CONF_DIR / "text" / "defaults.yml"] + list(configs)
         params = ryaml.load(configs=configs, **kwargs)
         return K(**params)

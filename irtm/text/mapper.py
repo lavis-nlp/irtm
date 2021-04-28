@@ -1,12 +1,12 @@
 # -*- coding: utf-8 -*-
 
-import ryn
-from ryn.kgc import keen
-from ryn.kgc import trainer as kgc_trainer
-from ryn.text import data
-from ryn.text.config import Config
-from ryn.common import helper
-from ryn.common import logging
+import irtm
+from irtm.kgc import keen
+from irtm.kgc import trainer as kgc_trainer
+from irtm.text import data
+from irtm.text.config import Config
+from irtm.common import helper
+from irtm.common import logging
 
 import gc
 import yaml
@@ -70,7 +70,7 @@ class Base(nn.Module):
             Impl.name
         except AttributeError:
             msg = "Class {Impl} has no attribute .name"
-            raise ryn.RynError(msg)
+            raise irtm.IRTMError(msg)
 
         Base.registered[Child.__name__][Impl.name] = Impl
         return Impl
@@ -92,7 +92,7 @@ class Base(nn.Module):
                 f"{dicrep}"
             )
 
-            raise ryn.RynError(msg)
+            raise irtm.IRTMError(msg)
 
         config = A.Config(**kwargs)
 
@@ -397,7 +397,7 @@ class Components:
         if all(
             (config.optimizer is not None, config.optimizer not in OPTIMIZER)
         ):
-            raise ryn.RynError(f'unknown optimizer "{config.optimizer}"')
+            raise irtm.IRTMError(f'unknown optimizer "{config.optimizer}"')
 
         self = K(
             config=config,
@@ -452,8 +452,8 @@ class Mapper(pl.LightningModule):
         self._debug = val
 
     @property
-    def rync(self) -> Components:
-        return self._rync
+    def irtmc(self) -> Components:
+        return self._irtmc
 
     @property
     def data(self) -> data.DataModule:
@@ -466,11 +466,11 @@ class Mapper(pl.LightningModule):
     def __init__(
         self,
         data=None,  # data.DataModule
-        rync: Components = None,
+        irtmc: Components = None,
         freeze_text_encoder: bool = False,
     ):
         assert data is not None
-        assert rync is not None
+        assert irtmc is not None
 
         super().__init__()
 
@@ -480,28 +480,28 @@ class Mapper(pl.LightningModule):
         # properties
 
         self._data = data
-        self._rync = rync
+        self._irtmc = irtmc
 
         # parameters
 
-        self.encode = rync.text_encoder
-        self.aggregate = rync.aggregator
-        self.reduce = rync.reductor
-        self.project = rync.projector
-        self.loss = rync.comparator
+        self.encode = irtmc.text_encoder
+        self.aggregate = irtmc.aggregator
+        self.reduce = irtmc.reductor
+        self.project = irtmc.projector
+        self.loss = irtmc.comparator
 
         if freeze_text_encoder:
             log.info("! freezing text encoder")
             self.encode.requires_grad_(False)
 
         log.info("! freezing kgc model")
-        self.keen = rync.kgc_model.keen
+        self.keen = irtmc.kgc_model.keen
         self.keen.requires_grad_(False)
 
         # -- projections
 
         shape = (
-            len(self.data.kgc.ryn2keen),
+            len(self.data.kgc.irtm2keen),
             self.keen.entity_embeddings.embedding_dim,
         )
 
@@ -518,7 +518,7 @@ class Mapper(pl.LightningModule):
         self.init_projections()
 
     def configure_optimizers(self):
-        config = self.rync.config
+        config = self.irtmc.config
 
         optimizer = OPTIMIZER[config.optimizer](
             self.parameters(), **config.optimizer_args
@@ -548,8 +548,8 @@ class Mapper(pl.LightningModule):
         they need to reduced by invoking gather_projections().
 
         (!) Indexes used for projections are the pykeen entity indexes.
-        A mapping of ryn indexes to pykeen indexes is given by
-        self.data.kgc.ryn2keen.
+        A mapping of irtm indexes to pykeen indexes is given by
+        self.data.kgc.irtm2keen.
 
         """
         log.info("clearing projections buffer")
@@ -595,7 +595,7 @@ class Mapper(pl.LightningModule):
     @helper.notnone
     def _update_projections(self, entities=None, projected=None):
         for e, v in zip(entities, projected.detach()):
-            idx = self.data.kgc.ryn2keen[e]
+            idx = self.data.kgc.irtm2keen[e]
             self.projections[idx] += v
             self.projections_counts[idx] += 1
 
@@ -614,7 +614,7 @@ class Mapper(pl.LightningModule):
     def kge(self, entities: Tuple[int]):
         assert set(entities).issubset(self.data.split.cw_train.owe)
 
-        embeddings = self.rync.kgc_model.embeddings(
+        embeddings = self.irtmc.kgc_model.embeddings(
             entities=entities, device=self.device
         )
 
@@ -708,7 +708,7 @@ class Mapper(pl.LightningModule):
                 self.manual_backward(loss / len(subbatches), optimizer)
                 # timing(f"[{j}:{k}] backward")
 
-                clip_val = self.rync.config.trainer_args["gradient_clip_val"]
+                clip_val = self.irtmc.config.trainer_args["gradient_clip_val"]
                 if clip_val is not None:
                     torch.nn.utils.clip_grad_norm_(
                         self.parameters(),
@@ -843,13 +843,13 @@ class Mapper(pl.LightningModule):
 
         new_weights = torch.zeros(
             (
-                len(self.data.kgc.ryn2keen),
+                len(self.data.kgc.irtm2keen),
                 original_weights.shape[1],
             )
         ).to(self.device)
 
         new_weights[: original_weights.shape[0]] = original_weights
-        idxs = list(map(lambda i: self.data.kgc.ryn2keen[i], triples.entities))
+        idxs = list(map(lambda i: self.data.kgc.irtm2keen[i], triples.entities))
 
         new_weights[idxs] = self.projections[idxs]
 
@@ -863,7 +863,7 @@ class Mapper(pl.LightningModule):
 
         evaluation_result = kgc_trainer.evaluate(
             model=self.keen,
-            config=self.rync.kgc_model.config,
+            config=self.irtmc.kgc_model.config,
             mapped_triples=mapped_triples,
             tqdm_kwargs=TQDM_KWARGS,
         )
@@ -889,7 +889,7 @@ class Mapper(pl.LightningModule):
 
         def _save_run(kind, triples, attempt: int = 0):
             if attempt > 5:
-                raise ryn.RynError("ran out of patience")
+                raise irtm.IRTMError("ran out of patience")
 
             log.info(f"running kgc evaluation attempt {attempt}")
 
@@ -913,7 +913,7 @@ class Mapper(pl.LightningModule):
         ):
             try:
                 _save_run(kind, triples)
-            except ryn.RynError:
+            except irtm.IRTMError:
                 log.error("skipping kgc evaluation in this epoch :(")
                 self._mock_kgc_results()
                 break

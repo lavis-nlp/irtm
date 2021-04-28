@@ -1,13 +1,13 @@
 # -*- coding: utf-8 -*-
 
-import ryn
-from ryn.text import util
-from ryn.text import data
-from ryn.text import mapper
-from ryn.text import trainer
-from ryn.text.config import Config
-from ryn.common import helper
-from ryn.common import logging
+import irtm
+from irtm.text import util
+from irtm.text import data
+from irtm.text import mapper
+from irtm.text import trainer
+from irtm.text.config import Config
+from irtm.common import helper
+from irtm.common import logging
 
 import csv
 import yaml
@@ -153,7 +153,7 @@ def _evaluation_uncached(
     config = Config.create(configs=[out / "config.yml"] + list(config))
     config = replace(config, split_text_dataset=False)
 
-    datamodule, rync = trainer.load_from_config(config=config)
+    datamodule, irtmc = trainer.load_from_config(config=config)
 
     datamodule.prepare_data()
     datamodule.setup("test")
@@ -161,7 +161,7 @@ def _evaluation_uncached(
     model = mapper.Mapper.load_from_checkpoint(
         str(checkpoint),
         data=datamodule,
-        rync=rync,
+        irtmc=irtmc,
         freeze_text_encoder=True,
     )
 
@@ -229,14 +229,14 @@ def evaluate_from_kwargs(
     )
 
     print(f"evaluating {checkpoint.name}")
-    ryn_dir = path / "ryn"
+    irtm_dir = path / "irtm"
 
     if not debug:
-        helper.path(ryn_dir, create=True)
+        helper.path(irtm_dir, create=True)
 
         results = _evaluation_cached(
             # helper.cached
-            path=ryn_dir,
+            path=irtm_dir,
             checkpoint_name=checkpoint.name,
             # evaluate
             out=path,
@@ -256,7 +256,7 @@ def evaluate_from_kwargs(
     _handle_results(
         results=results,
         checkpoint=checkpoint.name,
-        target_file=ryn_dir / f"evaluation.{checkpoint.name}.yml",
+        target_file=irtm_dir / f"evaluation.{checkpoint.name}.yml",
         debug=debug,
     )
 
@@ -272,10 +272,10 @@ def evaluate_baseline(
     **kwargs,
 ):
     config = Config.create(configs=config, **kwargs)
-    datamodule, rync = trainer.load_from_config(config=config)
+    datamodule, irtmc = trainer.load_from_config(config=config)
 
     model = mapper.Mapper(
-        rync=rync,
+        irtmc=irtmc,
         data=datamodule,
         freeze_text_encoder=True,
     )
@@ -341,7 +341,7 @@ def evaluate_csv(
         try:
             path, checkpoint = exp.path, exp.path_checkpoint
 
-        except ryn.RynError as exc:
+        except irtm.IRTMError as exc:
             print(str(exc))
             continue
 

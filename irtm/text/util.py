@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
-import ryn
-from ryn.common import helper
+import irtm
+from irtm.common import helper
 
 import csv
 import pathlib
@@ -74,12 +74,12 @@ class Experiment:
                 self.checkpoint,
             )
         ):
-            raise ryn.RynError("missing attributes to create path")
+            raise irtm.IRTMError("missing attributes to create path")
 
         return helper.path(
             self.path
             / "weights"
-            / "ryn-text"
+            / "irtm-text"
             / self.run
             / "checkpoints"
             / self.checkpoint,
@@ -97,10 +97,10 @@ class Experiment:
                 self.name,
             )
         ):
-            raise ryn.RynError("missing attributes to create path")
+            raise irtm.IRTMError("missing attributes to create path")
 
         return helper.path(
-            ryn.ENV.TEXT_DIR
+            irtm.ENV.TEXT_DIR
             / "mapper"
             / self.split
             / self.text

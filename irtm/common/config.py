@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 
-from ryn import RynError
-from ryn.common import helper
-from ryn.common import logging
+from irtm import IRTMError
+from irtm.common import helper
+from irtm.common import logging
 
 import argparse
 import validate
@@ -49,7 +49,7 @@ class Config:
 
         # FIXME: necessary?
         if S_DEFAULTS not in parser:
-            raise RynError(f'you need to supply a [{S_DEFAULTS}] section')
+            raise IRTMError(f'you need to supply a [{S_DEFAULTS}] section')
 
         for section in parser:
             if section == S_DEFAULTS or section == S_CONSTANTS:

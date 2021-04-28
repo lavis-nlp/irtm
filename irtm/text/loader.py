@@ -5,9 +5,9 @@ import json
 import sqlite3
 import pathlib
 
-import ryn
-from ryn.common import helper
-from ryn.common import logging
+import irtm
+from irtm.common import helper
+from irtm.common import logging
 
 from functools import partial
 from functools import lru_cache
@@ -101,7 +101,7 @@ class JSON(Loader):
         self,
         *,
         fname: str = None,
-        # from ryn: graph.source.ents
+        # from irtm: graph.source.ents
         id2ent: Dict[int, str] = None,
         # (optionally) maps mid -> idx
         idmap: Optional[str] = None,
@@ -338,7 +338,7 @@ class CoDEx(Loader):
                 with textfile.open(mode="r") as fd:
                     raw = fd.read()
 
-            except ryn.RynError:
+            except irtm.IRTMError:
                 log.error(f"did not find {e=}: {self.ent2wiki[e]}")
                 return None
 
@@ -362,7 +362,7 @@ class CoDEx(Loader):
         self,
         # path to folder with <ID>.txt files
         path: str = None,
-        # from ryn: graph.source.ents
+        # from irtm: graph.source.ents
         id2ent: Dict[int, str] = None,
     ):
         log.info(f"loading {len(id2ent)} mapped entities")

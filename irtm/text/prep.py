@@ -1,9 +1,9 @@
-import ryn
+import irtm
 
-from ryn.text import loader as ryn_loader
-from ryn.graphs import split
-from ryn.common import helper
-from ryn.common import logging
+from irtm.text import loader as irtm_loader
+from irtm.graphs import split
+from irtm.common import helper
+from irtm.common import logging
 
 import gzip
 import json
@@ -57,7 +57,7 @@ class Tokenizer:
         assert not (model and path), "cannot do both"
 
         if model:
-            cache_dir = str(ryn.ENV.CACHE_DIR / "lib.transformers")
+            cache_dir = str(irtm.ENV.CACHE_DIR / "lib.transformers")
             self._base = tf.BertTokenizer.from_pretrained(
                 model,
                 cache_dir=cache_dir,
@@ -97,7 +97,7 @@ class TransformContext:
     sentences: int
     tokens: int
 
-    select: Optional[ryn_loader.Loader] = None
+    select: Optional[irtm_loader.Loader] = None
 
 
 # this matches masked sequences of the upstream sqlite context dbs
@@ -109,7 +109,7 @@ MARKED = (
 
 
 def _transform_result(
-    result: ryn_loader.Result,
+    result: irtm_loader.Result,
     *,
     e: int = None,
     amount: int = None,
@@ -339,7 +339,7 @@ def _transform_get_ctx(stack, split: str, args: WorkerArgs, file_mode: str):
     select = None
     if args.loader:
         select = stack.enter_context(
-            ryn_loader.LOADER[args.loader](**args.loader_args)
+            irtm_loader.LOADER[args.loader](**args.loader_args)
         )
 
     ctx = TransformContext(
@@ -408,16 +408,16 @@ def transform(
 
     """
 
-    if loader not in ryn_loader.LOADER:
-        raise ryn.RynError(f"unknown loader: '{loader}'")
+    if loader not in irtm_loader.LOADER:
+        raise irtm.IRTMError(f"unknown loader: '{loader}'")
 
     if masked and marked:
-        raise ryn.RynError("both masking and marking does not make sense")
+        raise irtm.IRTMError("both masking and marking does not make sense")
 
     # cannot save that to a csv
     _conflicts = set(name for name in dataset.id2ent.values() if SEP in name)
     if _conflicts:
-        raise ryn.RynError(f'entities contain "{SEP}": {_conflicts}')
+        raise irtm.IRTMError(f'entities contain "{SEP}": {_conflicts}')
 
     # ---
 
@@ -433,9 +433,9 @@ def transform(
         name = f"{name}-{suffix}"
 
     ds_name = dataset.name
-    db_name = ryn_loader.LOADER[loader].db_name(**loader_args)
+    db_name = irtm_loader.LOADER[loader].db_name(**loader_args)
 
-    p_out = ryn.ENV.TEXT_DIR / "data" / ds_name / db_name / name
+    p_out = irtm.ENV.TEXT_DIR / "data" / ds_name / db_name / name
     p_out.mkdir(exist_ok=True, parents=True)
 
     with (p_out / "info.json").open(mode="w") as fd:
@@ -498,7 +498,7 @@ def reduce(
     assert info["sentences"] == old_sentences
 
     if old_sentences <= sentences:
-        raise ryn.RynError("nothing to reduce")
+        raise irtm.IRTMError("nothing to reduce")
 
     log.info(f"reducing from {old_sentences} to {sentences} sentences")
 

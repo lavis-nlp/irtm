@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-from ryn.common import logging
+from irtm.common import logging
 
 import matplotlib as mpl
 import matplotlib.pyplot as plt

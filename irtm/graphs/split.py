@@ -6,11 +6,11 @@ Create graph splits exposing tbox proxies.
 
 """
 
-import ryn
-from ryn.graphs import graph
-from ryn.graphs import loader
-from ryn.common import helper
-from ryn.common import logging
+import irtm
+from irtm.graphs import graph
+from irtm.graphs import loader
+from irtm.common import helper
+from irtm.common import logging
 
 import yaml
 import random
@@ -225,7 +225,7 @@ class Dataset:
     @property
     def str_stats(self) -> str:
         s = (
-            "RYN.SPLIT DATASET\n"
+            "IRTM.SPLIT DATASET\n"
             f"-----------------\n"
             f"\n{len(self.concepts)} retained concepts\n\n"
             f"{self.cfg}\n"
@@ -582,7 +582,7 @@ class Splitter:
         self._rels = Relation.from_graph(self.g)
         self._rels.sort(key=lambda rel: rel.ratio)
 
-        self._path = ryn.ENV.SPLIT_DIR / self.name
+        self._path = irtm.ENV.SPLIT_DIR / self.name
         self.path.mkdir(exist_ok=True, parents=True)
 
     def create(self):
@@ -717,7 +717,7 @@ class Splitter:
                 fd.write("\n".join(lines))
 
                 _path = pathlib.Path(fd.name)
-                _relative = _path.relative_to(ryn.ENV.ROOT_DIR)
+                _relative = _path.relative_to(irtm.ENV.ROOT_DIR)
                 log.info(f"wrote {_relative}")
 
         _write("cw.train2id.txt", cw.train)

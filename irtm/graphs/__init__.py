@@ -1,10 +1,10 @@
 # -*- coding: utf-8 -*-
 # fmt: off
 
-from ryn.cli import main
-from ryn.common import logging
-from ryn.graphs import split as split
-from ryn.graphs import loader as loader
+from irtm.cli import main
+from irtm.common import logging
+from irtm.graphs import split as split
+from irtm.graphs import loader as loader
 
 import click
 
@@ -68,7 +68,7 @@ def graph_cli(uri: str = None, single: bool = False, **kwargs):
     banner = '\n'.join((
         '',
         '-' * 20,
-        ' RYN GRAPH CLIENT',
+        ' IRTM GRAPH CLIENT',
         '-' * 20,
         '',
         'variables in scope:',
@@ -141,7 +141,7 @@ def split_cli(path: str = None):
     banner = '\n'.join((
         '',
         '-' * 20,
-        ' RYN DATASET CLIENT',
+        ' IRTM DATASET CLIENT',
         '-' * 20,
         '',
         'variables in scope:',

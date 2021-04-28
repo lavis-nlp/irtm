@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
 
 
-from ryn.graphs.graph import Graph
-from ryn.graphs.graph import GraphImport
-from ryn.graphs.graph import PartitionConstraintError
+from irtm.graphs.graph import Graph
+from irtm.graphs.graph import GraphImport
+from irtm.graphs.graph import PartitionConstraintError
 
 import unittest
 

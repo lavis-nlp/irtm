@@ -1,5 +1,5 @@
 #
-#          RYN TEXT MAPPER CONFIGURATION
+#          IRTM TEXT MAPPER CONFIGURATION
 #    -----------------------------------------
 #
 # - use this file as a template to copy your own configuration
@@ -18,10 +18,10 @@ valid_split: null
 
 # weights and biases configuration
 # see https://docs.wandb.com/integrations/lightning#wandblogger
-# the following attributes are set by ryn:
+# the following attributes are set by irtm:
 #   - name
 #   - save_dir
-# the following attributes are set by ryn but can be overwritten:
+# the following attributes are set by irtm but can be overwritten:
 #   - offline
 wandb_args:
   project: null
@@ -122,7 +122,7 @@ early_stopping_args:
 text_encoder: null
 freeze_text_encoder: null
 
-# look inside ryn/text/mapper.py to find module names
+# look inside irtm/text/mapper.py to find module names
 aggregator: null
 projector: null
 comparator: null
@@ -147,7 +147,7 @@ text_dataset: null
 out: null
 # directory to write to:
 #   defaults to:
-#     ryn.ENV.TEXT_DIR /
+#     irtm.ENV.TEXT_DIR /
 #     mapper /
 #     <text_dataset> /   # e.g. oke.fb15k237_30061990_50
 #     <text_database> /  # e.g. contexts-v7-enwiki-20200920-100-500.db

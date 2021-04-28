@@ -2,11 +2,11 @@
 
 """
 
-ryn specific graph abstractions and utilities
+irtm specific graph abstractions and utilities
 
 """
 
-from ryn.common import logging
+from irtm.common import logging
 
 import networkx
 import numpy as np
@@ -181,7 +181,7 @@ class frozendict(dict):
 class GraphImport:
     """
 
-    Unified data definition used by ryn.graph.Graph.
+    Unified data definition used by irtm.graph.Graph.
 
     Graph triples are of the following structure: (head, tail, relation)
     You can provide any Iterable for the triples. They are converted
@@ -397,7 +397,7 @@ class Stroll:
 
 class Graph:
     """
-    Ryn Graph Implementation
+    IRTM Graph Implementation
 
     Create a new graph object which maintains a networkx graph.
     This class serves as a provider of utilities working on
@@ -411,7 +411,7 @@ class Graph:
     Naming nodes and edges: networkx uses "nodes" and "edges". To
     not confuse on which "level" you operate on the graph, everything
     here is called "ents" (for entities) and "rels" (for relations)
-    when working with Ryn code and "node" and "edges" when working
+    when working with IRTM code and "node" and "edges" when working
     with networkx instances.
 
     Separate Relation and Entitiy -Mapping:
@@ -452,7 +452,7 @@ class Graph:
     @property
     def str_stats(self) -> str:
         s = (
-            f"ryn graph: {self.name}\n"
+            f"irtm graph: {self.name}\n"
             f"  nodes: {self.nx.number_of_nodes()}\n"
             f"  edges: {self.nx.number_of_edges()}"
             f" ({len(self.source.rels)} types)\n"
@@ -475,7 +475,7 @@ class Graph:
     # --
 
     def __str__(self) -> str:
-        return f"ryn.graph: [{self.name}] ({len(self.source.ents)} entities)"
+        return f"irtm.graph: [{self.name}] ({len(self.source.ents)} entities)"
 
     def __init__(
         self,

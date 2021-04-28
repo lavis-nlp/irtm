@@ -1,12 +1,12 @@
 # -*- coding: utf-8 -*-
 
-import ryn
-from ryn.kgc import keen
-from ryn.kgc import data
-from ryn.kgc.config import Config
-from ryn.graphs import split
-from ryn.common import helper
-from ryn.common import logging
+import irtm
+from irtm.kgc import keen
+from irtm.kgc import data
+from irtm.kgc.config import Config
+from irtm.graphs import split
+from irtm.common import helper
+from irtm.common import logging
 
 import torch
 import optuna
@@ -33,7 +33,7 @@ tqdm = partial(_tqdm, ncols=80)
 @helper.notnone
 def resolve_device(*, device_name: str = None):
     if device_name not in ("cuda", "cpu"):
-        raise ryn.RynError(f'unknown device option: "{device_name}"')
+        raise irtm.IRTMError(f'unknown device option: "{device_name}"')
 
     if not torch.cuda.is_available() and device_name == "cuda":
         log.error("cuda is not available; falling back to cpu")
@@ -183,7 +183,7 @@ def _create_study(
     out.mkdir(parents=True, exist_ok=True)
     db_path = out / "optuna.db"
 
-    # removed timestamp: current way of doing it in ryn
+    # removed timestamp: current way of doing it in irtm
     # has seperate optuna.db for each study; might change
     # at some point...
 
@@ -271,7 +271,7 @@ def multi(
                     log.error("aborting attempts, something is wrong.")
                     # post mortem (TODO last model checkpoint)
                     config.save(path)
-                    raise ryn.RynError(msg)
+                    raise irtm.IRTMError(msg)
 
                 log.info("releasing memory manually")
                 gc.collect()
@@ -295,7 +295,7 @@ def multi(
         objective,
         n_trials=base.optuna.trials,
         gc_after_trial=True,
-        # catch=(ryn.RynError,),
+        # catch=(irtm.IRTMError,),
     )
 
     log.info("finished study")
@@ -310,7 +310,7 @@ def train(
     **kwargs,
 ) -> None:
 
-    out = ryn.ENV.KGC_DIR / split_dataset.name / f"{config.model.cls.lower()}"
+    out = irtm.ENV.KGC_DIR / split_dataset.name / f"{config.model.cls.lower()}"
     config.save(out)
 
     multi(
@@ -429,7 +429,7 @@ def _get_mapped_triples(keen_dataset: keen.Dataset = None, mode: str = None):
             keen_dataset.testing,
         )
     else:
-        raise ryn.RynError(f"unknown mode: '{mode}'")
+        raise irtm.IRTMError(f"unknown mode: '{mode}'")
 
     ref = keen_dataset.training.mapped_triples
     mapped_triples = torch.zeros((0, ref.shape[1]), dtype=ref.dtype)

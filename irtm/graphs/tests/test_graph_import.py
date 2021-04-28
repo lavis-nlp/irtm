@@ -1,5 +1,5 @@
-from ryn.graphs.graph import frozendict
-from ryn.graphs.graph import GraphImport
+from irtm.graphs.graph import frozendict
+from irtm.graphs.graph import GraphImport
 
 import pickle
 import pathlib

@@ -1,11 +1,11 @@
 # -*- coding: utf-8 -*-
 
-import ryn
-from ryn import RynError
-from ryn.graphs import graph
-from ryn.common import config
-from ryn.common import helper
-from ryn.common import logging
+import irtm
+from irtm import IRTMError
+from irtm.graphs import graph
+from irtm.common import config
+from irtm.common import helper
+from irtm.common import logging
 
 import json
 import pathlib
@@ -263,10 +263,10 @@ def load_graphs_from_conf(
 ) -> (Dict[str, graph.Graph]):
 
     if conf is None:
-        raise RynError("provide a configuration file")
+        raise IRTMError("provide a configuration file")
 
     if spec is None:
-        raise RynError("provide a configuration specification")
+        raise IRTMError("provide a configuration specification")
 
     # ---
 
@@ -282,12 +282,12 @@ def load_graphs_from_conf(
         msg = "no graphs were selected:"
         options = ", ".join(confs.keys())
 
-        exc = RynError(f"{msg}\n  Options: {options}")
+        exc = IRTMError(f"{msg}\n  Options: {options}")
         log.error(str(exc))
         raise exc
 
     if single and len(selection) != 1:
-        exc = RynError("please select a single graph")
+        exc = IRTMError("please select a single graph")
         log.error(str(exc))
         raise exc
 
@@ -302,7 +302,7 @@ def load_graphs_from_conf(
             triples=conf["triples"],
             entity_labels=conf.get("entity labels", None),
             relation_labels=conf.get("relation labels", None),
-            cache=ryn.ENV.CACHE_DIR / "graphs.loader",
+            cache=irtm.ENV.CACHE_DIR / "graphs.loader",
         )
 
     return graph_dict if not single else graph_dict[list(selection)[0]]
@@ -320,8 +320,8 @@ def load_graphs_from_uri(*uris: str):
     assert all(providers[0] == p for p in providers)
     provider = providers[0]
 
-    spec = str(ryn.ENV.CONF_DIR / "graphs" / "spec.conf")
-    conf = str(ryn.ENV.CONF_DIR / "graphs" / f"{provider}.conf")
+    spec = str(irtm.ENV.CONF_DIR / "graphs" / "spec.conf")
+    conf = str(irtm.ENV.CONF_DIR / "graphs" / f"{provider}.conf")
 
     graph_dict = load_graphs_from_conf(conf=conf, spec=spec, graphs=uris)
 

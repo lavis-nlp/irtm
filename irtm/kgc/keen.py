@@ -8,13 +8,13 @@ https://github.com/pykeen/pykeen
 
 """
 
-import ryn
-from ryn.kgc import data
-from ryn.graphs import split
-from ryn.graphs import graph
-from ryn.common import helper
-from ryn.common import logging
-from ryn.kgc.config import Config
+import irtm
+from irtm.kgc import data
+from irtm.graphs import split
+from irtm.graphs import graph
+from irtm.common import helper
+from irtm.common import logging
+from irtm.kgc.config import Config
 
 import pickle
 import pathlib
@@ -50,7 +50,7 @@ DATEFMT = "%Y.%m.%d.%H%M%S"
 # TODO use helper.cached
 def _cached_predictions(predict_all):
     def _inner(self: split.Dataset, e: int):
-        path = ryn.ENV.CACHE_DIR / "kgc.keen"
+        path = irtm.ENV.CACHE_DIR / "kgc.keen"
         path.mkdir(exist_ok=True, parents=True)
         path /= f"{self.uri}.{e}.pkl"
 
@@ -167,16 +167,16 @@ def r2s(g: graph.Graph, r: int):
 def triple_to_str(g: graph.Graph, htr: Tuple[int]):
     """
 
-    Transform a ryn.graphs triple to a pykeen string representation
+    Transform a irtm.graphs triple to a pykeen string representation
 
     Parameters
     ----------
 
     g: graph.Graph
-      ryn graph instance
+      irtm graph instance
 
     htr: Tuple[int]
-      ryn graph triple
+      irtm graph triple
 
     """
     h, t, r = htr
@@ -192,10 +192,10 @@ def triples_to_ndarray(g: graph.Graph, triples: Collection[Tuple[int]]):
     ----------
 
     g: graph.Graph
-      ryn graph instance
+      irtm graph instance
 
     htr: Collection[Tuple[int]]
-      ryn graph triples
+      irtm graph triples
 
     Returns
     -------
@@ -224,7 +224,7 @@ class Dataset(keen_datasets_base.Dataset):
 
     """
 
-    NAME = "ryn"
+    NAME = "irtm"
 
     @property
     def name(self):
@@ -283,7 +283,7 @@ class Dataset(keen_datasets_base.Dataset):
 
     @property
     def str_stats(self) -> str:
-        s = "ryn pykeen dataset\n"
+        s = "irtm pykeen dataset\n"
         s += f"{self.name}\n"
 
         for name, factory in self._factories:
@@ -554,7 +554,7 @@ class Model:
     # ---  PYKEEN ABSTRACTION
     #
 
-    # translate ryn graph ids to pykeen ids
+    # translate irtm graph ids to pykeen ids
 
     def e2s(self, e: int) -> str:
         return e2s(self.split_dataset.g, e)
@@ -621,7 +621,7 @@ class Model:
         ----------
 
         triples: List[Tuple[int]]
-          List of triples with the ids provided by ryn.graphs.graph.Graph
+          List of triples with the ids provided by irtm.graphs.graph.Graph
           (not the internally used ids of pykeen!)
 
         Returns

@@ -1,14 +1,14 @@
 # -*- coding: utf-8 -*-
 
-import ryn
+import irtm
 
-from ryn.kgc import keen
-from ryn.text import prep
-from ryn.text.config import Config
-from ryn.graphs import graph
-from ryn.graphs import split
-from ryn.common import helper
-from ryn.common import logging
+from irtm.kgc import keen
+from irtm.text import prep
+from irtm.text.config import Config
+from irtm.graphs import graph
+from irtm.graphs import split
+from irtm.common import helper
+from irtm.common import logging
 
 import gzip
 import json
@@ -232,8 +232,8 @@ class TextDataset:
 
     Tokenized text data ready to be used by a model
 
-    This data is produced by ryn.text.data.transform and is
-    reflecting the data as seen by ryn.graph.split.Dataset.
+    This data is produced by irtm.text.data.transform and is
+    reflecting the data as seen by irtm.graph.split.Dataset.
 
     Files required for loading:
 
@@ -255,7 +255,7 @@ class TextDataset:
     max_sentence_count: int
     max_token_count: int
 
-    # --- closed world part of ryn.split.Dataset
+    # --- closed world part of irtm.split.Dataset
 
     # for training projections and transductive
     # knowledge graph completion
@@ -267,7 +267,7 @@ class TextDataset:
     # and unknown contexts
     cw_inductive: Optional[Part]
 
-    # --- open world part of ryn.split.Dataset
+    # --- open world part of irtm.split.Dataset
 
     # for inductive knowledge graph completion
     ow_valid: Part
@@ -316,7 +316,7 @@ class TextDataset:
     def __str__(self) -> str:
         buf = "\n".join(
             (
-                "ryn.text.data.Dataset",
+                "irtm.text.data.Dataset",
                 f"{self.name}",
                 f"created: {self.created}",
                 f"git_hash: {self.git_hash}",
@@ -366,7 +366,7 @@ class TextDataset:
 
         path = pathlib.Path(path)
         if not path.is_dir():
-            raise ryn.RynError(f"Dataset cannot be found: {path}")
+            raise irtm.IRTMError(f"Dataset cannot be found: {path}")
 
         with (path / "info.json").open(mode="r") as fd:
             info = json.load(fd)
@@ -422,7 +422,7 @@ class TextDataset:
         """
         path = pathlib.Path(path)
         if not path.is_dir():
-            raise ryn.RynError(f"Dataset cannot be found: {path}")
+            raise irtm.IRTMError(f"Dataset cannot be found: {path}")
 
         with (path / "info.json").open(mode="r") as fd:
             info = json.load(fd)
@@ -479,7 +479,7 @@ class Triples:
 @dataclass
 class KGCDataset:
 
-    ryn2keen: Dict[int, int]
+    irtm2keen: Dict[int, int]
     inductive: Triples
     transductive: Triples
     test: Triples
@@ -531,19 +531,19 @@ class KGCDataset:
 
         log.info("created datasets triples factories")
 
-        ryn2keen = {}
+        irtm2keen = {}
         for factory in (transductive.factory, inductive.factory, test.factory):
-            ryn2keen.update(
+            irtm2keen.update(
                 {
                     int(name.split(":", maxsplit=1)[0]): keen_id
                     for name, keen_id in factory.entity_to_id.items()
                 }
             )
 
-        log.info(f"initialized ryn2keen mapping with {len(ryn2keen)} ids")
+        log.info(f"initialized irtm2keen mapping with {len(irtm2keen)} ids")
 
         return K(
-            ryn2keen=ryn2keen,
+            irtm2keen=irtm2keen,
             transductive=transductive,
             inductive=inductive,
             test=test,
@@ -667,7 +667,7 @@ class Models:
         tokenizer = None
         text_encoder = tf.BertModel.from_pretrained(
             config.text_encoder,
-            cache_dir=ryn.ENV.CACHE_DIR / "lib.transformers",
+            cache_dir=irtm.ENV.CACHE_DIR / "lib.transformers",
         )
 
         tokenizer = prep.Tokenizer.load(config.text_dataset)
@@ -781,7 +781,7 @@ class DataModule(pl.LightningDataModule):
 
         if self.config.split_text_dataset:
             if not self.config.valid_split:
-                raise ryn.RynError(
+                raise irtm.IRTMError(
                     "config.valid_split required if"
                     " config.split_text_dataset is set"
                 )

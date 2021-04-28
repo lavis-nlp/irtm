@@ -17,7 +17,7 @@ class ENV:
 
     LIB_DIR:   pathlib.Path = _root_path / 'lib'
     CONF_DIR:  pathlib.Path = _root_path / 'conf'
-    SRC_DIR:   pathlib.Path = _root_path / 'ryn'
+    SRC_DIR:   pathlib.Path = _root_path / 'irtm'
 
     # data heap
 
@@ -29,7 +29,7 @@ class ENV:
     ARCHIVE_DIR: pathlib.Path = _root_path / _DATA_DIR / 'archive'
 
 
-class RynError(Exception):
+class IRTMError(Exception):
 
     def __init__(self, msg: str):
         super().__init__(msg)

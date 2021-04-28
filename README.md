@@ -1,6 +1,4 @@
-# RŶN
-
-> But no wizardry nor spell, neither fang nor venom, nor devil's art nor beast-strength, could overthrow Huan of Valinor
+# IRTM
 
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 
@@ -16,7 +14,7 @@ fish environment.fish
 Without multi-gpu support:
 
 ```bash
-conda create --name ryn python=3.8
+conda create --name irtm python=3.8
 conda install pytorch
 pip install -r requirements.txt
 pip install -e .
@@ -26,10 +24,10 @@ pip install -e .
 ## Command Line Client
 
 ```
- > ryn --help
-Usage: ryn [OPTIONS] COMMAND [ARGS]...
+ > irtm --help
+Usage: irtm [OPTIONS] COMMAND [ARGS]...
 
-  RYN - working with texts and graphs
+  IRTM - working with texts and graphs
 
 Options:
   --help  Show this message and exit.
@@ -45,8 +43,8 @@ Commands:
 To get more specific information, each subcommand also offers help:
 
 ```
- > ryn graphs --help
-Usage: ryn graphs [OPTIONS] COMMAND [ARGS]...
+ > irtm graphs --help
+Usage: irtm graphs [OPTIONS] COMMAND [ARGS]...
 
   Working with graphs
 
@@ -61,24 +59,24 @@ Commands:
 
 ## Knowledge Graph Completion
 
-The `ryn.kgc` module offers kgc functionality on top of
+The `irtm.kgc` module offers kgc functionality on top of
 [pykeen](https://github.com/pykeen/pykeen).
 
 
 ### Training
 
-You need a split dataset (see `ryn.graphs.split.Dataset`) and
+You need a split dataset (see `irtm.graphs.split.Dataset`) and
 configuration file (see `conf/kgc/*.json`). Models are trained by
 simply providing these two arguments:
 
 ```
-ryn kgc train \
+irtm kgc train \
   --config conf/kgc/complex-sweep.json \
   --split-dataset data/split/oke.fb15k237_30061990_50
 ```
 
 This writes the results to `data/kgc/<DATASET>/<MODEL>-<TIMESTAMP>`
-(where `data/kgc` is set by `ryn.ENV.KGC_DIR` in `ryn/__init__.py`)
+(where `data/kgc` is set by `irtm.ENV.KGC_DIR` in `irtm/__init__.py`)
 
 
 ### Evaluation
@@ -91,5 +89,5 @@ successively:
 ```
 dataset=data/split/oke.fb15k237_30061990_50
 sweep=data/kgc/oke.fb15k237_30061990_50/DistMult-2020-10-22_10:58:50.325146
-ryn kgc evaluate --out $sweep --split_dataset $dataset $sweep
+irtm kgc evaluate --out $sweep --split_dataset $dataset $sweep
 ```

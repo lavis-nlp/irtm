@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
-from ryn import RynError
-from ryn.common import logging
+from irtm import IRTMError
+from irtm.common import logging
 
 import os
 import pickle
@@ -63,7 +63,7 @@ def notnone(fn):
         for argname in kwarg_names:
             if kwargs.get(argname) is None:
                 msg = f"argument {argname} for {fn} must not be None"
-                raise RynError(msg)
+                raise IRTMError(msg)
 
         return fn(*args, **kwargs)
 
@@ -153,10 +153,10 @@ def path(
     path = pathlib.Path(name)
 
     if (exists or is_file) and not path.exists():
-        raise RynError(f"{path} does not exist")
+        raise IRTMError(f"{path} does not exist")
 
     if is_file and not path.is_file():
-        raise RynError(f"{path} exists but is not a file")
+        raise IRTMError(f"{path} exists but is not a file")
 
     if create:
         path.mkdir(exist_ok=True, parents=True)
@@ -220,8 +220,8 @@ def notebook():
     # %autoreload 2
     cwd = pathlib.Path.cwd()
 
-    # TODO no longer necessary since introducing ryn.ENV?
-    if cwd.name != "ryn":
+    # TODO no longer necessary since introducing irtm.ENV?
+    if cwd.name != "irtm":
         print("changing directory")
         os.chdir(cwd.parent)
 

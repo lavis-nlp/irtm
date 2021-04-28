@@ -1,5 +1,5 @@
 #
-#          RYN TEXT MAPPER CONFIGURATION
+#          IRTM TEXT MAPPER CONFIGURATION
 #    -----------------------------------------
 #
 #        see the default.yml for comments
@@ -15,7 +15,7 @@ text_dataset: data/text/data/vll.fb15k237-owe_2041992/entity2wikidata.json/bert-
 reductor: 'independent 1'
 
 wandb_args:
-  project: ryn-text
+  project: irtm-text
   log_model: false
 
 trainer_args:

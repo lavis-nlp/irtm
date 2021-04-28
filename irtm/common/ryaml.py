@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
-import ryn
-from ryn.common import helper
+import irtm
+from irtm.common import helper
 
 import yaml
 
@@ -48,7 +48,7 @@ def load(*, configs: Sequence[str], **kwargs):
     """
 
     if not configs and not kwargs:
-        raise ryn.RynError("no configuration provided")
+        raise irtm.IRTMError("no configuration provided")
 
     as_path = partial(helper.path, exists=True, message="loading {path_abbrv}")
 

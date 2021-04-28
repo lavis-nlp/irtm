@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 
-import ryn
-from ryn.common import helper
-from ryn.common import logging
+import irtm
+from irtm.common import helper
+from irtm.common import logging
 
 import optuna
 
@@ -31,7 +31,7 @@ log = logging.get("kgc.config")
 
 
 # ---
-# RYN RELATED
+# IRTM RELATED
 
 
 @dataclass
@@ -141,7 +141,7 @@ class Suggestion:
                 return FloatSuggestion(**kwargs)
             return IntSuggestion(**kwargs)
 
-        raise ryn.RynError(f"cannot create suggestion from {kwargs}")
+        raise irtm.IRTMError(f"cannot create suggestion from {kwargs}")
 
 
 @dataclass
@@ -192,7 +192,7 @@ class IntSuggestion(Suggestion):
 @dataclass
 class Config:
 
-    # ryn
+    # irtm
 
     general: General
 
@@ -325,7 +325,7 @@ class Config:
                 pass
 
         if not suggestions:
-            raise ryn.RynError("no parameters marked for optimization")
+            raise irtm.IRTMError("no parameters marked for optimization")
 
         return suggestions
 
@@ -368,6 +368,6 @@ class Config:
                 continue
 
         if not replaced:
-            raise ryn.RynError("no parameters marked for optimization")
+            raise irtm.IRTMError("no parameters marked for optimization")
 
         return dataclasses.replace(self, **replaced)

@@ -1,5 +1,5 @@
 #
-#          RYN TEXT MAPPER CONFIGURATION
+#          IRTM TEXT MAPPER CONFIGURATION
 #    -----------------------------------------
 #
 #        see the default.yml for comments
@@ -13,7 +13,7 @@ kgc_model: data/kgc/oke.fb15k237_26041992_100/distmult/trial-0017
 split_dataset: data/split/oke.fb15k237_26041992_100
 
 wandb_args:
-  project: ryn-text
+  project: irtm-text
   log_model: False
 
 trainer_args:

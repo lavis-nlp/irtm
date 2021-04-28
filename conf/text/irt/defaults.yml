@@ -1,5 +1,5 @@
 #
-#          RYN TEXT MAPPER CONFIGURATION
+#          IRTM TEXT MAPPER CONFIGURATION
 #    -----------------------------------------
 #
 #        see the default.yml for comments
@@ -10,7 +10,7 @@ text_encoder: bert-base-cased
 split_text_dataset: false
 
 wandb_args:
-  project: ryn-text
+  project: irtm-text
   log_model: false
 
 trainer_args:
@@ -29,7 +29,7 @@ trainer_args:
   accumulate_grad_batches: 1
   # --------------------
 
-  # clipping logic is implemented in ryn
+  # clipping logic is implemented in irtm
   # (see mapper forward pass)
   gradient_clip_val: 1
   check_val_every_n_epoch: 2

@@ -1,11 +1,11 @@
 # -*- coding: utf-8 -*-
 
-import ryn
-from ryn.text import data
-from ryn.text import mapper
-from ryn.text.config import Config
-from ryn.common import helper
-from ryn.common import logging
+import irtm
+from irtm.text import data
+from irtm.text import mapper
+from irtm.text.config import Config
+from irtm.common import helper
+from irtm.common import logging
 
 import pytorch_lightning as pl
 import horovod.torch as hvd
@@ -31,9 +31,9 @@ def load_from_config(*, config: Config = None):
         split_dataset=upstream_models.kgc_model.split_dataset,
     )
 
-    rync = mapper.Components.create(config=config, models=upstream_models)
+    irtmc = mapper.Components.create(config=config, models=upstream_models)
 
-    return datamodule, rync
+    return datamodule, irtmc
 
 
 @helper.notnone
@@ -179,10 +179,10 @@ def _fit(
 def train(*, config: Config = None, debug: bool = False):
     log.info("lasciate ogni speranza o voi che entrate")
 
-    datamodule, rync = load_from_config(config=config)
+    datamodule, irtmc = load_from_config(config=config)
 
     map_model = mapper.Mapper(
-        rync=rync,
+        irtmc=irtmc,
         data=datamodule,
         freeze_text_encoder=config.freeze_text_encoder,
     )
@@ -192,7 +192,7 @@ def train(*, config: Config = None, debug: bool = False):
     # --
 
     out_fmt = config.out or (
-        f"{ryn.ENV.TEXT_DIR}/mapper/"
+        f"{irtm.ENV.TEXT_DIR}/mapper/"
         "{text_dataset}/{text_database}/"
         "{text_model}/{kgc_model}"
     )
@@ -203,7 +203,7 @@ def train(*, config: Config = None, debug: bool = False):
                 text_dataset=datamodule.text.dataset,
                 text_database=datamodule.text.database,
                 text_model=datamodule.text.model,
-                kgc_model=rync.kgc_model_name,
+                kgc_model=irtmc.kgc_model_name,
             )
         )
     )
@@ -221,7 +221,7 @@ def train(*, config: Config = None, debug: bool = False):
         debug=debug,
         config=config,
         timestamp=timestamp,
-        kgc_model_name=rync.kgc_model_name,
+        kgc_model_name=irtmc.kgc_model_name,
         text_encoder_name=config.text_encoder,
         text_dataset_name=datamodule.text.name,
         text_dataset_identifier=datamodule.text.identifier,
@@ -281,7 +281,7 @@ def resume_from_kwargs(
     config = Config.create(configs=[config_file] + list(config), **kwargs)
 
     config.out = out
-    datamodule, rync = load_from_config(config=config)
+    datamodule, irtmc = load_from_config(config=config)
 
     checkpoint = helper.path(
         checkpoint,
@@ -292,7 +292,7 @@ def resume_from_kwargs(
     map_model = mapper.Mapper.load_from_checkpoint(
         str(checkpoint),
         data=datamodule,
-        rync=rync,
+        irtmc=irtmc,
         freeze_text_encoder=config.freeze_text_encoder,
     )
 
@@ -311,7 +311,7 @@ def resume_from_kwargs(
         debug=debug,
         timestamp=timestamp,
         config=config,
-        kgc_model_name=rync.kgc_model_name,
+        kgc_model_name=irtmc.kgc_model_name,
         text_encoder_name=config.text_encoder,
         text_dataset_name=datamodule.text.name,
         text_dataset_identifier=datamodule.text.identifier,

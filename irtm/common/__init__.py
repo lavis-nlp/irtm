@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 # fmt: off
 
-from ryn.cli import main
-from ryn.common import ryaml
+from irtm.cli import main
+from irtm.common import ryaml
 
 import click
 

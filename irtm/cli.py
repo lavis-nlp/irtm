@@ -16,14 +16,14 @@ pretty_errors.configure(
 @click.group()
 def main():
     """
-    RYN - working with texts and graphs
+    IRTM - working with texts and graphs
     """
-    from ryn.common import logging
+    from irtm.common import logging
 
     log = logging.get("cli")
 
-    log.info(" · RYN CLI ·")
-    log.info(f"initialized path to ryn: {ryn.ENV.ROOT_DIR}")
+    log.info(" · IRTM CLI ·")
+    log.info(f"initialized path to irtm: {irtm.ENV.ROOT_DIR}")
 
 
 # tests are distributed over submodules
@@ -45,7 +45,7 @@ def click_tests():
 def run(name: str = None):
     runner = unittest.TextTestRunner()
     loader = unittest.TestLoader()
-    tests = loader.discover(ryn.ENV.SRC_DIR)
+    tests = loader.discover(irtm.ENV.SRC_DIR)
 
     if name:
         tests = loader.loadTestsFromName(name)
@@ -56,7 +56,7 @@ def run(name: str = None):
 # registered modules (see their respective __init__.py)
 # not a super nice solution, but it works well
 
-import ryn.common  # noqa: E402
-import ryn.kgc  # noqa: E402
-import ryn.text  # noqa: E402
-import ryn.graphs  # noqa: E402
+import irtm.common  # noqa: E402
+import irtm.kgc  # noqa: E402
+import irtm.text  # noqa: E402
+import irtm.graphs  # noqa: E402

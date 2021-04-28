@@ -1,10 +1,10 @@
 # -*- coding: utf-8 -*-
 # fmt: off
 
-from ryn.cli import main
-from ryn.kgc import trainer
-from ryn.common import helper
-from ryn.common import logging
+from irtm.cli import main
+from irtm.kgc import trainer
+from irtm.common import helper
+from irtm.common import logging
 
 import click
 
@@ -39,7 +39,7 @@ def kgc_cli(result: str = None):
     # banner = '\n'.join((
     #     '',
     #     '-' * 20,
-    #     ' RYN KEEN CLIENT',
+    #     ' IRTM KEEN CLIENT',
     #     '-' * 20,
     #     '',
     #     'variables in scope:',
@@ -57,7 +57,7 @@ def kgc_cli(result: str = None):
     help='json (see conf/kgc/*json)')
 @click.option(
     '--split-dataset', type=str, required=True,
-    help='path to ryn.graphs.split.Dataset folder')
+    help='path to irtm.graphs.split.Dataset folder')
 @click.option(
     '--participate/--create', type=bool, default=False,
     help='for multi-process optimization')
@@ -74,7 +74,7 @@ def click_train(**kwargs):
     help='directory containing a config.json and optuna.db')
 @click.option(
     '--split-dataset', type=str, required=True,
-    help='path to ryn.graphs.split.Dataset folder')
+    help='path to irtm.graphs.split.Dataset folder')
 def click_resume(**kwargs):
     """
     Resume hyperparameter search

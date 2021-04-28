@@ -4,7 +4,7 @@
   },
   "tracker": {
     "cls": "wandb",
-    "project": "ryn-keen",
+    "project": "irtm-keen",
     "reinit": true,
     "offline": false
   },
