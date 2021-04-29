@@ -125,10 +125,3 @@ class Experiments(list):
             for row in csv.DictReader(fd):
                 if row["identifier"]:
                     self.append(Experiment.from_row(row))
-
-
-@helper.notnone
-def clean(csv_file: str = None):
-
-    exps = util.Experiments(csv_file)
-    __import__("pdb").set_trace()

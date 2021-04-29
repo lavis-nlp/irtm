@@ -600,14 +600,9 @@ class Model:
     def mapped_test_triples(self) -> Set[Tuple[int]]:
         return _triples_to_set(self.triple_factories.test.mapped_triples)
 
-    @helper.notnone
-    def embeddings(
-        self, *, entities: Collection[int] = None, device: torch.device = None
-    ):
-
+    def embeddings(self, entities: Collection[int], device: torch.device):
         mapped = tuple(map(self.e2id, entities))
         indexes = torch.Tensor(mapped).to(dtype=torch.long, device=device)
-
         return self.keen.entity_embeddings(indexes)
 
     # ---

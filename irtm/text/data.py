@@ -93,17 +93,12 @@ class Part:
 
         def _deep_check(d1: Dict[int, List], d2: Dict[int, List]):
             for e in d1:
-                assert len(d1[e]) == len(
-                    d2[e]
-                ), f"{len(d1[e])=} != {len(d2[e])=}"
+                assert len(d1[e]) == len(d2[e]), f"{len(d1[e])=} != {len(d2[e])=}"
 
         _deep_check(self.id2sents, self.id2toks)
         _deep_check(self.id2sents, self.id2idxs)
 
-    @helper.notnone
-    def split_by_entity(
-        self, *, ratio: float = None, retained_entities: Set[int] = None
-    ):
+    def split_by_entity(self, ratio: float, retained_entities: Set[int]):
 
         n = int(len(self.id2idxs) * ratio) - len(retained_entities)
         assert (0 < n) and (n < len(self.id2idxs))
@@ -112,8 +107,7 @@ class Part:
         a, b = candidates[:n], candidates[n:]
 
         log.info(
-            f"split {self.name} by entity at "
-            f"{n}/{len(self.id2idxs)} ({ratio=})"
+            f"split {self.name} by entity at " f"{n}/{len(self.id2idxs)} ({ratio=})"
         )
 
         def _dic_subset(dic, keys):
@@ -135,8 +129,7 @@ class Part:
 
         return p1, p2
 
-    @helper.notnone
-    def split_text_contexts(self, *, ratio: float = None):
+    def split_text_contexts(self, ratio: float):
         log.info(f"split {self.name} text contexts ({ratio=})")
 
         p1 = Part(name=self.name + "-context_split_a")
@@ -187,8 +180,7 @@ class Part:
                 yield int(e_str), blob
 
     @classmethod
-    @helper.notnone
-    def load(K, *, name: str = None, path: pathlib.Path = None):
+    def load(K, name: str, path: pathlib.Path):
         log.info(f"loading dataset from {path}")
 
         read = partial(Part._read, path)
@@ -342,8 +334,7 @@ class TextDataset:
 
             buf += (
                 textwrap.indent(
-                    f"[{name.upper()}] {part}\n"
-                    f"  open world entities: {len(ow)}",
+                    f"[{name.upper()}] {part}\n" f"  open world entities: {len(ow)}",
                     "  ",
                 )
                 + "\n"
@@ -352,7 +343,6 @@ class TextDataset:
         return buf
 
     @classmethod
-    @helper.notnone
     @helper.cached(".cached.text.data.dataset.{seed}.{ratio}.pkl")
     def create(
         K,
@@ -409,11 +399,10 @@ class TextDataset:
         return self
 
     @classmethod
-    @helper.notnone
     @helper.cached(".cached.text.data.dataset.loaded.pkl")
     def load(
         K,
-        path: Union[str, pathlib.Path] = None,
+        path: Union[str, pathlib.Path],
     ):
         """
 
@@ -651,16 +640,14 @@ class TorchDataset(torch_data.Dataset):
 @dataclass
 class Models:
 
-    tokenizer: prep.Tokenizer
+    # tokenizer: prep.Tokenizer
     kgc_model: keen.Model
     text_encoder: tf.BertModel
 
     @classmethod
-    @helper.notnone
     def load(
         K,
-        *,
-        config: Config = None,
+        config: Config,
     ):
 
         text_encoder = None
@@ -766,13 +753,11 @@ class DataModule(pl.LightningDataModule):
 
     # ---
 
-    @helper.notnone
     def __init__(
         self,
-        *,
-        config: Config = None,
-        keen_dataset=None,
-        split_dataset=None,
+        config: Config,
+        keen_dataset,
+        split_dataset,
     ):
         super().__init__()
 
@@ -837,9 +822,7 @@ class DataModule(pl.LightningDataModule):
                 replacement=replacement,
             )
 
-            log.info(
-                f"using node degreee sampler {num_samples=} {replacement=}"
-            )
+            log.info(f"using node degreee sampler {num_samples=} {replacement=}")
 
         if self.has_geometric_validation():
             log.info("! dataset offers geometric validation")

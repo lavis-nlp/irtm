@@ -7,7 +7,6 @@ import os
 import pickle
 import random
 import pathlib
-import inspect
 
 import git
 import torch
@@ -26,48 +25,6 @@ from typing import Callable
 
 log = logging.get("common.helper")
 tqdm = partial(_tqdm, ncols=80)
-
-
-# --- DECORATOR
-
-
-def notnone(fn):
-
-    # TODO let it work with default parameters: f(foo=False)
-    # TODO ignore None for typing.Optional
-
-    # def f(a, b)
-    # spec: args=['a', 'b'], defaults=None, kwonlyargs=[]
-    #
-    # def f(a, b, foo=None, bar=None)
-    # spec: args=['a', 'b', 'foo', 'bar'], defaults=(None, None), kwonlyargs=[]
-    #
-    # def f(foo=None, bar=None)
-    # spec: args=['foo', 'bar'], defaults=(None, None), kwonlyargs=[]
-    #
-    # def f(*, foo=None, bar=None)
-    # spec: args=[], defaults=None, kwonlyargs=['foo', 'bar']
-
-    spec = inspect.getfullargspec(fn)
-
-    try:
-        n = len(spec.defaults)
-        kwarg_names = spec.args[-n:]
-
-    # spec.defaults is None for kwonly functions
-    except TypeError:
-        kwarg_names = spec.kwonlyargs
-
-    @wraps(fn)
-    def _proxy(*args, **kwargs):
-        for argname in kwarg_names:
-            if kwargs.get(argname) is None:
-                msg = f"argument {argname} for {fn} must not be None"
-                raise IRTMError(msg)
-
-        return fn(*args, **kwargs)
-
-    return _proxy
 
 
 def timed(fn, name="unknown"):
@@ -101,8 +58,7 @@ class Cache:
     def invalidate(self) -> None:
         self._invalid = True
 
-    @notnone
-    def __init__(self, filename: str = None, fn: Callable = None):
+    def __init__(self, filename: str, fn: Callable):
 
         self._fn = fn
         self._filename = filename

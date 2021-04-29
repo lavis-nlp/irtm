@@ -127,9 +127,7 @@ class MaxPoolingDropoutAggregator_1(Aggregator):
 
         p: float
 
-    def __init__(
-        self, *args, config: "MaxPoolingDropoutAggregator_1.Config", **kwargs
-    ):
+    def __init__(self, *args, config: "MaxPoolingDropoutAggregator_1.Config", **kwargs):
 
         super().__init__(*args, config=config, **kwargs)
         self.dropout = nn.Dropout(config.p)
@@ -159,9 +157,7 @@ class CLSDropoutAggregator_1(Aggregator):
 
         p: float
 
-    def __init__(
-        self, *args, config: "CLSDropoutAggregator_1.Config", **kwargs
-    ):
+    def __init__(self, *args, config: "CLSDropoutAggregator_1.Config", **kwargs):
 
         super().__init__(*args, config=config, **kwargs)
         self.dropout = nn.Dropout(config.p)
@@ -378,25 +374,28 @@ class Components:
         return self.kgc_model.config.model.cls.lower()
 
     @classmethod
-    @helper.notnone
-    def create(K, *, config: Config = None, models: data.Models = None):
+    def create(K, config: Config, models: data.Models):
         aggregator = Aggregator.init(
-            name=config.aggregator, **config.aggregator_args
+            name=config.aggregator,
+            **config.aggregator_args,
         )
 
-        reductor = Reductor.init(name=config.reductor, **config.reductor_args)
+        reductor = Reductor.init(
+            name=config.reductor,
+            **config.reductor_args,
+        )
 
         projector = Projector.init(
-            name=config.projector, **config.projector_args
+            name=config.projector,
+            **config.projector_args,
         )
 
         comparator = Comparator.init(
-            name=config.comparator, **config.comparator_args
+            name=config.comparator,
+            **config.comparator_args,
         )
 
-        if all(
-            (config.optimizer is not None, config.optimizer not in OPTIMIZER)
-        ):
+        if all((config.optimizer is not None, config.optimizer not in OPTIMIZER)):
             raise irtm.IRTMError(f'unknown optimizer "{config.optimizer}"')
 
         self = K(
@@ -507,9 +506,7 @@ class Mapper(pl.LightningModule):
 
         log.info(f'register "projections" buffer of shape {shape}')
 
-        self.register_buffer(
-            "projections", torch.zeros(shape, requires_grad=False)
-        )
+        self.register_buffer("projections", torch.zeros(shape, requires_grad=False))
 
         self.register_buffer(
             "projections_counts", torch.zeros(shape[0], requires_grad=False)
@@ -592,8 +589,7 @@ class Mapper(pl.LightningModule):
 
         self._gathered_projections = True
 
-    @helper.notnone
-    def _update_projections(self, entities=None, projected=None):
+    def _update_projections(self, entities, projected):
         for e, v in zip(entities, projected.detach()):
             idx = self.data.kgc.irtm2keen[e]
             self.projections[idx] += v
@@ -620,9 +616,10 @@ class Mapper(pl.LightningModule):
 
         return embeddings
 
-    @helper.notnone
     def forward_subbatch(
-        self, ents: Tuple[int] = None, ctxs: torch.Tensor = None
+        self,
+        ents: Tuple[int],
+        ctxs: torch.Tensor,
     ) -> Tuple[Tuple[int], torch.Tensor]:
         # sub-batch x tokens x text_dims
         encoded = self.forward_context(ctxs)
@@ -688,9 +685,7 @@ class Mapper(pl.LightningModule):
         for j, k in subbatches:
             # timing(f"[{j}:{k}] enter loop")
 
-            entities, projected = self.forward_subbatch(
-                ents=ents[j:k], ctxs=ctxs[j:k]
-            )
+            entities, projected = self.forward_subbatch(ents=ents[j:k], ctxs=ctxs[j:k])
 
             # timing(f"[{j}:{k}] forward")
             # entities = ents[j:k]
@@ -764,13 +759,7 @@ class Mapper(pl.LightningModule):
     #   VALIDATION
     #
 
-    @helper.notnone
-    def _geometric_validation_step(
-        self,
-        batch=None,
-        kind: str = None,
-        subbatch_size: int = None,
-    ):
+    def _geometric_validation_step(self, batch, kind: str, subbatch_size: int):
         # partition losses for inductive and transductive
         loss, _ = self.forward(
             batch=batch,
@@ -780,13 +769,7 @@ class Mapper(pl.LightningModule):
 
         self.log_dict({f"{kind}.valid_loss_step": loss})
 
-    @helper.notnone
-    def _kgc_validation_step(
-        self,
-        batch=None,
-        batch_idx=None,
-        subbatch_size=None,
-    ):
+    def _kgc_validation_step(self, batch, batch_idx, subbatch_size):
         # it updates the projections buffer
         self.forward(batch=batch, subbatch_size=subbatch_size)
 
@@ -818,16 +801,8 @@ class Mapper(pl.LightningModule):
         else:
             assert False, "unknown validation dataloader"
 
-    @helper.notnone
-    def run_kgc_evaluation(
-        self, *, kind: str = None, triples=None
-    ):  # data.Triples
+    def run_kgc_evaluation(self, kind: str, triples):  # data.Triples
         assert self._gathered_projections, "run gather_projections()"
-
-        global TQDM_KWARGS
-        if hvd.size() == 1:
-            TQDM_KWARGS["disable"] = False
-
         assert kind in ["transductive", "inductive", "test"]
 
         log.info(
@@ -853,9 +828,7 @@ class Mapper(pl.LightningModule):
 
         new_weights[idxs] = self.projections[idxs]
 
-        self.keen.entity_embeddings._embeddings = Embedding(new_weights).to(
-            self.device
-        )
+        self.keen.entity_embeddings._embeddings = Embedding(new_weights).to(self.device)
 
         mapped_triples = triples.factory.mapped_triples
         if self.debug:
@@ -869,9 +842,9 @@ class Mapper(pl.LightningModule):
         )
 
         # restore original embeddings
-        self.keen.entity_embeddings._embeddings = Embedding(
-            original_weights
-        ).to(self.device)
+        self.keen.entity_embeddings._embeddings = Embedding(original_weights).to(
+            self.device
+        )
 
         # -- /embedding shenanigans
 
@@ -898,9 +871,7 @@ class Mapper(pl.LightningModule):
                 result = self.run_kgc_evaluation(kind=kind, triples=triples)
                 self._log_kgc_results(kind=kind, metrics=result.metrics)
 
-                log.info(
-                    f"! finished {kind} kgc evaluation on attempt {attempt}"
-                )
+                log.info(f"! finished {kind} kgc evaluation on attempt {attempt}")
 
             except RuntimeError as exc:
                 log.error(f"registered error: {exc}")
@@ -918,17 +889,14 @@ class Mapper(pl.LightningModule):
                 self._mock_kgc_results()
                 break
 
-    @helper.notnone
-    def flatten_kgc_results(self, *, kind: str = None, metrics: Dict = None):
+    def flatten_kgc_results(self, kind: str, metrics: Dict):
         # TODO newer pykeen version offer .to_flat_dict()
         def _flatten(parents, dic):
             acc = {}
 
             for k, v in dic.items():
                 k = parents + [str(k)]
-                acc.update(
-                    _flatten(k, v) if (type(v) is dict) else {tuple(k): v}
-                )
+                acc.update(_flatten(k, v) if (type(v) is dict) else {tuple(k): v})
 
             return acc
 
@@ -1038,8 +1006,7 @@ class Mapper(pl.LightningModule):
             memory_usage = (res_memory / total_memory) * 100
 
             log.info(
-                f"! {loader.dataset.name} is using"
-                f" ~{int(memory_usage)}% memory"
+                f"! {loader.dataset.name} is using" f" ~{int(memory_usage)}% memory"
             )
 
             del batch
@@ -1058,9 +1025,7 @@ class Mapper(pl.LightningModule):
 
         # hvd is initialized now
 
-        self._ow_validation_batches = math.ceil(
-            len(self.data.kgc_dataloader) / hvd.size()
-        )
+        self._ow_validation_batches = len(self.data.kgc_dataloader)
 
         # --
 

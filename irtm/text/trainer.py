@@ -21,8 +21,7 @@ from typing import Optional
 log = logging.get("text.trainer")
 
 
-@helper.notnone
-def load_from_config(*, config: Config = None):
+def load_from_config(config: Config):
     upstream_models = data.Models.load(config=config)
 
     datamodule = data.DataModule(
@@ -36,16 +35,15 @@ def load_from_config(*, config: Config = None):
     return datamodule, irtmc
 
 
-@helper.notnone
 def _init_logger(
-    debug: bool = None,
-    timestamp: str = None,
-    config: Config = None,
-    kgc_model_name: str = None,
-    text_encoder_name: str = None,
-    text_dataset_name: str = None,
-    text_dataset_identifier: str = None,
-    resume: bool = None,
+    debug: bool,
+    timestamp: str,
+    config: Config,
+    kgc_model_name: str,
+    text_encoder_name: str,
+    text_dataset_name: str,
+    text_dataset_identifier: str,
+    resume: bool,
 ):
 
     # --
@@ -104,9 +102,7 @@ def _init_trainer(
 
     if not debug and config.checkpoint_args:
         log.info(f"registering checkpoint callback: {config.checkpoint_args}")
-        callbacks.append(
-            pl.callbacks.ModelCheckpoint(**config.checkpoint_args)
-        )
+        callbacks.append(pl.callbacks.ModelCheckpoint(**config.checkpoint_args))
 
     callbacks.append(
         pl.callbacks.LearningRateMonitor(
@@ -117,9 +113,7 @@ def _init_trainer(
     if config.early_stopping:
         log.info(f"adding early stopping: '{config.early_stopping_args}'")
         callbacks.append(
-            pl.callbacks.early_stopping.EarlyStopping(
-                **config.early_stopping_args
-            )
+            pl.callbacks.early_stopping.EarlyStopping(**config.early_stopping_args)
         )
 
     trainer_args = dict(
@@ -148,14 +142,12 @@ def _init_trainer(
     )
 
 
-@helper.notnone
 def _fit(
-    *,
-    trainer: pl.Trainer = None,
-    model: pl.LightningModule = None,
-    datamodule: data.DataModule = None,
-    out: pathlib.Path = None,
-    debug: bool = None,
+    trainer: pl.Trainer,
+    model: pl.LightningModule,
+    datamodule: data.DataModule,
+    out: pathlib.Path,
+    debug: bool,
 ):
     log.info("pape satan, pape satan aleppe")
 
@@ -175,8 +167,7 @@ def _fit(
             fd.write(trainer.profiler.summary())
 
 
-@helper.notnone
-def train(*, config: Config = None, debug: bool = False):
+def train(*, config: Config, debug: bool = False):
     log.info("lasciate ogni speranza o voi che entrate")
 
     datamodule, irtmc = load_from_config(config=config)
@@ -253,10 +244,9 @@ def train(*, config: Config = None, debug: bool = False):
     log.info("training finished")
 
 
-@helper.notnone
 def train_from_kwargs(
+    config: List[str],
     debug: bool = False,
-    config: List[str] = None,
     **kwargs,
 ):
 
@@ -267,12 +257,11 @@ def train_from_kwargs(
     train(config=config, debug=debug)
 
 
-@helper.notnone
 def resume_from_kwargs(
-    path: str = None,
-    checkpoint: str = None,
-    debug: bool = None,
-    config: List[str] = None,
+    path: str,
+    checkpoint: str,
+    debug: bool,
+    config: List[str],
     **kwargs,
 ):
 

@@ -1,6 +1,7 @@
-from irtm.kgc import keen
+# -*- coding: utf-8 -*-
+
+
 from irtm.kgc.config import Config
-from irtm.graphs import split
 from irtm.common import helper
 from irtm.common import logging
 
@@ -23,25 +24,14 @@ from typing import Union
 log = logging.get("kgc.data")
 
 
-@helper.notnone
-def load_datasets(path: Union[str, pathlib.Path] = None):
-    split_dataset = split.Dataset.load(path=path)
-    keen_dataset = keen.Dataset.from_split_dataset(split_dataset)
-    return split_dataset, keen_dataset
-
-
-@helper.notnone
-def _save_model(*, path: pathlib.Path = None, model=None):
+def _save_model(path: pathlib.Path = None, model=None):
     fname = "model.ckpt"
-    path = helper.path(
-        path, exists=True, message=f"saving {fname} to {{path_abbrv}}"
-    )
+    path = helper.path(path, exists=True, message=f"saving {fname} to {{path_abbrv}}")
 
     torch.save(model, str(path / fname))
 
 
-@helper.notnone
-def _load_model(*, path: pathlib.Path = None):
+def _load_model(path: pathlib.Path = None):
     fname = "model.ckpt"
     path = helper.path(
         path, exists=True, message=f"loading {fname} from {{path_abbrv}}"

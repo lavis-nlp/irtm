@@ -27,11 +27,9 @@ from typing import Union
 log = logging.get("text.evaluator")
 
 
-@helper.notnone
 def _init(
-    *,
-    model: mapper.Mapper = None,
-    debug: bool = None,
+    model: mapper.Mapper,
+    debug: bool,
 ):
     model = model.to(device="cuda")
 
@@ -42,12 +40,10 @@ def _init(
     model.eval()
 
 
-@helper.notnone
 def _create_projections(
-    *,
-    model: mapper.Mapper = None,
-    datamodule: data.DataModule = None,
-    debug: bool = None,
+    model: mapper.Mapper,
+    datamodule: data.DataModule,
+    debug: bool,
 ):
 
     model.init_projections()
@@ -77,11 +73,9 @@ def _create_projections(
     model.gather_projections()
 
 
-@helper.notnone
 def _run_kgc_evaluations(
-    *,
-    model: mapper.Mapper = None,
-    datamodule: data.DataModule = None,
+    model: mapper.Mapper,
+    datamodule: data.DataModule,
 ):
     triplesens = {
         "transductive": datamodule.kgc.transductive,
@@ -101,12 +95,10 @@ def _run_kgc_evaluations(
     return ret
 
 
-@helper.notnone
 def evaluate(
-    *,
-    model: mapper.Mapper = None,
-    datamodule: data.DataModule = None,
-    debug: bool = None,
+    model: mapper.Mapper,
+    datamodule: data.DataModule,
+    debug: bool,
 ):
     _init(model=model, debug=debug)
 
@@ -142,12 +134,11 @@ def evaluate(
     return mapped
 
 
-@helper.notnone
 def _evaluation_uncached(
-    out: pathlib.Path = None,
-    config: List[str] = None,
-    checkpoint: pathlib.Path = None,
-    debug: bool = None,
+    out: pathlib.Path,
+    config: List[str],
+    checkpoint: pathlib.Path,
+    debug: bool,
 ):
 
     config = Config.create(configs=[out / "config.yml"] + list(config))
@@ -174,24 +165,20 @@ def _evaluation_uncached(
     return results
 
 
-@helper.notnone
 @helper.cached(".cached.text.evaluator.result.{checkpoint_name}.pkl")
 def _evaluation_cached(
-    *,
-    path: pathlib.Path = None,
-    checkpoint_name: str = None,
+    path: pathlib.Path,
+    checkpoint_name: str,
     **kwargs,
 ):
     return _evaluation_uncached(**kwargs)
 
 
-@helper.notnone
 def _handle_results(
-    *,
-    results: Dict = None,
-    checkpoint: str = None,
+    results: Dict,
+    checkpoint: str,
     target_file: Union[str, pathlib.Path],
-    debug: bool = None,
+    debug: bool,
 ):
     if not debug:
         runs = {}
@@ -211,18 +198,14 @@ def _handle_results(
         print(yaml.dump(results))
 
 
-@helper.notnone
 def evaluate_from_kwargs(
-    *,
-    path: Union[pathlib.Path, str] = None,
-    checkpoint: Union[pathlib.Path, str] = None,
-    config: List[str] = None,
-    debug: bool = None,
+    path: Union[pathlib.Path, str],
+    checkpoint: Union[pathlib.Path, str],
+    config: List[str],
+    debug: bool,
 ):
 
-    path = helper.path(
-        path, exists=True, message="loading data from {path_abbrv}"
-    )
+    path = helper.path(path, exists=True, message="loading data from {path_abbrv}")
 
     checkpoint = helper.path(
         checkpoint, exists=True, message="loading checkpoint from {path_abbrv}"
@@ -263,12 +246,10 @@ def evaluate_from_kwargs(
     return checkpoint.name, results
 
 
-@helper.notnone
 def evaluate_baseline(
-    *,
-    config: List[str] = None,
-    out: str = None,
-    debug: bool = None,
+    config: List[str],
+    out: str,
+    debug: bool,
     **kwargs,
 ):
     config = Config.create(configs=config, **kwargs)
@@ -292,9 +273,7 @@ def evaluate_baseline(
         datamodule=datamodule,
     )
 
-    out = helper.path(
-        out, create=True, message="writing results to {path_abbrv}"
-    )
+    out = helper.path(out, create=True, message="writing results to {path_abbrv}")
 
     _handle_results(
         results=results,
@@ -303,8 +282,7 @@ def evaluate_baseline(
     )
 
 
-@helper.notnone
-def evaluate_all(root: Union[str, pathlib.Path] = None, **kwargs):
+def evaluate_all(root: Union[str, pathlib.Path], **kwargs):
     """
     Run evaluation for all saved checkpoints
     """
@@ -316,11 +294,10 @@ def evaluate_all(root: Union[str, pathlib.Path] = None, **kwargs):
         evaluate_from_kwargs(path=path, checkpoint=checkpoint, **kwargs)
 
 
-@helper.notnone
 def evaluate_csv(
-    csv_file: Union[str, pathlib.Path] = None,
-    debug: bool = None,
-    only_marked: bool = None,
+    csv_file: Union[str, pathlib.Path],
+    debug: bool,
+    only_marked: bool,
     **kwargs,
 ):
     """

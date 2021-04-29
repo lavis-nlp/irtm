@@ -30,8 +30,7 @@ log = logging.get("kgc.trainer")
 tqdm = partial(_tqdm, ncols=80)
 
 
-@helper.notnone
-def resolve_device(*, device_name: str = None):
+def resolve_device(device_name: str = None):
     if device_name not in ("cuda", "cpu"):
         raise irtm.IRTMError(f'unknown device option: "{device_name}"')
 
@@ -48,12 +47,9 @@ def resolve_device(*, device_name: str = None):
 # --------------------
 
 
-@helper.notnone
 def single(
-    *,
-    config: Config = None,
-    keen_dataset: keen.Dataset = None,
-    split_dataset: split.Dataset = None,
+    config: Config,
+    kcw: irt.KeenClosedWorld,
 ) -> data.TrainingResult:
 
     # TODO https://github.com/pykeen/pykeen/issues/129
@@ -75,9 +71,7 @@ def single(
     result_tracker.start_run()
     result_tracker.log_params(dataclasses.asdict(config))
 
-    device = resolve_device(
-        device_name=config.model.kwargs["preferred_device"]
-    )
+    device = resolve_device(device_name=config.model.kwargs["preferred_device"])
 
     # target filtering for ranking losses is enabled by default
     loss = config.resolve(
@@ -172,12 +166,10 @@ def single(
     )
 
 
-@helper.notnone
 def _create_study(
-    *,
-    config: Config = None,
-    out: pathlib.Path = None,
-    resume: bool = None,
+    config: Config,
+    out: pathlib.Path,
+    resume: bool,
 ) -> optuna.Study:
 
     out.mkdir(parents=True, exist_ok=True)
@@ -223,12 +215,10 @@ def _create_study(
     return study
 
 
-@helper.notnone
 def multi(
-    *,
-    base: Config = None,
-    out: pathlib.Path = None,
-    resume: bool = False,
+    base: Config,
+    out: pathlib.Path,
+    resume: bool,
     **kwargs,
 ) -> None:
 
@@ -301,12 +291,9 @@ def multi(
     log.info("finished study")
 
 
-@helper.notnone
 def train(
-    *,
-    config: Config = None,
-    split_dataset: split.Dataset = None,
-    keen_dataset: keen.Dataset = None,
+    config: Config,
+    kcw: irt.KeenClosedWorld,
     **kwargs,
 ) -> None:
 
@@ -322,11 +309,9 @@ def train(
     )
 
 
-@helper.notnone
 def train_from_kwargs(
-    *,
-    config: str = None,
-    split_dataset: str = None,
+    config: str,
+    dataset: str,
     participate: bool,
     **kwargs,
 ):
@@ -349,9 +334,10 @@ def train_from_kwargs(
     )
 
 
-@helper.notnone
 def resume_from_kwargs(
-    *, path: str = None, split_dataset: str = None, **kwargs
+    path: str,
+    split_dataset: str,
+    **kwargs,
 ):
 
     log.info("resuming training")
@@ -440,13 +426,10 @@ def _get_mapped_triples(keen_dataset: keen.Dataset = None, mode: str = None):
     return mapped_triples
 
 
-@helper.notnone
 def evaluate_glob(
-    *,
-    glob: Iterable[pathlib.Path] = None,
-    split_dataset: split.Dataset = None,
-    keen_dataset: keen.Dataset = None,
-    mode: str = None,
+    glob: Iterable[pathlib.Path],
+    kcw: irt.KeenClosedWorld,
+    mode: str,
 ):
 
     glob = list(glob)
@@ -489,12 +472,10 @@ def evaluate_glob(
     return results
 
 
-@helper.notnone
 def evaluate_from_kwargs(
-    *,
-    results: List[str] = None,
-    split_dataset: str = None,
-    mode: str = None,
+    results: List[str],
+    split_dataset: str,
+    mode: str,
 ):
 
     split_dataset, keen_dataset = data.load_datasets(path=split_dataset)
@@ -509,9 +490,10 @@ def evaluate_from_kwargs(
     return eval_results
 
 
-@helper.notnone
 def print_results(
-    *, results, out: Union[str, pathlib.Path] = None, mode: str = None
+    results,
+    out: Union[str, pathlib.Path],
+    mode: str,
 ):
     def _save_rget(dic, *args, default=None):
         ls = list(args)[::-1]

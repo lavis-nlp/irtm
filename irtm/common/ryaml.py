@@ -40,7 +40,7 @@ def dic_from_kwargs(**kwargs):
     return dic
 
 
-def load(*, configs: Sequence[str], **kwargs):
+def load(configs: Sequence[str], **kwargs):
     """
 
     Load and join configurations from yaml and kwargs
@@ -68,8 +68,7 @@ def load(*, configs: Sequence[str], **kwargs):
     return result
 
 
-@helper.notnone
-def print_click_arguments(*, dic: Dict[str, Any] = None) -> str:
+def print_click_arguments(dic: Dict[str, Any]) -> str:
     def _resolve(k, v):
         name = k.replace("_", "-")
         if type(v) is dict:
