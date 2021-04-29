@@ -8,7 +8,6 @@ from irtm.common import helper
 from irtm.common import logging
 
 import pytorch_lightning as pl
-import horovod.torch as hvd
 
 import os
 import pathlib
@@ -225,13 +224,8 @@ def train(*, config: Config, debug: bool = False):
         debug=debug,
     )
 
-    # hvd is initialized now
-
-    if not debug and hvd.local_rank() == 0:
+    if not debug:
         dataclasses.replace(config, out=str(out)).save(out / "config.yml")
-
-    if not hvd.local_rank() == 0:
-        logger = None
 
     _fit(
         trainer=trainer,

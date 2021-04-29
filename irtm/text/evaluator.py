@@ -12,7 +12,6 @@ from irtm.common import logging
 import csv
 import yaml
 import torch
-import horovod.torch as hvd
 from tqdm import tqdm as _tqdm
 
 import pathlib
@@ -32,10 +31,6 @@ def _init(
     debug: bool,
 ):
     model = model.to(device="cuda")
-
-    hvd.init()
-    assert hvd.local_rank() == 0, "no multi gpu support so far"
-
     model.debug = debug
     model.eval()
 

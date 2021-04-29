@@ -16,7 +16,6 @@ import torch.optim
 from torch import nn
 import transformers as tf
 import pytorch_lightning as pl
-import horovod.torch as hvd
 
 from itertools import count
 from itertools import repeat
@@ -556,25 +555,7 @@ class Mapper(pl.LightningModule):
         self._gathered_projections = False
 
     def gather_projections(self):
-        log.info(
-            f"[{hvd.local_rank()}] gathered"
-            f" {int(self.projections_counts.sum().item())}"
-            " projections"
-        )
-
-        self.projections = hvd.allreduce(self.projections, op=hvd.Sum)
-        self.projections_counts = hvd.allreduce(
-            self.projections_counts, op=hvd.Sum
-        )
-
-        if hvd.local_rank() != 0:
-            log.info(
-                f"[{hvd.local_rank()}] servant skips kgc evaluation;"
-                " logging phony kgc result"
-            )
-
-            self._mock_kgc_results()
-            return
+        log.info(f"gathered {int(self.projections_counts.sum().item())} projections")
 
         # calculate averages over all projections
         mask = self.projections_counts != 0
