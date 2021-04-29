@@ -55,7 +55,7 @@ def kgc_cli(result: str = None):
 @click_kgc.command(name='train')
 @click.option(
     '--config', type=str, required=True,
-    help='json (see conf/kgc/*json)')
+    help='yaml (see conf/kgc/*yml)')
 @click.option(
     '--split-dataset', type=str, required=True,
     help='path to irtm.graphs.split.Dataset folder')

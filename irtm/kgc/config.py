@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 
 import irtm
+from irtm.common import ryaml
 from irtm.common import helper
-from irtm.common import logging
 
 import optuna
 
@@ -274,8 +274,7 @@ class Config:
             message="loading kgc config from {path_abbrv}",
         )
 
-        with path.open(mode="r") as fd:
-            raw = json.load(fd)
+        raw = ryaml.load(configs=[path])
 
         # there are two levels to consider
         # 1: Config attributes (resolved by type hints)

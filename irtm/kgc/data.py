@@ -1,13 +1,14 @@
 # -*- coding: utf-8 -*-
 
 
-from irtm.kgc.config import Config
+from irtm.common import ryaml
 from irtm.common import helper
-from irtm.common import logging
+from irtm.kgc.config import Config
 
+import yaml
 import torch
 
-import json
+import logging
 import pathlib
 import textwrap
 import dataclasses
@@ -127,13 +128,13 @@ class TrainingResult:
         return dic
 
     def _save_results(self, path):
-        fname = "training.json"
+        fname = "training.yml"
         path = helper.path(
             path, exists=True, message=f"saving {fname} to {{path_abbrv}}"
         )
 
         with (path / fname).open(mode="w") as fd:
-            json.dump(self.result_dict, fd, default=str, indent=2)
+            yaml.dump(self.result_dict, fd)
 
     def save(self, path: Union[str, pathlib.Path]):
         path = helper.path(path, create=True)
@@ -155,8 +156,7 @@ class TrainingResult:
             message="loading training results from {path_abbrv}",
         )
 
-        with (path / "training.json").open(mode="r") as fd:
-            raw = json.load(fd)
+        raw = ryaml.load(configs=[path / "training.json"])
 
         model = None
         if load_model:
@@ -187,13 +187,13 @@ class EvaluationResult:
 
     @staticmethod
     def _fname(prefix):
-        return f"evaluation.{prefix}.json"
+        return f"evaluation.{prefix}.yml"
 
     def save(self, path: Union[str, pathlib.Path], prefix: str = None):
         fname = EvaluationResult._fname(prefix)
         path = helper.path(path, message=f"writing {fname} to {{path_abbrv}}")
         with (path / fname).open(mode="w") as fd:
-            json.dump(dataclasses.asdict(self), fd, default=str, indent=2)
+            yaml.dump(dataclasses.asdict(self), fd)
 
     @classmethod
     def load(K, path: Union[str, pathlib.Path], prefix: str = None):
@@ -204,8 +204,7 @@ class EvaluationResult:
         )
 
         fname = EvaluationResult._fname(prefix)
-        with (path / fname).open(mode="r") as fd:
-            raw = json.load(fd)
+        raw = ryaml.load([path / fname])
 
         return K(
             model=raw["model"],

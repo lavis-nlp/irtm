@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 
 import irtm
+from irtm.common import ryaml
+
 from irtm.text import util
 from irtm.text import data
 from irtm.text import mapper
@@ -9,7 +11,6 @@ from irtm.text.config import Config
 from irtm.common import helper
 
 import csv
-import yaml
 import torch
 import logging
 from tqdm import tqdm as _tqdm
@@ -179,8 +180,7 @@ def _handle_results(
         runs = {}
 
         try:
-            with target_file.open(mode="r") as fd:
-                runs = yaml.load(fd, Loader=yaml.FullLoader) or {}
+            runs = ryaml.load([target_file]) or {}
         except FileNotFoundError:
             log.info(f"creating {target_file.name}")
 
