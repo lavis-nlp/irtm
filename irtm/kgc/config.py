@@ -17,6 +17,7 @@ from pykeen import optimizers as pk_optimizers
 from pykeen import regularizers as pk_regularizers
 
 import json
+import logging
 import pathlib
 import dataclasses
 from dataclasses import dataclass
@@ -27,7 +28,7 @@ from typing import Dict
 from typing import Union
 
 
-log = logging.get("kgc.config")
+log = logging.getLogger(__name__)
 
 
 # ---

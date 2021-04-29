@@ -10,11 +10,14 @@ import configparser
 from logging.config import fileConfig
 
 
-ENV_IRTM_LOG_CONF = 'IRTM_LOG_CONF'
-ENV_IRTM_LOG_OUT = 'IRTM_LOG_OUT'
+# pass these environment variables to either
+# change where the configuration file is expected
+ENV_IRTM_LOG_CONF = "IRTM_LOG_CONF"
+# or where the log file is written
+ENV_IRTM_LOG_OUT = "IRTM_LOG_OUT"
 
 
-def _init_logging():
+def init():
 
     # probe environment for logging configuration:
     #   1. if conf/logging.conf exists use this
@@ -27,13 +30,13 @@ def _init_logging():
         fconf = str(os.environ[ENV_IRTM_LOG_CONF])
 
     else:
-        path = pathlib.Path(irtm.ENV.CONF_DIR / 'logging.conf')
+        path = pathlib.Path(irtm.ENV.CONF_DIR / "logging.conf")
         if path.is_file():
             cp = configparser.ConfigParser()
             cp.read(path)
 
-            opt = cp['handler_fileHandler']
-            (fname, ) = eval(opt['args'])
+            opt = cp["handler_fileHandler"]
+            (fname,) = eval(opt["args"])
 
             if ENV_IRTM_LOG_OUT in os.environ:
                 fname = pathlib.Path(os.environ[ENV_IRTM_LOG_OUT])
@@ -42,28 +45,17 @@ def _init_logging():
 
             fname.parent.mkdir(exist_ok=True, parents=True)
             fname.touch(exist_ok=True)
-            opt['args'] = repr((str(fname), ))
+            opt["args"] = repr((str(fname),))
 
             fconf = cp
 
     if fconf is not None:
         fileConfig(cp)
 
-# ---
-
-
-def get(name: str) -> logging.Logger:
-    return logging.getLogger(f'irtm.{name}')
-
-
-# ---
+    log = logging.getLogger(__name__)
+    log.info("initialized logging")
 
 
 # be nice if used as a library - do not log to stderr as default
-log = logging.getLogger('irtm')
+log = logging.getLogger("irtm")
 log.addHandler(logging.NullHandler())
-_init_logging()
-
-log = get('common')
-log.info('-' * 80)
-log.info('initialized logging')

@@ -1,18 +1,18 @@
 # -*- coding: utf-8 -*-
 
 from irtm import IRTMError
-from irtm.common import logging
-
-import os
-import pickle
-import random
-import pathlib
 
 import git
 import torch
 import numpy as np
 import numpy.random
 from tqdm import tqdm as _tqdm
+
+import os
+import pickle
+import random
+import pathlib
+import logging
 
 from datetime import datetime
 from functools import wraps
@@ -23,7 +23,7 @@ from typing import Union
 from typing import Callable
 
 
-log = logging.get("common.helper")
+log = logging.getLogger(__name__)
 tqdm = partial(_tqdm, ncols=80)
 
 

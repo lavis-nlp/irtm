@@ -13,11 +13,11 @@ from irtm.kgc import data
 from irtm.graphs import split
 from irtm.graphs import graph
 from irtm.common import helper
-from irtm.common import logging
 from irtm.kgc.config import Config
 
 import pickle
 import pathlib
+import logging
 import textwrap
 
 from functools import partial
@@ -40,7 +40,7 @@ from typing import Optional
 from typing import Collection
 
 
-log = logging.get("kgc.keen")
+log = logging.getLogger(__name__)
 DATEFMT = "%Y.%m.%d.%H%M%S"
 
 

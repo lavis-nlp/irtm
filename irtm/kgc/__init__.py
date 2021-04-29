@@ -4,12 +4,13 @@
 from irtm.cli import main
 from irtm.kgc import trainer
 from irtm.common import helper
-from irtm.common import logging
 
 import click
 
+import logging
 
-log = logging.get('kgc')
+
+log = logging.getLogger(__name__)
 
 
 @main.group(name='kgc')

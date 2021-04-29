@@ -7,11 +7,11 @@ from irtm.text import mapper
 from irtm.text import trainer
 from irtm.text.config import Config
 from irtm.common import helper
-from irtm.common import logging
 
 import csv
 import yaml
 import torch
+import logging
 from tqdm import tqdm as _tqdm
 
 import pathlib
@@ -23,7 +23,7 @@ from typing import Dict
 from typing import Union
 
 
-log = logging.get("text.evaluator")
+log = logging.getLogger(__name__)
 
 
 def _init(

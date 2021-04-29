@@ -5,11 +5,11 @@ from irtm.text import data
 from irtm.text import mapper
 from irtm.text.config import Config
 from irtm.common import helper
-from irtm.common import logging
 
 import pytorch_lightning as pl
 
 import os
+import logging
 import pathlib
 import dataclasses
 from datetime import datetime
@@ -17,7 +17,7 @@ from datetime import datetime
 from typing import List
 from typing import Optional
 
-log = logging.get("text.trainer")
+log = logging.getLogger(__name__)
 
 
 def load_from_config(config: Config):

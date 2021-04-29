@@ -5,8 +5,6 @@ from irtm.kgc import keen
 from irtm.kgc import trainer as kgc_trainer
 from irtm.text import data
 from irtm.text.config import Config
-from irtm.common import helper
-from irtm.common import logging
 
 import gc
 import yaml
@@ -17,6 +15,7 @@ from torch import nn
 import transformers as tf
 import pytorch_lightning as pl
 
+import logging
 from itertools import count
 from itertools import repeat
 from itertools import groupby
@@ -30,7 +29,7 @@ from typing import Tuple
 from typing import Sequence
 
 
-log = logging.get("text.mapper")
+log = logging.getLogger(__name__)
 
 TQDM_KWARGS = dict(
     position=2,

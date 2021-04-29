@@ -2,8 +2,15 @@
 # -*- coding: utf-8 -*-
 
 import click
-import unittest
 import pretty_errors
+
+import logging
+import unittest
+
+from irtm.common import logger
+
+logger.init()
+log = logging.getLogger(__name__)
 
 
 pretty_errors.configure(
@@ -18,10 +25,6 @@ def main():
     """
     IRTM - working with texts and graphs
     """
-    from irtm.common import logging
-
-    log = logging.get("cli")
-
     log.info(" · IRTM CLI ·")
     log.info(f"initialized path to irtm: {irtm.ENV.ROOT_DIR}")
 
@@ -59,4 +62,3 @@ def run(name: str = None):
 import irtm.common  # noqa: E402
 import irtm.kgc  # noqa: E402
 import irtm.text  # noqa: E402
-import irtm.graphs  # noqa: E402

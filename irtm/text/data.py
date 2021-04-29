@@ -39,7 +39,7 @@ from typing import Tuple
 from typing import Optional
 
 
-log = logging.get("text.data")
+log = logging.getLogger(__name__)
 
 
 @dataclass

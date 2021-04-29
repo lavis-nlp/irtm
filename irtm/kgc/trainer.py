@@ -16,6 +16,7 @@ from tabulate import tabulate
 
 import gc
 import csv
+import logging
 import pathlib
 import dataclasses
 from functools import partial
@@ -26,7 +27,7 @@ from typing import Union
 from typing import Iterable
 
 
-log = logging.get("kgc.trainer")
+log = logging.getLogger(__name__)
 tqdm = partial(_tqdm, ncols=80)
 
 

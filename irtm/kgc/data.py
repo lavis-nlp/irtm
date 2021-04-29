@@ -21,7 +21,7 @@ from typing import Dict
 from typing import Union
 
 
-log = logging.get("kgc.data")
+log = logging.getLogger(__name__)
 
 
 def _save_model(path: pathlib.Path = None, model=None):
