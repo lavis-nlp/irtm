@@ -1,0 +1,61 @@
+evaluator:
+  cls: RankBasedEvaluator
+general:
+  seed: null
+loss:
+  cls: SoftplusLoss
+  reduction: mean
+model:
+  automatic_memory_optimization: true
+  cls: Complex
+  embedding_dim:
+    high: 500
+    initial: 250
+    log: false
+    low: 50
+    step: 50
+  preferred_device: cuda
+optimizer:
+  cls: Adagrad
+  lr:
+    high: 0.5
+    initial: 0.01
+    log: true
+    low: 0.001
+    step: null
+optuna:
+  maximise: true
+  trials: 100
+regularizer:
+  cls: LpRegularizer
+  normalize: true
+  p: 2.0
+  weight:
+    high: 0.1
+    initial: null
+    log: true
+    low: 0.01
+    step: null
+sampler:
+  cls: BasicNegativeSampler
+  num_negs_per_pos:
+    high: 50
+    initial: 25
+    log: false
+    low: 1
+    step: 1
+stopper:
+  cls: EarlyStopper
+  frequency: 50
+  patience: 5
+  relative_delta: 0.001
+tracker:
+  cls: wandb
+  offline: false
+  project: irtm-keen
+  reinit: true
+training:
+  batch_size: 200
+  num_epochs: 2000
+training_loop:
+  cls: SLCWATrainingLoop

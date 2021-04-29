@@ -1,0 +1,63 @@
+evaluator:
+  cls: RankBasedEvaluator
+general:
+  seed: null
+loss:
+  cls: MarginRankingLoss
+  margin: 1.0
+  reduction: mean
+model:
+  cls: DistMult
+  embedding_dim:
+    high: 500
+    initial: 250
+    log: false
+    low: 50
+    step: 50
+  preferred_device: cuda
+optimizer:
+  cls: Adagrad
+  lr:
+    high: 0.1
+    initial: 0.01
+    log: true
+    low: 0.001
+    step: null
+optuna:
+  maximise: true
+  trials: 50
+regularizer:
+  cls: LpRegularizer
+  normalize: true
+  p: 2.0
+  weight:
+    high: 0.1
+    initial: null
+    log: true
+    low: 0.01
+    step: null
+sampler:
+  cls: BasicNegativeSampler
+  num_negs_per_pos:
+    high: 50
+    initial: 25
+    log: false
+    low: 1
+    step: 1
+stopper:
+  cls: EarlyStopper
+  frequency: 10
+  larger_is_better: true
+  metric: hits_at_k
+  patience: 10
+  relative_delta: 1.0e-05
+tracker:
+  cls: wandb
+  offline: false
+  project: irtm-keen-owe
+  reinit: true
+training:
+  batch_size: 2048
+  num_epochs: 2000
+training_loop:
+  cls: SLCWATrainingLoop
