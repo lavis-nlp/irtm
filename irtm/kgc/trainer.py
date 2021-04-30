@@ -1,12 +1,11 @@
 # -*- coding: utf-8 -*-
 
+import irt
+
 import irtm
-from irtm.kgc import keen
 from irtm.kgc import data
 from irtm.kgc.config import Config
-from irtm.graphs import split
 from irtm.common import helper
-from irtm.common import logging
 
 import torch
 import optuna
@@ -81,7 +80,6 @@ def single(
 
     regularizer = config.resolve(
         config.regularizer,
-        device=device,
     )
 
     model = config.resolve(
@@ -89,7 +87,7 @@ def single(
         loss=loss,
         regularizer=regularizer,
         random_seed=config.general.seed,
-        triples_factory=keen_dataset.training,
+        triples_factory=kcw.training,
         preferred_device=device,
     )
 
@@ -106,7 +104,7 @@ def single(
         config.stopper,
         model=model,
         evaluator=evaluator,
-        evaluation_triples_factory=keen_dataset.validation,
+        evaluation_triples_factory=kcw.validation,
         result_tracker=result_tracker,
         evaluation_batch_size=BATCH_SIZE,
     )
@@ -201,9 +199,7 @@ def _create_study(
     # create and enqueue a custom trial
     if not resume:
         params = {
-            k: v.initial
-            for k, v in config.suggestions.items()
-            if v.initial is not None
+            k: v.initial for k, v in config.suggestions.items() if v.initial is not None
         }
 
         if params:
@@ -272,9 +268,7 @@ def multi(
 
         result = _run()
         best_metric = result.stopper.best_metric
-        log.info(
-            f"! trial {trial.number} finished: " f"best metric = {best_metric}"
-        )
+        log.info(f"! trial {trial.number} finished: " f"best metric = {best_metric}")
 
         # min optimization
         result.save(path)
@@ -298,14 +292,13 @@ def train(
     **kwargs,
 ) -> None:
 
-    out = irtm.ENV.KGC_DIR / split_dataset.name / f"{config.model.cls.lower()}"
+    out = irtm.ENV.KGC_DIR / kcw.dataset.name / f"{config.model.cls.lower()}"
     config.save(out)
 
     multi(
         out=out,
         base=config,
-        keen_dataset=keen_dataset,
-        split_dataset=split_dataset,
+        kcw=kcw,
         **kwargs,
     )
 
@@ -316,20 +309,26 @@ def train_from_kwargs(
     participate: bool,
     **kwargs,
 ):
+    config_path = helper.path(config)
+    config = Config.load(config_path.parent, fname=config_path.name)
 
-    log.info("running training")
-    split_dataset, keen_dataset = data.load_datasets(path=split_dataset)
+    dataset = irt.Dataset(dataset)
+    kcw = irt.KeenClosedWorld(
+        dataset=dataset,
+        seed=config.general.seed or dataset.split.cfg.seed,
+        split=config.general.split,
+    )
 
-    print(f"\n{split_dataset}\n{keen_dataset}\n")
+    log.info(str(kcw.dataset))
+    log.info(str(kcw))
 
-    path = helper.path(config)
-    config = Config.load(path.parent, fname=path.name)
-    config.general.dataset = split_dataset.name
+    # now kith
+    config.general.dataset = kcw.dataset.name
+    config.general.seed = kcw.seed
 
     train(
+        kcw=kcw,
         config=config,
-        split_dataset=split_dataset,
-        keen_dataset=keen_dataset,
         resume=participate,
         **kwargs,
     )
@@ -400,25 +399,27 @@ def evaluate(
     return evaluation_result
 
 
-@helper.notnone
-def _get_mapped_triples(keen_dataset: keen.Dataset = None, mode: str = None):
+def _get_mapped_triples(
+    kcw: irt.KeenClosedWorld,
+    mode: str,
+):
 
     if mode == "testing":
-        selection = (keen_dataset.testing,)
+        selection = (kcw.testing,)
 
     elif mode == "validation":
-        selection = (keen_dataset.validation,)
+        selection = (kcw.validation,)
 
     elif mode == "all":
         selection = (
-            keen_dataset.training,
-            keen_dataset.validation,
-            keen_dataset.testing,
+            kcw.training,
+            kcw.validation,
+            kcw.testing,
         )
     else:
         raise irtm.IRTMError(f"unknown mode: '{mode}'")
 
-    ref = keen_dataset.training.mapped_triples
+    ref = kcw.training.mapped_triples
     mapped_triples = torch.zeros((0, ref.shape[1]), dtype=ref.dtype)
     for kind in filter(None, selection):
         log.info(f"adding {len(kind.mapped_triples)} triples")
@@ -440,7 +441,7 @@ def evaluate_glob(
     for path in tqdm(glob):
         try:
             train_result = data.TrainingResult.load(path)
-            assert train_result.config.general.dataset == split_dataset.name
+            assert train_result.config.general.dataset == kcw.dataset.name
 
         except (FileNotFoundError, NotADirectoryError) as exc:
             log.info(f"skipping {path.name}: {exc}")
@@ -451,9 +452,7 @@ def evaluate_glob(
 
         except FileNotFoundError:
 
-            mapped_triples = _get_mapped_triples(
-                keen_dataset=keen_dataset, mode=mode
-            )
+            mapped_triples = _get_mapped_triples(keen_dataset=kcw, mode=mode)
             log.info(f"evaluting {len(mapped_triples)} triples")
 
             eval_result = evaluate(

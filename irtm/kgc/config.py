@@ -4,6 +4,7 @@ import irtm
 from irtm.common import ryaml
 from irtm.common import helper
 
+import yaml
 import optuna
 
 from pykeen import models as pk_models
@@ -16,7 +17,6 @@ from pykeen import evaluation as pk_evaluation
 from pykeen import optimizers as pk_optimizers
 from pykeen import regularizers as pk_regularizers
 
-import json
 import logging
 import pathlib
 import dataclasses
@@ -26,6 +26,7 @@ import typing
 from typing import Any
 from typing import Dict
 from typing import Union
+from typing import Sequence
 
 
 log = logging.getLogger(__name__)
@@ -38,6 +39,7 @@ log = logging.getLogger(__name__)
 @dataclass
 class General:
 
+    split: Union[float, Sequence[float]]
     dataset: str = None
     seed: int = None
 
@@ -49,14 +51,14 @@ class General:
 @dataclass
 class Base:
 
-    getter = None
+    resolver = None
 
     @property
     def constructor(self):
         """
         Returns the class defined by self.cls
         """
-        return self.__class__.getter(self.cls)
+        return self.__class__.resolver(self.cls)
 
     cls: str
     kwargs: Dict[str, Any]
@@ -64,7 +66,7 @@ class Base:
 
 @dataclass
 class Tracker(Base):
-    getter = pk_trackers.get_result_tracker_cls
+    resolver = pk_trackers.tracker_resolver
 
 
 # model
@@ -72,17 +74,17 @@ class Tracker(Base):
 
 @dataclass
 class Model(Base):
-    getter = pk_models.get_model_cls
+    resolver = pk_models.model_resolver
 
 
 @dataclass
 class Optimizer(Base):
-    getter = pk_optimizers.get_optimizer_cls
+    resolver = pk_optimizers.optimizer_resolver
 
 
 @dataclass
 class Regularizer(Base):
-    getter = pk_regularizers.get_regularizer_cls
+    resolver = pk_regularizers.regularizer_resolver
 
 
 # training
@@ -90,27 +92,27 @@ class Regularizer(Base):
 
 @dataclass
 class Loss(Base):
-    getter = pk_losses.get_loss_cls
+    resolver = pk_losses.loss_resolver
 
 
 @dataclass
 class Evaluator(Base):
-    getter = pk_evaluation.get_evaluator_cls
+    resolver = pk_evaluation.evaluator_resolver
 
 
 @dataclass
 class Stopper(Base):
-    getter = pk_stoppers.get_stopper_cls
+    resolver = pk_stoppers.stopper_resolver
 
 
 @dataclass
 class Sampler(Base):
-    getter = pk_sampling.get_negative_sampler_cls
+    resolver = pk_sampling.negative_sampler_resolver
 
 
 @dataclass
 class TrainingLoop(Base):
-    getter = pk_training.get_training_loop_cls
+    resolver = pk_training.training_loop_resolver
 
 
 @dataclass
@@ -154,10 +156,8 @@ class FloatSuggestion(Suggestion):
     log: bool = False
     initial: float = None
 
-    @helper.notnone
     def suggest(
         self,
-        *,
         name: str = None,
         trial: optuna.trial.Trial = None,
     ) -> float:
@@ -175,10 +175,8 @@ class IntSuggestion(Suggestion):
     log: bool = False
     initial: int = None
 
-    @helper.notnone
     def suggest(
         self,
-        *,
         name: str = None,
         trial: optuna.trial.Trial = None,
     ) -> int:
@@ -217,14 +215,14 @@ class Config:
 
     def resolve(self, option, **kwargs):
         try:
-            getter = option.__class__.getter
-            return getter(option.cls)(**{**option.kwargs, **kwargs})
+            resolver = option.__class__.resolver
+            return resolver.make(option.cls, **{**option.kwargs, **kwargs})
         except TypeError as exc:
             log.error(f"failed to resolve {option.cls} with {option.kwargs}")
             raise exc
 
     def save(self, path: Union[str, pathlib.Path]):
-        fname = "config.json"
+        fname = "config.yml"
         path = helper.path(
             path, create=True, message=f"saving {fname} to {{path_abbrv}}"
         )
@@ -258,7 +256,7 @@ class Config:
         }
 
         with (path / fname).open(mode="w") as fd:
-            json.dump(dic, fd, indent=2)
+            yaml.dump(dic, fd)
 
     @classmethod
     def load(
@@ -269,7 +267,7 @@ class Config:
 
         path = helper.path(path)
         path = helper.path(
-            path / (fname or "config.json"),
+            path / (fname or "config.yml"),
             exists=True,
             message="loading kgc config from {path_abbrv}",
         )
@@ -289,11 +287,7 @@ class Config:
                     cls=section["cls"],
                     kwargs={
                         # e.g. attr=embedding_dim
-                        attr: (
-                            Suggestion.create(**val)
-                            if type(val) is dict
-                            else val
-                        )
+                        attr: (Suggestion.create(**val) if type(val) is dict else val)
                         for attr, val in section.items()
                         if attr != "cls"
                     },

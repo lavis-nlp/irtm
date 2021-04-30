@@ -8,29 +8,24 @@ https://github.com/pykeen/pykeen
 
 """
 
-import irtm
+import irt
+from irt.data.pykeen import triples2factory
+
 from irtm.kgc import data
-from irtm.graphs import split
-from irtm.graphs import graph
 from irtm.common import helper
 from irtm.kgc.config import Config
 
-import pickle
 import pathlib
 import logging
 import textwrap
 
-from functools import partial
 from functools import lru_cache
 from dataclasses import dataclass
 
 import torch
-import numpy as np
 import pandas as pd
 
-from pykeen import triples as keen_triples
 from pykeen.models import base as keen_models_base
-from pykeen.datasets import base as keen_datasets_base
 
 from typing import Set
 from typing import List
@@ -47,423 +42,8 @@ DATEFMT = "%Y.%m.%d.%H%M%S"
 # ---
 
 
-# TODO use helper.cached
-def _cached_predictions(predict_all):
-    def _inner(self: split.Dataset, e: int):
-        path = irtm.ENV.CACHE_DIR / "kgc.keen"
-        path.mkdir(exist_ok=True, parents=True)
-        path /= f"{self.uri}.{e}.pkl"
-
-        log.info(f"looking for {path}")
-        if path.is_file():
-            with path.open(mode="rb") as fd:
-                return pickle.load(fd)
-
-        log.info(f"! cache miss for {path}")
-        res = predict_all(self, e=e)
-
-        log.info(f"saving to {path}")
-        with path.open(mode="wb") as fd:
-            pickle.dump(res, fd)
-
-        return res
-
-    return _inner
-
-
 def _triples_to_set(t: torch.Tensor) -> Set[Tuple[int]]:
     return set(map(lambda triple: tuple(triple.tolist()), t))
-
-
-# ---
-
-
-# FIXME
-# COPIED FROM PYKEEN BRANCH "improve-novelty-computation"
-# REMOVE THIS METHOD WHEN PULL REQUEST 51 IS MERGED
-
-
-TRIPLES_DF_COLUMNS = [
-    "head_id",
-    "head_label",
-    "relation_id",
-    "relation_label",
-    "tail_id",
-    "tail_label",
-]
-
-
-# self is a triples factory
-def tensor_to_df(self, tensor: torch.LongTensor, **kwargs) -> pd.DataFrame:
-    """
-
-    Take a tensor of triples and make a pandas dataframe with labels.
-
-    :param tensor: shape: (n, 3)
-        The triples, ID-based and in format
-        (head_id, relation_id, tail_id).
-
-    :return:
-        A dataframe with n rows, and 6 + len(kwargs) columns.
-    """
-    # Input validation
-    additional_columns = set(kwargs.keys())
-    forbidden = additional_columns.intersection(TRIPLES_DF_COLUMNS)
-    if len(forbidden) > 0:
-        raise ValueError(
-            f"The key-words for additional arguments must not be in "
-            f"{TRIPLES_DF_COLUMNS}, but {forbidden} were "
-            f"used."
-        )
-
-    # convert to numpy
-    tensor = tensor.cpu().numpy()
-    data = dict(zip(["head_id", "relation_id", "tail_id"], tensor.T))
-
-    # vectorized label lookup
-    entity_id_to_label = np.vectorize(
-        {v: k for k, v in self.entity_to_id.items()}.__getitem__
-    )
-    relation_id_to_label = np.vectorize(
-        {v: k for k, v in self.relation_to_id.items()}.__getitem__
-    )
-
-    for column, id_to_label in dict(
-        head=entity_id_to_label,
-        relation=relation_id_to_label,
-        tail=entity_id_to_label,
-    ).items():
-        data[f"{column}_label"] = id_to_label(data[f"{column}_id"])
-
-    # Additional columns
-    for key, values in kwargs.items():
-        # convert PyTorch tensors to numpy
-        if torch.is_tensor(values):
-            values = values.cpu().numpy()
-        data[key] = values
-
-    # convert to dataframe
-    rv = pd.DataFrame(data=data)
-
-    # Re-order columns
-    columns = TRIPLES_DF_COLUMNS + sorted(
-        set(rv.columns).difference(TRIPLES_DF_COLUMNS)
-    )
-
-    return rv.loc[:, columns]
-
-
-# ---
-
-
-def e2s(g: graph.Graph, e: int):
-    return f"{e}:{g.source.ents[e]}"
-
-
-def r2s(g: graph.Graph, r: int):
-    return f"{r}:{g.source.rels[r]}"
-
-
-def triple_to_str(g: graph.Graph, htr: Tuple[int]):
-    """
-
-    Transform a irtm.graphs triple to a pykeen string representation
-
-    Parameters
-    ----------
-
-    g: graph.Graph
-      irtm graph instance
-
-    htr: Tuple[int]
-      irtm graph triple
-
-    """
-    h, t, r = htr
-    return e2s(g, h), e2s(g, t), r2s(g, r)
-
-
-def triples_to_ndarray(g: graph.Graph, triples: Collection[Tuple[int]]):
-    """
-
-    Transform htr triples to hrt ndarrays of strings
-
-    Parameters
-    ----------
-
-    g: graph.Graph
-      irtm graph instance
-
-    htr: Collection[Tuple[int]]
-      irtm graph triples
-
-    Returns
-    -------
-
-    Numpy array of shape [N, 3] containing triples as
-    strings of form hrt.
-
-    """
-
-    # transform triples to ndarray and re-arrange
-    # triple columns from (h, t, r) to (h, r, t)
-    f = partial(triple_to_str, g)
-    return np.array(list(map(f, triples)))[:, (0, 2, 1)]
-
-
-# ---
-
-
-class Dataset(keen_datasets_base.Dataset):
-    """
-
-    Dataset as required by pykeen
-
-    Using the same split.Dataset must always result in
-    exactly the same TriplesFactories configuration
-
-    """
-
-    NAME = "irtm"
-
-    @property
-    def name(self):
-        return self._name
-
-    @property
-    def split_dataset(self):
-        return self._split_dataset
-
-    @property
-    def kwargs(self):
-        # helper function for pykeen pipelines
-        return dict(
-            split_dataset=self.split_dataset,
-            training=self.training,
-            validation=self.validation,
-            testing=self.testing,
-        )
-
-    # @helper.notnone
-    def __init__(
-        self,
-        *,
-        name: str = None,
-        # if this changes, also change Dataset.kwargs
-        split_dataset: split.Dataset = None,
-        training: keen_triples.TriplesFactory = None,
-        validation: keen_triples.TriplesFactory = None,
-        testing: Optional[keen_triples.TriplesFactory] = None,
-    ):
-
-        self._name = name
-        self._split_dataset = split_dataset
-
-        # see keen_datasets_base.DataSet
-        self.training = training
-        self.validation = validation
-        self.testing = testing
-
-    @property
-    def _factories(self):
-        tuples = [("training", self.training), ("validation", self.validation)]
-
-        if self.testing:
-            tuples.append(("testing", self.testing))
-
-        return tuples
-
-    def __str__(self) -> str:
-        return f"keen: [{self.name}]: " + (
-            " | ".join(
-                f"{name}={factory.num_triples}"
-                for name, factory in self._factories
-            )
-        )
-
-    @property
-    def str_stats(self) -> str:
-        s = "irtm pykeen dataset\n"
-        s += f"{self.name}\n"
-
-        for name, factory in self._factories:
-            content = textwrap.indent(
-                f"entities: {factory.num_entities}\n"
-                f"relations: {factory.num_relations}\n"
-                f"triples: {factory.num_triples}\n"
-                "",
-                "  ",
-            )
-
-            s += textwrap.indent(f"\n{name} triples factory:\n{content}", "  ")
-
-        return s
-
-    def check(self):
-        ds = self.split_dataset
-        log.info(f"! running self-check for {ds.path.name} TriplesFactories")
-
-        assert (
-            self.validation.num_entities <= self.training.num_entities
-        ), f"{self.validation.num_entities=}>{self.training.num_entities=}"
-
-        if self.testing:
-            assert (
-                self.testing.num_entities <= self.training.num_entities
-            ), f"{self.testing.num_entities=}>{self.validation.num_entities=}"
-
-        # all entities must be known at training time
-        # (this implicitly checks if there are entities with the same name)
-        n_train = self.training.num_entities
-        n_dataset = len(self.split_dataset.cw_train.entities)
-        assert n_train == n_dataset, f"{n_train=} != {n_dataset=}"
-
-        # all known entities and relations are contained in the mappings
-
-        entities = 0, 2
-        relations = (1,)
-
-        def _triples_to_set(triples, indexes):
-            nonlocal ds
-            arr = triples_to_ndarray(ds.g, triples)
-            return set(arr[:, indexes].flatten())
-
-        for _, factory in self._factories:
-
-            _mapped = _triples_to_set(ds.cw_train.triples, entities)
-            assert (
-                len(factory.entity_to_id.keys() - _mapped) == 0
-            ), f"{(len(factory.entity_to_id.keys() - _mapped) != 0)=}"
-
-            _mapped = _triples_to_set(ds.cw_train.triples, relations)
-            assert (
-                len(factory.relation_to_id.keys() - _mapped) == 0
-            ), f"{(len(factory.relation_to_id.keys() - _mapped) == 0)=}"
-
-            _mapped = _triples_to_set(ds.cw_valid.triples, entities)
-            assert _mapped.issubset(
-                factory.entity_to_id.keys()
-            ), f"{_mapped.issubset(factory.entity_to_id.keys())=}"
-
-            _mapped = _triples_to_set(ds.cw_valid.triples, relations)
-            assert _mapped.issubset(
-                factory.relation_to_id.keys()
-            ), f"{_mapped.issubset(factory.relation_to_id.keys())=}"
-
-    @classmethod
-    @helper.cached(".cached.kgc.keen.dataset.pkl")
-    def create(
-        K,
-        *,
-        # name is required for my version of the hpo pipeline
-        name: str = None,
-        # path is needed for helper.cached
-        # (you may want to use dataset.path)
-        path: pathlib.Path = None,
-        split_dataset: split.Dataset = None,
-    ) -> "Dataset":
-        """
-        Create a new pykeen dataset
-
-        A graphs.split.Dataset instance is required. The necessary
-        pykeen triple factories are created and some constraints
-        are checked (see Dataset.check).
-
-        The following triple mapping is applied:
-
-          training: random split of split_dataset.cw_train
-          validation: random split of split_dataset.cw_train
-          testing: split_dataset.cw_valid
-
-        Parameters
-        ----------
-
-        name: str
-          human readable name referenced by pykeen hpo and wandb
-
-        path: str
-          path to store the cache file to (you can use split_dataset.path)
-
-        split_dataset: graphs.split.Dataset
-          the graph split used for training
-
-        Returns
-        -------
-
-        An instance ready for training with pykeen
-
-        """
-
-        log.info(f"creating triple factories {path}")
-
-        helper.seed(split_dataset.cfg.seed)
-
-        to_a = partial(triples_to_ndarray, split_dataset.g)
-
-        # keen uses its own internal indexing
-        # so strip own indexes and create "translated" triple matrix
-        training = keen_triples.TriplesFactory.from_labeled_triples(
-            to_a(split_dataset.cw_train.triples),
-        )
-
-        if split_dataset.cfg.cw_train_split != -1:
-            log.info(
-                "splitting training data with ratio"
-                f" {split_dataset.cfg.cw_train_split}"
-            )
-
-            # default split is 80/20
-            training, validation = training.split(
-                split_dataset.cfg.cw_train_split,
-                random_state=split_dataset.cfg.seed,
-            )
-
-            # re-use existing entity/relation mappings
-            testing = keen_triples.TriplesFactory.from_labeled_triples(
-                to_a(split_dataset.cw_valid.triples),
-                entity_to_id=training.entity_to_id,
-                relation_to_id=training.relation_to_id,
-            )
-
-        else:
-            log.info("split dataset has no test data")
-
-            # re-use existing entity/relation mappings
-            validation = keen_triples.TriplesFactory.from_labeled_triples(
-                to_a(split_dataset.cw_valid.triples),
-                entity_to_id=training.entity_to_id,
-                relation_to_id=training.relation_to_id,
-            )
-
-            testing = None
-
-        # ---
-
-        self = K(
-            name=name,
-            split_dataset=split_dataset,
-            training=training,
-            validation=validation,
-            testing=testing,
-        )
-
-        self.check()
-        return self
-
-    @staticmethod
-    def from_split_dataset(split_dataset: split.Dataset):
-        return Dataset.create(
-            name=split_dataset.name,
-            path=split_dataset.path,
-            split_dataset=split_dataset,
-        )
-
-
-# TODO unused?
-# need to ninja-register this dataset with a string
-# as otherwise wandb param updates do not work as types (.__class__)
-# are not json serializable
-# keen_datasets.datasets[Dataset.NAME] = Dataset
 
 
 @dataclass
@@ -480,8 +60,7 @@ class Model:
     config: Config
     path: pathlib.Path
 
-    keen_dataset: Dataset
-    split_dataset: split.Dataset
+    kcw: irt.KeenClosedWorld
 
     training_result: data.TrainingResult
     evaluation_result: Optional[data.EvaluationResult]
@@ -500,7 +79,7 @@ class Model:
     def uri(self) -> str:
         # assuming the timestamp is unique...
         return (
-            f"{self.split_dataset.name}/"
+            f"{self.kcw.dataset.name}/"
             f"{self.name}/"
             f"{self.timestamp.strftime(DATEFMT)}"
         )
@@ -526,8 +105,7 @@ class Model:
         data = {}
         for i in (1, 3, 5, 10):
             data[f"hits@{i}"] = {
-                kind: hits_at_k[kind][f"{i}"]
-                for kind in ("avg", "best", "worst")
+                kind: hits_at_k[kind][f"{i}"] for kind in ("avg", "best", "worst")
             }
 
         data["MR"] = metrics["mean_rank"]["both"]
@@ -542,7 +120,7 @@ class Model:
 
         return title + textwrap.indent(
             f'Trained: {self.timestamp.strftime("%d.%m.%Y %H:%M")}\n'
-            f"Dataset: {self.split_dataset.name}\n\n"
+            f"Dataset: {self.kcw.dataset.name}\n\n"
             f"{self.metrics}\n",
             "  ",
         )
@@ -556,29 +134,12 @@ class Model:
 
     # translate irtm graph ids to pykeen ids
 
-    def e2s(self, e: int) -> str:
-        return e2s(self.split_dataset.g, e)
-
-    def r2s(self, r: int) -> str:
-        return r2s(self.split_dataset.g, r)
-
-    def e2id(self, e: int) -> int:
-        try:
-            return self.keen.triples_factory.entity_to_id[self.e2s(e)]
-
-        # open world entities
-        except KeyError:
-            return -1
-
-    def r2id(self, r: int) -> int:
-        return self.keen.triples_factory.relation_to_id[self.r2s(r)]
-
     def triple2id(self, htr: Tuple[int]) -> Tuple[int]:
         h, t, r = htr
 
-        assert h in self.split_dataset.g.source.ents
-        assert t in self.split_dataset.g.source.ents
-        assert r in self.split_dataset.g.source.rels
+        assert h in self.kcw.dataset.graph.source.ents
+        assert t in self.kcw.dataset.graph.source.ents
+        assert r in self.kcw.dataset.graph.source.rels
 
         return self.e2id(h), self.r2id(r), self.e2id(t)
 
@@ -625,56 +186,14 @@ class Model:
         Scores in the order of the associated triples
 
         """
-        assert self.split_dataset, "no dataset loaded"
+        assert self.kcw, "no dataset loaded"
 
-        array = triples_to_ndarray(self.split_dataset.g, triples)
-        batch = self.keen.triples_factory.map_triples_to_id(array)
-        batch = batch.to(device=self.keen.device)
+        factory = triples2factory(triples=triples, idmap=self.kcw.keen2irt)
+        batch = factory.to(device=self.keen.device)
         scores = self.keen.predict_scores(batch)
 
         return [float(t) for t in scores]
 
-    def predict_heads(
-        self, *, t: int = None, r: int = None, **kwargs
-    ) -> pd.DataFrame:
-        """
-
-        See keen_base.Model.predict_heads.
-
-        Parameters
-        ----------
-
-        t: int
-          tail entity id (using graph.Graph indexes)
-
-        r: int
-          relation id (using graph.Graph indexes)
-
-        """
-        tstr, rstr = e2s(self.split_dataset.g, t), r2s(self.split_dataset.g, r)
-        return self.keen.predict_heads(rstr, tstr, **kwargs)
-
-    def predict_tails(
-        self, *, h: int = None, r: int = None, **kwargs
-    ) -> pd.DataFrame:
-        """
-
-        See keen_base.Model.predict_tails
-
-        Parameters
-        ----------
-
-        h: int
-          head entity id (using graph.Graph indexes)
-
-        r: int
-          relation id (using graph.Graph indexes)
-
-        """
-        hstr, rstr = e2s(self.split_dataset.g, h), r2s(self.split_dataset.g, r)
-        return self.keen.predict_tails(hstr, rstr, **kwargs)
-
-    # @_cached_predictions
     def _predict_all(self, e: int, tails: bool) -> pd.DataFrame:
         # FIXME h=1333 (warlord) is unknown
         # awaiting https://github.com/pykeen/pykeen/pull/51
@@ -725,7 +244,7 @@ class Model:
         in_valid = _is_in(self.mapped_valid_triples)
         in_test = _is_in(self.mapped_test_triples)
 
-        ds = self.split_dataset
+        ds = self.kcw.dataset
 
         cw = ds.cw_train.triples | ds.cw_valid.triples
         in_cw = _is_in(set(self.triples2id(cw)))
@@ -735,8 +254,7 @@ class Model:
 
         print("df construction")
 
-        df = tensor_to_df(
-            self.keen.triples_factory,
+        df = self.keen.triples_factory.tensor_to_df(
             res,
             scores=y.view((n,)),
             cw=in_cw,
@@ -786,11 +304,11 @@ class Model:
         K,
         path: Union[str, pathlib.Path],
         *,
-        split_dataset: str = None,
+        dataset: str = None,
         load_model: bool = True,
     ):
 
-        assert split_dataset
+        assert dataset
 
         path = helper.path(
             path, exists=True, message="loading keen model from {path_abbrv}"
@@ -804,23 +322,26 @@ class Model:
         except FileNotFoundError:
             evaluation_result = None
 
-        split_dataset = split.Dataset.load(path=split_dataset)
+        dataset = irt.Dataset(dataset)
         assert (
-            config.general.dataset == split_dataset.name
-        ), f"{config.general.dataset=} {split_dataset.name=}"
+            config.general.dataset == dataset.name
+        ), f"{config.general.dataset=} {dataset.name=}"
 
-        keen_dataset = Dataset.from_split_dataset(split_dataset)
+        kcw = irt.KeenClosedWorld(
+            dataset=dataset,
+            seed=config.general.seed or dataset.split.cfg.seed,
+            split=config.general.split,
+        )
 
         # TODO different triple split?
-        assert keen_dataset.training.mapped_triples.equal(
+        assert kcw.training.mapped_triples.equal(
             training_result.model.triples_factory.mapped_triples
         ), "cannot reproduce triple split"
 
         return K(
             path=path,
             config=config,
-            keen_dataset=keen_dataset,
-            split_dataset=split_dataset,
+            kcw=kcw,
             training_result=training_result,
             evaluation_result=evaluation_result,
         )

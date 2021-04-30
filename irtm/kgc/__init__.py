@@ -57,8 +57,8 @@ def kgc_cli(result: str = None):
     '--config', type=str, required=True,
     help='yaml (see conf/kgc/*yml)')
 @click.option(
-    '--split-dataset', type=str, required=True,
-    help='path to irtm.graphs.split.Dataset folder')
+    '--dataset', type=str, required=True,
+    help='path to irt.Dataset folder')
 @click.option(
     '--participate/--create', type=bool, default=False,
     help='for multi-process optimization')
@@ -72,10 +72,10 @@ def click_train(**kwargs):
 @click_kgc.command(name='resume')
 @click.option(
     '--path', type=str, required=True,
-    help='directory containing a config.json and optuna.db')
+    help='directory containing a config.yml and optuna.db')
 @click.option(
-    '--split-dataset', type=str, required=True,
-    help='path to irtm.graphs.split.Dataset folder')
+    '--dataset', type=str, required=True,
+    help='path to irt.Dataset folder')
 def click_resume(**kwargs):
     """
     Resume hyperparameter search
@@ -87,8 +87,8 @@ def click_resume(**kwargs):
 @click.argument(
     'results', type=str, nargs=-1)
 @click.option(
-    '--split-dataset', type=str, required=True,
-    help='path to the split dataset directory')
+    '--dataset', type=str, required=True,
+    help='path to the irt.Dataset directory')
 @click.option(
     '--out', type=str,
     help='directory to write the summary to')

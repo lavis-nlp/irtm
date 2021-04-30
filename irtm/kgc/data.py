@@ -156,7 +156,7 @@ class TrainingResult:
             message="loading training results from {path_abbrv}",
         )
 
-        raw = ryaml.load(configs=[path / "training.json"])
+        raw = ryaml.load(configs=[path / "training.yml"])
 
         model = None
         if load_model:
