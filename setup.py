@@ -1,7 +1,7 @@
 from distutils.core import setup
 
 setup(
-    name="IRTM",
+    name="irtm",
     version="0.4",
     packages=["irtm"],
     license="MIT",
