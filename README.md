@@ -4,27 +4,29 @@
 
 ## Installation
 
-With horovod multi-gpu support:
-```bash
-# sets environment variables and invokes
-# conda env create -f environment.yml
-fish environment.fish
-```
+We highly recommend using
+[miniconda](https://docs.conda.io/en/latest/miniconda.html) for python
+version control. All requirements and self-installation is defined in
+the `requirements.txt`.
 
-Without multi-gpu support:
 
 ```bash
 conda create --name irtm python=3.8
 conda install pytorch
 pip install -r requirements.txt
-pip install -e .
 ```
 
+There is now a command-line client installed: `irtm`. It handles the
+entry points for both [pykeen](https://github.com/pykeen/pykeen) based
+closed-world knowledge graph completion (`kgc`) and open-world kgc
+using a [huggingface BERT
+transformer](https://github.com/huggingface/transformers) trained
+using
+[pytorch-lightning](https://github.com/PyTorchLightning/pytorch-lightning).
 
-## Command Line Client
 
-```
- > irtm --help
+```bash
+> irtm --help
 Usage: irtm [OPTIONS] COMMAND [ARGS]...
 
   IRTM - working with texts and graphs
@@ -33,61 +35,51 @@ Options:
   --help  Show this message and exit.
 
 Commands:
-  graphs     Working with graphs
-  kgc        Knowledge graph completion models
-  streamlit  Run a streamlit app instance
-  tests      Run unit tests
-  text       Process text data
-```
-
-To get more specific information, each subcommand also offers help:
-
-```
- > irtm graphs --help
-Usage: irtm graphs [OPTIONS] COMMAND [ARGS]...
-
-  Working with graphs
-
-Options:
-  --help  Show this message and exit.
-
-Commands:
-  graph  Networkx graph abstractions
-  split  Create open world triple splits
+  kgc   Closed-world knowledge graph completion
+  text  Open-world knowledge graph completion using free text
 ```
 
 
-## Knowledge Graph Completion
+## Closed-World Knowledge Graph Completion
 
 The `irtm.kgc` module offers kgc functionality on top of
 [pykeen](https://github.com/pykeen/pykeen).
 
 
-### Training
+``` bash
+ > irtm kgc train --help
+Usage: irtm kgc train [OPTIONS]
 
-You need a split dataset (see `irtm.graphs.split.Dataset`) and
-configuration file (see `conf/kgc/*.json`). Models are trained by
-simply providing these two arguments:
+  Train a knowledge graph completion model
 
+Options:
+  --config TEXT             yaml (see conf/kgc/*yml)  [required]
+  --dataset TEXT            path to irt.Dataset folder  [required]
+  --participate / --create  for multi-process optimization
+  --help                    Show this message and exit.
 ```
+
+You need an IRT dataset (see `irt.Dataset`) and configuration file
+(see `conf/kgc/*.yml`). Models are trained by simply providing these
+two arguments:
+
+```bash
 irtm kgc train \
-  --config conf/kgc/complex-sweep.json \
-  --split-dataset data/split/oke.fb15k237_30061990_50
+  --config conf/kgc/irt.cde.distmult-sweep.yml \
+  --split-dataset data/irt/irt.cde
 ```
 
 This writes the results to `data/kgc/<DATASET>/<MODEL>-<TIMESTAMP>`
-(where `data/kgc` is set by `irtm.ENV.KGC_DIR` in `irtm/__init__.py`)
+(where `data/kgc` is set by `irtm.ENV.KGC_DIR` in
+`irtm/__init__.py`). This particular configuration also starts a
+hyperparameter sweep (defining ranges/sets for the parameter
+space). If you want to have multiple instances (i.e. multiple gpus)
+train independently and in parallel for the same sweep, simply invoke
+the same command adding `--participate`:
 
-
-### Evaluation
-
-The evaluation is run seperately from the training (to avoid the
-temptation to tune your hyperparameters on the test data ;) ). It is
-possible to provide multiple directories which are evaluated
-successively:
-
-```
-dataset=data/split/oke.fb15k237_30061990_50
-sweep=data/kgc/oke.fb15k237_30061990_50/DistMult-2020-10-22_10:58:50.325146
-irtm kgc evaluate --out $sweep --split_dataset $dataset $sweep
+``` bash
+irtm kgc train \
+  --config conf/kgc/irt.cde.distmult-sweep.yml \
+  --split-dataset data/irt/irt.cde \
+  --participate
 ```

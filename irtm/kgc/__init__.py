@@ -16,7 +16,7 @@ log = logging.getLogger(__name__)
 @main.group(name='kgc')
 def click_kgc():
     """
-    Knowledge graph completion models
+    Closed-world knowledge graph completion
     """
     pass
 

@@ -20,7 +20,7 @@ log = logging.getLogger(__name__)
 @main.group()
 def text():
     """
-    Process text data
+    Open-world knowledge graph completion using free text
     """
     log.info('running text')
 
