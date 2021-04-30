@@ -1,19 +1,17 @@
 # -*- coding: utf-8 -*-
 # fmt: off
 
-import irtm
 from irtm.cli import main
-from irtm.text import prep
 from irtm.text import data
 from irtm.text import trainer
 from irtm.text import evaluator
-from irtm.graphs import split
-from irtm.common import logging
 
 import click
 
+import logging
 
-log = logging.get('text')
+
+log = logging.getLogger(__name__)
 
 
 # --- cli interface
@@ -61,88 +59,6 @@ def cli(dataset: str = None, ratio: float = None, seed: int = None):
 
     import IPython
     IPython.embed(banner1=banner)
-
-
-@text.command()
-@click.option(
-    '--dataset', type=str, required=True,
-    help='path to irtm.graph.split.Dataset directory')
-@click.option(
-    '--sentences', type=int, required=True,
-    help='(max) number of sentences per entity')
-@click.option(
-    '--tokens', type=int, required=True,
-    help='expected (max) number of tokens')
-@click.option(
-    '--model', type=str, required=True,
-    help='huggingface pretrained model (e.g. bert-base-cased)')
-@click.option(
-    '--masked/--not-masked', default=False,
-    help='whether to mask mentions')
-@click.option(
-    '--marked/--not-marked', default=False,
-    help='whether to add marker tokens to mentions')
-@click.option(
-    '--suffix', type=str,
-    help='suffix to append to the dataset directory')
-@click.option(
-    '--shuffle/--no-shuffle', default=True,
-    help='whether to shuffle sentences before cropping')
-@click.option(
-    '--sqlite-database', type=str,
-    help='path to sqlite text database')
-@click.option(
-    '--json-file', type=str,
-    help='path to json file')
-@click.option(
-    '--json-idmap', type=str,
-    help='if the internal ids need to be mapped to keys in the json')
-@click.option(
-    '--codex-directory', type=str,
-    help='path to the CoDEx directory containing entity descriptions')
-def transform(
-        dataset: str = None,
-        sqlite_database: str = None,
-        json_file: str = None,
-        json_idmap: str = None,
-        codex_directory: str = None,
-        **kwargs):
-    """
-    Transform a graph.split.Dataset to a text.data.Dataset
-    """
-    dataset = split.Dataset.load(path=dataset)
-
-    if json_file:
-        loader = 'json'
-        loader_args = dict(
-            fname=json_file,
-            idmap=json_idmap,
-        )
-
-    if sqlite_database:
-        loader = 'sqlite'
-        loader_args = dict(database=sqlite_database)
-
-    if codex_directory:
-        loader = 'codex'
-        loader_args = dict(path=codex_directory, id2ent=dataset.g.source.ents)
-
-    prep.transform(
-        dataset=dataset,
-        loader=loader,
-        loader_args=loader_args,
-        **kwargs)
-
-
-@text.command()
-@click.option(
-    '--text-dataset', type=str,
-    help="path to text dataset")
-@click.option(
-    '--sentences', type=int,
-    help="number of sentences to retain")
-def reduce(**kwargs):
-    prep.reduce(**kwargs)
 
 
 # shared options

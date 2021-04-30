@@ -1,35 +1,30 @@
 # -*- coding: utf-8 -*-
-
+import irt
 import irtm
 
 from irtm.kgc import keen
-from irtm.text import prep
 from irtm.text.config import Config
-from irtm.graphs import graph
-from irtm.graphs import split
 from irtm.common import helper
-from irtm.common import logging
+
+import numpy as np
+import torch
+import torch.utils.data as torch_data
+from torch.nn.utils.rnn import pad_sequence
+import pytorch_lightning as pl
+import transformers as tf
 
 import gzip
 import json
+import logging
 import pathlib
 import textwrap
 
-from itertools import count
 from datetime import datetime
 from functools import partial
 from functools import lru_cache
 from dataclasses import field
 from dataclasses import dataclass
 from collections import defaultdict
-
-import numpy as np
-import torch
-import torch.utils.data as torch_data
-from torch.nn.utils.rnn import pad_sequence
-from pykeen import triples as keen_triples
-import pytorch_lightning as pl
-import transformers as tf
 
 from typing import Set
 from typing import List
@@ -437,115 +432,13 @@ class TextDataset:
         return self
 
 
-@dataclass
-class Triples:
-
-    g: graph.Graph
-    entities: Set[int]
-    factory: keen_triples.TriplesFactory
-
-    @classmethod
-    def create(
-        K,
-        *,
-        split_dataset: split.Dataset = None,
-        split_part: split.Part = None,
-        **kwargs,  # e2id and r2id
-    ):
-        # kgc
-        triples = keen.triples_to_ndarray(split_dataset.g, split_part.triples)
-        factory = keen_triples.TriplesFactory.from_labeled_triples(
-            triples, **kwargs
-        )
-
-        return K(
-            g=split_part.g,
-            entities=split_part.owe,
-            factory=factory,
-        )
-
-
-@dataclass
-class KGCDataset:
-
-    irtm2keen: Dict[int, int]
-    inductive: Triples
-    transductive: Triples
-    test: Triples
-
-    @classmethod
-    def create(
-        K,
-        *,
-        config: Config = None,
-        keen_dataset: keen.Dataset = None,
-        split_dataset: split.Dataset = None,
-    ):
-        # create triple factories usable by pykeen
-        # re-use original id-mapping and extend this with own ids
-        relation_to_id = keen_dataset.relation_to_id
-        entity_to_id = keen_dataset.entity_to_id
-        owe = (split_dataset.ow_valid | split_dataset.ow_test).owe
-
-        # add owe entities to the entity mapping
-        entity_to_id.update(
-            {
-                keen.e2s(split_dataset.g, e): idx
-                for e, idx in zip(owe, count(len(entity_to_id)))
-            }
-        )
-
-        log.info(f"added {len(owe)} ow entities to mapping")
-
-        transductive = Triples.create(
-            split_dataset=split_dataset,
-            split_part=split_dataset.cw_train | split_dataset.cw_valid,
-            entity_to_id=entity_to_id,
-            relation_to_id=relation_to_id,
-        )
-
-        inductive = Triples.create(
-            split_dataset=split_dataset,
-            split_part=split_dataset.ow_valid,
-            entity_to_id=entity_to_id,
-            relation_to_id=relation_to_id,
-        )
-
-        test = Triples.create(
-            split_dataset=split_dataset,
-            split_part=split_dataset.ow_test,
-            entity_to_id=entity_to_id,
-            relation_to_id=relation_to_id,
-        )
-
-        log.info("created datasets triples factories")
-
-        irtm2keen = {}
-        for factory in (transductive.factory, inductive.factory, test.factory):
-            irtm2keen.update(
-                {
-                    int(name.split(":", maxsplit=1)[0]): keen_id
-                    for name, keen_id in factory.entity_to_id.items()
-                }
-            )
-
-        log.info(f"initialized irtm2keen mapping with {len(irtm2keen)} ids")
-
-        return K(
-            irtm2keen=irtm2keen,
-            transductive=transductive,
-            inductive=inductive,
-            test=test,
-        )
-
-
 # --- for mapper training
 
 
 class TorchDataset(torch_data.Dataset):
 
     text_dataset: TextDataset
-    kgc_dataset: KGCDataset
+    kow: irt.KeenOpenWorld
 
     @property
     def name(self):
@@ -571,11 +464,8 @@ class TorchDataset(torch_data.Dataset):
 
     def __init__(
         self,
-        *,
-        name: str = None,
-        part: Part = None,
-        # required to obtain node degrees
-        triples: Triples = None,
+        name: str,
+        part: Part,
     ):
         assert name is not None
         assert part is not None
@@ -597,29 +487,23 @@ class TorchDataset(torch_data.Dataset):
             f" max context size: {self.max_context_size}"
         )
 
-        if not triples:
-            self._degrees = None
-            return
+        # if not triples:
+        #     self._degrees = None
+        #     return
 
         # note: this does not consider direction; nodes with an
         #  out_degree of 0 can still have a large in_degree
-        self._degrees = torch.Tensor(
-            [triples.g.nx.degree[e] for e, _ in self._flat]
-        )
+        # self._degrees = torch.Tensor([triples.g.nx.degree[e] for e, _ in self._flat])
 
-        assert (
-            len(self.degrees[self.degrees == 0]) == 0
-        ), "found disconnected nodes"
+        # assert len(self.degrees[self.degrees == 0]) == 0, "found disconnected nodes"
 
-        log.info(
-            f"node degrees: mean={self.degrees.mean():2.2f};"
-            f" std={self.degrees.std():2.2f}"
-        )
+        # log.info(
+        #     f"node degrees: mean={self.degrees.mean():2.2f};"
+        #     f" std={self.degrees.std():2.2f}"
+        # )
 
     @staticmethod
-    def collate_fn(
-        batch: List[Tuple[int, torch.Tensor]]
-    ) -> Tuple[torch.Tensor]:
+    def collate_fn(batch: List[Tuple[int, torch.Tensor]]) -> Tuple[torch.Tensor]:
 
         # flatten entities to match context counts
         ents = tuple([ent for ent, ctx in batch for _ in ctx])
@@ -680,11 +564,8 @@ class DataLoader(torch_data.DataLoader):
     def subbatch_size(self):
         return self._subbatch_size
 
-    @helper.notnone
-    def __init__(self, dataset, *args, subbatch_size: int = None, **kwargs):
-        super().__init__(
-            dataset, *args, collate_fn=dataset.collate_fn, **kwargs
-        )
+    def __init__(self, dataset, subbatch_size: int, *args, **kwargs):
+        super().__init__(dataset, *args, collate_fn=dataset.collate_fn, **kwargs)
         self._subbatch_size = subbatch_size
 
 
@@ -694,19 +575,19 @@ class DataModule(pl.LightningDataModule):
         return self._config
 
     @property
-    def split(self) -> split.Dataset:
-        return self._split
+    def dataset(self) -> irt.Dataset:
+        return self._irt
 
     @property
     def text(self) -> Optional[TextDataset]:
         return self._text
 
     @property
-    def keen(self) -> Optional[keen.Dataset]:
+    def keen(self) -> Optional:
         return self._keen
 
     @property
-    def kgc(self) -> Optional[KGCDataset]:
+    def kgc(self) -> Optional[irt.KeenOpenWorld]:
         return self._kgc
 
     # ---
@@ -730,9 +611,7 @@ class DataModule(pl.LightningDataModule):
         return dataloader_idx is None or dataloader_idx == 2
 
     @lru_cache
-    def subbatch_size(
-        self, kind: str = None, dataloader_idx: int = None
-    ) -> int:
+    def subbatch_size(self, kind: str = None, dataloader_idx: int = None) -> int:
         log.info(f"subbatch_size cache miss: {kind=} {dataloader_idx=}")
 
         if kind == "train":
@@ -767,8 +646,7 @@ class DataModule(pl.LightningDataModule):
         if self.config.split_text_dataset:
             if not self.config.valid_split:
                 raise irtm.IRTMError(
-                    "config.valid_split required if"
-                    " config.split_text_dataset is set"
+                    "config.valid_split required if" " config.split_text_dataset is set"
                 )
 
             log.info("creating text dataset: enable geometric validation")
