@@ -2,6 +2,7 @@ evaluator:
   cls: RankBasedEvaluator
 general:
   seed: null
+  split: 0.9
 loss:
   cls: CrossEntropyLoss
 model:
