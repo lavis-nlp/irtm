@@ -325,24 +325,7 @@ class Config:
 
     def suggest(self, trial) -> "Config":
         replaced = {}
-        # for name, option in self.__dict__.items():
-        #     try:
-        #         for key, val in option.kwargs.items():
-        #             if isin
 
-        #     _dic = {}
-        #     for key, val in option.__dict__.items():
-        #         if isinstance(val, Suggestion):
-        #             _dic[key] = val
-
-        #     suggestions = {
-        #         k: v.suggest(name=f'{name}.{k}', trial=trial)
-        #         for k, v in _dic.items()
-        #     }
-
-        #     if suggestions:
-        #         log.info('obtained suggestions: ' + ', '.join(
-        #             f'{k}={v}' for k, v in suggestions.items()))
         for name, option in self.__dict__.items():
             try:
                 # suggest concrete values

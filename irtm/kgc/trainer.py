@@ -51,10 +51,27 @@ def single(
     config: Config,
     kcw: irt.KeenClosedWorld,
 ) -> data.TrainingResult:
+    """
 
-    # TODO https://github.com/pykeen/pykeen/issues/129
-    # monkey-patched pykeen to return constant batch size
-    BATCH_SIZE = 200
+    A single training run
+
+    Parameters
+    ----------
+
+    config : Config
+      Configuration options
+
+    kcw : irt.KeenClosedworld
+      IRT encapsulated for closed-world KGC
+
+    Returns
+    -------
+
+    A training result object which encapsulates
+    the pykeen result tracker object
+
+    """
+
 
     # preparation
 
@@ -106,7 +123,6 @@ def single(
         evaluator=evaluator,
         evaluation_triples_factory=kcw.validation,
         result_tracker=result_tracker,
-        evaluation_batch_size=BATCH_SIZE,
     )
 
     training_loop = config.resolve(
@@ -122,7 +138,6 @@ def single(
     ts = datetime.now()
 
     try:
-
         losses = training_loop.train(
             **{
                 **dataclasses.asdict(config.training),
@@ -170,6 +185,9 @@ def _create_study(
     out: pathlib.Path,
     resume: bool,
 ) -> optuna.Study:
+    """
+
+    """
 
     out.mkdir(parents=True, exist_ok=True)
     db_path = out / "optuna.db"
@@ -218,6 +236,31 @@ def multi(
     resume: bool,
     **kwargs,
 ) -> None:
+    """
+
+    KGC training with HPO
+
+    Conduct multiple training runs in a hyperparameter study.  Use
+    config.Suggestion objects to define parameter ranges. To
+    participate in an already running study (i.e. parallel training)
+    or to resume an older study, set resume to True.
+
+    Parameters
+    ----------
+
+    base : Config
+      Configuration with Suggestions
+
+    out : Union[str, pathlib.Path]
+      Folder to write models and the hpo database
+
+    resume : bool
+      If False, create a new study, otherwise participate
+
+    kwargs
+      see single()
+
+    """
 
     # Optuna lingo:
     #   Trial: A single call of the objective function
@@ -254,7 +297,7 @@ def multi(
                 msg = f'objective: got runtime error "{exc}"'
                 log.error(msg)
 
-                if attempt > 10:
+                if attempt > 3:
                     log.error("aborting attempts, something is wrong.")
                     # post mortem (TODO last model checkpoint)
                     config.save(path)
@@ -291,6 +334,11 @@ def train(
     kcw: irt.KeenClosedWorld,
     **kwargs,
 ) -> None:
+    """
+
+    Conduct a hyperparameter sweep.
+
+    """
 
     out = irtm.ENV.KGC_DIR / kcw.dataset.name / f"{config.model.cls.lower()}"
     config.save(out)
