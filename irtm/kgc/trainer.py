@@ -72,7 +72,6 @@ def single(
 
     """
 
-
     # preparation
 
     if not config.general.seed:
@@ -185,9 +184,7 @@ def _create_study(
     out: pathlib.Path,
     resume: bool,
 ) -> optuna.Study:
-    """
-
-    """
+    """ """
 
     out.mkdir(parents=True, exist_ok=True)
     db_path = out / "optuna.db"
@@ -307,7 +304,7 @@ def multi(
                 gc.collect()
                 torch.cuda.empty_cache()
 
-                _run(attempt=attempt + 1)
+                return _run(attempt=attempt + 1)
 
         result = _run()
         best_metric = result.stopper.best_metric
@@ -380,31 +377,6 @@ def train_from_kwargs(
         resume=participate,
         **kwargs,
     )
-
-
-def resume_from_kwargs(
-    path: str,
-    split_dataset: str,
-    **kwargs,
-):
-
-    log.info("resuming training")
-    out = helper.path(path, exists=True)
-
-    config = Config.load(out)
-    split_dataset, keen_dataset = data.load_datasets(path=split_dataset)
-
-    assert split_dataset.name == config.general.dataset
-    multi(
-        out=out,
-        base=config,
-        resume=True,
-        keen_dataset=keen_dataset,
-        split_dataset=split_dataset,
-        **kwargs,
-    )
-
-    log.info("done")
 
 
 # --------------------
@@ -500,7 +472,7 @@ def evaluate_glob(
 
         except FileNotFoundError:
 
-            mapped_triples = _get_mapped_triples(keen_dataset=kcw, mode=mode)
+            mapped_triples = _get_mapped_triples(kcw=kcw, mode=mode)
             log.info(f"evaluting {len(mapped_triples)} triples")
 
             eval_result = evaluate(
