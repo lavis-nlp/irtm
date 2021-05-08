@@ -35,14 +35,6 @@ regularizer:
     log: true
     low: 0.01
     step: null
-sampler:
-  cls: BasicNegativeSampler
-  num_negs_per_pos:
-    high: 50
-    initial: 25
-    log: false
-    low: 1
-    step: 1
 stopper:
   cls: EarlyStopper
   frequency: 1
@@ -54,7 +46,6 @@ tracker:
   project: irtm-keen
   reinit: true
 training:
-  batch_size: 125
   num_epochs: 2000
 training_loop:
   cls: LCWATrainingLoop

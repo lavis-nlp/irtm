@@ -16,9 +16,6 @@ regularizer:
   normalize: true
   p: 2.0
   weight: 0.016808206025911536
-# sampler:
-#   cls: BasicNegativeSampler
-#   num_negs_per_pos: 2
 stopper:
   cls: EarlyStopper
   frequency: 1
@@ -29,8 +26,8 @@ tracker:
   offline: false
   project: irtm-keen
   reinit: true
-  experiment: irt-cde tmp
+  experiment: irt-cde paper
 training:
-  num_epochs: 1
+  num_epochs: 2000
 training_loop:
   cls: LCWATrainingLoop
