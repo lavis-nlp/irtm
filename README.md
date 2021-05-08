@@ -76,22 +76,20 @@ two arguments:
 ```bash
 irtm kgc train \
   --config conf/kgc/irt.cde.distmult-sweep.yml \
-  --split-dataset data/irt/irt.cde
+  --split-dataset data/irt/irt.cde \
+  --out data/kgc/irt-cde/distmult.sweep
 ```
 
-This writes the results to `data/kgc/<DATASET>/<MODEL>/` (where
-`data/kgc` is set by `irtm.ENV.KGC_DIR` in `irtm/__init__.py`). You
-can overwrite the default output directory by using the `--out`
-command line argument. This particular configuration also starts a
-hyperparameter sweep (defining ranges/sets for the parameter
-space). If you want to have multiple instances (i.e. multiple gpus)
-train independently and in parallel for the same sweep, simply invoke
-the same command adding `--participate`:
+This particular configuration starts a hyperparameter sweep (defining
+ranges/sets for the parameter space). If you want to have multiple
+instances (i.e. multiple gpus) train in parallel for the same sweep,
+simply invoke the same command adding `--participate`:
 
 ``` bash
 irtm kgc train \
   --config conf/kgc/irt.cde.distmult-sweep.yml \
-  --split-dataset data/irt/irt.cde
+  --split-dataset data/irt/irt.cde \
+  --out data/kgc/irt-cde/distmult.sweep \
   --participate
 ```
 
@@ -110,8 +108,6 @@ models of a sweep), runs an evaluation on one of the dataset's splits
 irtm kgc evaluate \
   --dataset ../irt/data/irt/irt.cde \
   --out data/kgc/irt-cde/distmult.sweep \
-  --mode validation \
   data/kgc/irt-cde/distmult.sweep/trial-00*
 ```
-
 

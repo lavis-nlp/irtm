@@ -261,7 +261,7 @@ def multi(
             # run training
             try:
                 log.info(f"running attempt {attempt}")
-                return single(out=out, config=config, **kwargs)
+                return single(out=path, config=config, **kwargs)
 
             except RuntimeError as exc:
                 msg = f'objective: got runtime error "{exc}"'
@@ -322,8 +322,8 @@ def train(
 def train_from_kwargs(
     config: str,
     dataset: str,
+    out: str,
     participate: bool,
-    out: Optional[str] = None,
     **kwargs,
 ):
     config_path = helper.path(config)
@@ -342,8 +342,6 @@ def train_from_kwargs(
     # now kith
     config.general.dataset = kcw.dataset.name
     config.general.seed = kcw.seed
-
-    out = out or irtm.ENV.KGC_DIR / kcw.dataset.name / f"{config.model.cls.lower()}"
 
     train(
         kcw=kcw,

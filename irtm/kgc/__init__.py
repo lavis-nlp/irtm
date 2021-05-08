@@ -61,11 +61,11 @@ def kgc_cli(result: str = None):
     '--dataset', type=str, required=True,
     help='path to irt.Dataset folder')
 @click.option(
+    '--out', type=str, required=True,
+    help='where to write the model, configuration, etc. to')
+@click.option(
     '--participate/--create', type=bool, default=False,
     help='for multi-process optimization')
-@click.option(
-    '--out', type=str, default=None,
-    help='where to write the model to; defaults to data/kgc/...')
 def click_train(**kwargs):
     """
     Train a knowledge graph completion model
@@ -97,8 +97,8 @@ def click_resume(**kwargs):
     '--out', type=str,
     help='directory to write the summary to')
 @click.option(
-    '--mode', type=str,
-    help='one of validation, testing, all')
+    '--mode', type=str, default='validation',
+    help='either validation or testing')
 def click_evaluate(out: str = None, mode: str = None, **kwargs):
     """
     Evaluate a set of kgc models
