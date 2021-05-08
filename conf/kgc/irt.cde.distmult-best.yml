@@ -1,0 +1,36 @@
+evaluator:
+  cls: RankBasedEvaluator
+general:
+  seed: 1361757
+  split: 0.9
+loss:
+  cls: CrossEntropyLoss
+model:
+  cls: DistMult
+  embedding_dim: 500
+optimizer:
+  cls: Adagrad
+  lr: 0.11719862788942631
+regularizer:
+  cls: LpRegularizer
+  normalize: true
+  p: 2.0
+  weight: 0.016808206025911536
+# sampler:
+#   cls: BasicNegativeSampler
+#   num_negs_per_pos: 2
+stopper:
+  cls: EarlyStopper
+  frequency: 1
+  patience: 50
+  relative_delta: 1.0e-05
+tracker:
+  cls: wandb
+  offline: false
+  project: irtm-keen
+  reinit: true
+  experiment: irt-cde tmp
+training:
+  num_epochs: 1
+training_loop:
+  cls: LCWATrainingLoop

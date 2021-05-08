@@ -24,7 +24,7 @@ optimizer:
     step: null
 optuna:
   maximise: true
-  trials: 50
+  trials: 25
 regularizer:
   cls: LpRegularizer
   normalize: true
