@@ -29,6 +29,14 @@ def main():
     log.info(f"initialized path to irtm: {irtm.ENV.ROOT_DIR}")
 
 
+def wrapped_main():
+    try:
+        main()
+    except Exception as exc:
+        log.error(str(exc))
+        raise exc
+
+
 # tests are distributed over submodules
 # entry point is registered here
 @main.group(name="tests")
