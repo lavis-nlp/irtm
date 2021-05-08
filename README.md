@@ -22,7 +22,12 @@ closed-world knowledge graph completion (`kgc`) and open-world kgc
 using a [huggingface BERT
 transformer](https://github.com/huggingface/transformers) trained
 using
-[pytorch-lightning](https://github.com/PyTorchLightning/pytorch-lightning).
+[pytorch-lightning](https://github.com/PyTorchLightning/pytorch-lightning). Each
+entry point is defined in the modules' `__init__.py`. If you do not
+like to use the CLI, you can look there to see the associated API
+entry point (e.g. for `irtm kgc train`, the `irtm.kgc.__init__.py`
+invokes `irt.kgc.trainer.train_from_kwargs`, which in turn calls
+`irt.trainer.train`). The whole project follows this convention.
 
 
 ```bash
@@ -38,6 +43,9 @@ Commands:
   kgc   Closed-world knowledge graph completion
   text  Open-world knowledge graph completion using free text
 ```
+
+A log file is written to `data/irtm.log` when using the CLI. You can
+configure the logger using `conf/logging.conf`.
 
 
 ## Closed-World Knowledge Graph Completion
@@ -59,6 +67,8 @@ Options:
   --help                    Show this message and exit.
 ```
 
+### Training
+
 You need an IRT dataset (see `irt.Dataset`) and configuration file
 (see `conf/kgc/*.yml`). Models are trained by simply providing these
 two arguments:
@@ -69,9 +79,10 @@ irtm kgc train \
   --split-dataset data/irt/irt.cde
 ```
 
-This writes the results to `data/kgc/<DATASET>/<MODEL>-<TIMESTAMP>`
-(where `data/kgc` is set by `irtm.ENV.KGC_DIR` in
-`irtm/__init__.py`). This particular configuration also starts a
+This writes the results to `data/kgc/<DATASET>/<MODEL>/` (where
+`data/kgc` is set by `irtm.ENV.KGC_DIR` in `irtm/__init__.py`). You
+can overwrite the default output directory by using the `--out`
+command line argument. This particular configuration also starts a
 hyperparameter sweep (defining ranges/sets for the parameter
 space). If you want to have multiple instances (i.e. multiple gpus)
 train independently and in parallel for the same sweep, simply invoke
@@ -80,6 +91,27 @@ the same command adding `--participate`:
 ``` bash
 irtm kgc train \
   --config conf/kgc/irt.cde.distmult-sweep.yml \
-  --split-dataset data/irt/irt.cde \
+  --split-dataset data/irt/irt.cde
   --participate
 ```
+
+To employ the hyperparameter configuration used for the model
+described in the paper, use the associated `*-best.yml` files.
+
+
+### Evaluation
+
+To evaluate a trained model, use the `irtm kgc evaluate` command. This
+expects one or many directories containing trained models (e.g. all
+models of a sweep), runs an evaluation on one of the dataset's splits
+(e.g. "validation") and saves the results to a file:
+
+``` bash
+irtm kgc evaluate \
+  --dataset ../irt/data/irt/irt.cde \
+  --out data/kgc/irt-cde/distmult.sweep \
+  --mode validation \
+  data/kgc/irt-cde/distmult.sweep/trial-00*
+```
+
+
