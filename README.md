@@ -2,6 +2,22 @@
 
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 
+Inductive Reasoning with Text - Models
+
+<!-- markdown-toc start - Don't edit this section. Run M-x markdown-toc-refresh-toc -->
+**Table of Contents**
+
+- [IRTM](#irtm)
+    - [Installation](#installation)
+    - [Current Performance](#current-performance)
+    - [Closed-World Knowledge Graph Completion](#closed-world-knowledge-graph-completion)
+        - [Training](#training)
+        - [Evaluation](#evaluation)
+    - [Open-World Knowledge Graph Completion](#open-world-knowledge-graph-completion)
+
+<!-- markdown-toc end -->
+
+
 ## Installation
 
 We highly recommend using
@@ -46,6 +62,11 @@ Commands:
 
 A log file is written to `data/irtm.log` when using the CLI. You can
 configure the logger using `conf/logging.conf`.
+
+
+## Current Performance
+
+TODO
 
 
 ## Closed-World Knowledge Graph Completion
@@ -111,3 +132,7 @@ irtm kgc evaluate \
   data/kgc/irt-cde/distmult.sweep/trial-00*
 ```
 
+
+## Open-World Knowledge Graph Completion
+
+TODO
