@@ -52,10 +52,6 @@ class Time:
     start: datetime
     end: datetime
 
-    @classmethod
-    def create(K, dic: Dict[str, str]):
-        return K(**{k: datetime.fromisoformat(v) for k, v in dic.items()})
-
 
 @dataclass
 class TrainingResult:
@@ -145,7 +141,7 @@ class TrainingResult:
             **{
                 **raw,
                 **dict(
-                    training_time=Time.create(raw["training_time"]),
+                    training_time=Time(**raw["training_time"]),
                     config=Config.load(path),
                     model=model,
                 ),

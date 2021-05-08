@@ -3,6 +3,7 @@
 
 from irtm.cli import main
 from irtm.kgc import trainer
+from irtm.kgc import evaluator
 from irtm.common import helper
 
 import click
@@ -102,5 +103,5 @@ def click_evaluate(out: str = None, mode: str = None, **kwargs):
     """
     Evaluate a set of kgc models
     """
-    results = trainer.evaluate_from_kwargs(mode=mode, **kwargs)
-    trainer.print_results(results=results, out=out, mode=mode)
+    results = evaluator.evaluate_from_kwargs(mode=mode, **kwargs)
+    evaluator.print_results(results=results, out=out, mode=mode)
