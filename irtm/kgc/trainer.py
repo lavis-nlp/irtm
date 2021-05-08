@@ -10,6 +10,7 @@ from irtm.common import helper
 import torch
 import optuna
 import numpy as np
+from pykeen.pipeline import pipeline
 from tqdm import tqdm as _tqdm
 from tabulate import tabulate
 
@@ -24,6 +25,7 @@ from datetime import datetime
 from typing import List
 from typing import Union
 from typing import Iterable
+from typing import Optional
 
 
 log = logging.getLogger(__name__)
@@ -48,6 +50,7 @@ def resolve_device(device_name: str = None):
 
 
 def single(
+    out: Union[str, pathlib.Path],
     config: Config,
     kcw: irt.KeenClosedWorld,
 ) -> data.TrainingResult:
@@ -71,6 +74,7 @@ def single(
     the pykeen result tracker object
 
     """
+    out = helper.path(out, create=True)
 
     # preparation
 
@@ -81,102 +85,75 @@ def single(
 
     helper.seed(config.general.seed)
 
-    # initialization
-
-    result_tracker = config.resolve(config.tracker)
-    result_tracker.start_run()
-    result_tracker.log_params(dataclasses.asdict(config))
-
-    device = resolve_device(device_name=config.model.kwargs["preferred_device"])
-
-    # target filtering for ranking losses is enabled by default
-    loss = config.resolve(
-        config.loss,
-    )
-
-    regularizer = config.resolve(
-        config.regularizer,
-    )
-
-    model = config.resolve(
-        config.model,
-        loss=loss,
-        regularizer=regularizer,
-        random_seed=config.general.seed,
-        triples_factory=kcw.training,
-        preferred_device=device,
-    )
-
-    evaluator = config.resolve(
-        config.evaluator,
-    )
-
-    optimizer = config.resolve(
-        config.optimizer,
-        params=model.get_grad_params(),
-    )
-
-    stopper = config.resolve(
-        config.stopper,
-        model=model,
-        evaluator=evaluator,
-        evaluation_triples_factory=kcw.validation,
-        result_tracker=result_tracker,
-    )
-
-    training_loop = config.resolve(
-        config.training_loop,
-        model=model,
-        optimizer=optimizer,
-        # negative_sampler_cls=config.sampler.constructor,
-        # negative_sampler_kwargs=config.sampler.kwargs,
-    )
-
-    # training
+    kwargs = {}
+    if config.sampler:
+        kwargs["negative_sampler"] = config.sampler.cls
+        kwargs["negative_sampler_kwargs"] = config.sampler.kwargs
 
     ts = datetime.now()
 
-    try:
-        losses = training_loop.train(
-            **{
-                **dataclasses.asdict(config.training),
-                **dict(
-                    stopper=stopper,
-                    result_tracker=result_tracker,
-                    clear_optimizer=True,
-                ),
-            }
-        )
-
-    except RuntimeError as exc:
-        log.error(f'training error: "{exc}"')
-
-        # not working although documented?
-        # result_tracker.wandb.alert(title='RuntimeError', text=msg)
-        result_tracker.run.finish(exit_code=1)
-        raise exc
-
-    training_time = data.Time(start=ts, end=datetime.now())
-    result_tracker.log_metrics(
-        prefix="validation",
-        metrics=dict(best=stopper.best_metric, metric=stopper.metric),
-        step=stopper.best_epoch,
+    pykeen_result = pipeline(
+        training=kcw.training,
+        validation=kcw.validation,
+        testing=kcw.validation,
+        use_testing_data=False,
+        # copied from config
+        model=config.model.cls,
+        model_kwargs=config.model.kwargs,
+        loss=config.loss.cls,
+        loss_kwargs=config.loss.kwargs,
+        regularizer=config.regularizer.cls,
+        regularizer_kwargs=config.regularizer.kwargs,
+        optimizer=config.optimizer.cls,
+        optimizer_kwargs=config.optimizer.kwargs,
+        training_loop=config.training_loop.cls,
+        training_kwargs=dataclasses.asdict(config.training),
+        stopper=config.stopper.cls,
+        stopper_kwargs=config.stopper.kwargs,
+        evaluator=config.evaluator.cls,
+        evaluator_kwargs=config.evaluator.kwargs,
+        result_tracker=config.tracker.cls,
+        result_tracker_kwargs=config.tracker.kwargs,
+        # hard-coded
+        clear_optimizer=True,
+        # automatic_memory_optimization=True,
+        random_seed=config.general.seed,
+        **kwargs,
     )
 
-    # aggregation
+    # configure training result
 
-    return data.TrainingResult(
+    training_time = data.Time(start=ts, end=datetime.now())
+
+    wandb_run = pykeen_result.stopper.result_tracker.run
+    wandb = dict(
+        id=wandb_run.id,
+        dir=wandb_run.dir,
+        path=wandb_run.path,
+        name=wandb_run.name,
+        offline=True,
+    )
+
+    if not wandb_run.offline:
+        wandb.update(dict(url=wandb_run.url, offline=False))
+
+    training_result = data.TrainingResult(
         created=datetime.now(),
         git_hash=helper.git_hash(),
         config=config,
+        model=pykeen_result.model,
         # metrics
         training_time=training_time,
-        losses=losses,
-        # instances
-        model=model,
-        stopper=stopper,
-        result_tracker=result_tracker,
+        results=pykeen_result.metric_results.to_dict(),
+        losses=pykeen_result.losses,
+        best_metric=pykeen_result.stopper.best_metric,
+        wandb=wandb,
     )
+
+    pykeen_result.save_to_directory(out / "pykeen")
+    training_result.save(out)
+
+    return training_result
 
 
 def _create_study(
@@ -288,7 +265,7 @@ def multi(
             # run training
             try:
                 log.info(f"running attempt {attempt}")
-                return single(config=config, **kwargs)
+                return single(out=out, config=config, **kwargs)
 
             except RuntimeError as exc:
                 msg = f'objective: got runtime error "{exc}"'
@@ -307,11 +284,10 @@ def multi(
                 return _run(attempt=attempt + 1)
 
         result = _run()
-        best_metric = result.stopper.best_metric
+        best_metric = result.best_metric
         log.info(f"! trial {trial.number} finished: " f"best metric = {best_metric}")
 
         # min optimization
-        result.save(path)
         return -best_metric if base.optuna.maximise else best_metric
 
     study = _create_study(config=base, out=out, resume=resume)
@@ -327,31 +303,31 @@ def multi(
 
 
 def train(
+    out: Union[str, pathlib.Path],
     config: Config,
     kcw: irt.KeenClosedWorld,
     **kwargs,
 ) -> None:
     """
 
-    Conduct a hyperparameter sweep.
+    Train one or many KGC models
 
     """
-
-    out = irtm.ENV.KGC_DIR / kcw.dataset.name / f"{config.model.cls.lower()}"
+    out = helper.path(out)
     config.save(out)
 
-    multi(
-        out=out,
-        base=config,
-        kcw=kcw,
-        **kwargs,
-    )
+    if config.optuna:
+        multi(out=out, base=config, kcw=kcw, **kwargs)
+
+    else:
+        single(out=out, config=config, kcw=kcw)
 
 
 def train_from_kwargs(
     config: str,
     dataset: str,
     participate: bool,
+    out: Optional[str] = None,
     **kwargs,
 ):
     config_path = helper.path(config)
@@ -371,12 +347,17 @@ def train_from_kwargs(
     config.general.dataset = kcw.dataset.name
     config.general.seed = kcw.seed
 
+    out = out or irtm.ENV.KGC_DIR / kcw.dataset.name / f"{config.model.cls.lower()}"
+
     train(
         kcw=kcw,
         config=config,
         resume=participate,
+        out=out,
         **kwargs,
     )
+
+    log.info("finished training")
 
 
 # --------------------
@@ -450,7 +431,7 @@ def _get_mapped_triples(
 
 def evaluate_glob(
     glob: Iterable[pathlib.Path],
-    kcw: irt.KeenClosedWorld,
+    dataset: irt.Dataset,
     mode: str,
 ):
 
@@ -461,6 +442,16 @@ def evaluate_glob(
     for path in tqdm(glob):
         try:
             train_result = data.TrainingResult.load(path)
+            config = Config.load(path)
+
+            assert config.seed
+
+            kcw = irt.KeenClosedWorld(
+                dataset=dataset,
+                seed=config.general.seed,
+                split=config.general.split,
+            )
+
             assert train_result.config.general.dataset == kcw.dataset.name
 
         except (FileNotFoundError, NotADirectoryError) as exc:
@@ -494,16 +485,15 @@ def evaluate_glob(
 
 def evaluate_from_kwargs(
     results: List[str],
-    split_dataset: str,
+    dataset: str,
     mode: str,
 ):
 
-    split_dataset, keen_dataset = data.load_datasets(path=split_dataset)
+    dataset = irt.Dataset(dataset)
 
     eval_results = evaluate_glob(
         glob=map(pathlib.Path, results),
-        split_dataset=split_dataset,
-        keen_dataset=keen_dataset,
+        dataset=dataset,
         mode=mode,
     )
 

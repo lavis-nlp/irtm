@@ -62,6 +62,9 @@ def kgc_cli(result: str = None):
 @click.option(
     '--participate/--create', type=bool, default=False,
     help='for multi-process optimization')
+@click.option(
+    '--out', type=str, default=None,
+    help='where to write the model to; defaults to data/kgc/...')
 def click_train(**kwargs):
     """
     Train a knowledge graph completion model

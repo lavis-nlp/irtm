@@ -7,16 +7,6 @@ from irtm.common import helper
 import yaml
 import optuna
 
-from pykeen import models as pk_models
-from pykeen import losses as pk_losses
-from pykeen import sampling as pk_sampling
-from pykeen import training as pk_training
-from pykeen import stoppers as pk_stoppers
-from pykeen import trackers as pk_trackers
-from pykeen import evaluation as pk_evaluation
-from pykeen import optimizers as pk_optimizers
-from pykeen import regularizers as pk_regularizers
-
 import logging
 import pathlib
 import dataclasses
@@ -27,7 +17,6 @@ from typing import Any
 from typing import Dict
 from typing import Union
 from typing import Sequence
-
 
 log = logging.getLogger(__name__)
 
@@ -49,77 +38,16 @@ class General:
 
 
 @dataclass
-class Base:
-
-    resolver = None
-
-    @property
-    def constructor(self):
-        """
-        Returns the class defined by self.cls
-        """
-        return self.__class__.resolver(self.cls)
+class Option:
 
     cls: str
     kwargs: Dict[str, Any]
 
 
 @dataclass
-class Tracker(Base):
-    resolver = pk_trackers.tracker_resolver
-
-
-# model
-
-
-@dataclass
-class Model(Base):
-    resolver = pk_models.model_resolver
-
-
-@dataclass
-class Optimizer(Base):
-    resolver = pk_optimizers.optimizer_resolver
-
-
-@dataclass
-class Regularizer(Base):
-    resolver = pk_regularizers.regularizer_resolver
-
-
-# training
-
-
-@dataclass
-class Loss(Base):
-    resolver = pk_losses.loss_resolver
-
-
-@dataclass
-class Evaluator(Base):
-    resolver = pk_evaluation.evaluator_resolver
-
-
-@dataclass
-class Stopper(Base):
-    resolver = pk_stoppers.stopper_resolver
-
-
-@dataclass
-class Sampler(Base):
-    resolver = pk_sampling.negative_sampler_resolver
-
-
-@dataclass
-class TrainingLoop(Base):
-    resolver = pk_training.training_loop_resolver
-
-
-@dataclass
 class Training:
 
     num_epochs: int
-    batch_size: int = None
 
 
 # ---
@@ -197,29 +125,23 @@ class Config:
 
     # pykeen
 
-    tracker: Tracker
+    tracker: Option
 
-    model: Model
-    optimizer: Optimizer
-    evaluator: Evaluator
-    regularizer: Regularizer
+    model: Option
+    optimizer: Option
+    evaluator: Option
+    regularizer: Option
 
-    loss: Loss
-    stopper: Stopper
-    sampler: Sampler
+    loss: Option
+    stopper: Option
+
     training: Training
-    training_loop: TrainingLoop
+    training_loop: Option
+
+    sampler: Option = None
 
     # for pipeline.multi
     optuna: Optuna = None
-
-    def resolve(self, option, **kwargs):
-        try:
-            resolver = option.__class__.resolver
-            return resolver.make(option.cls, **{**option.kwargs, **kwargs})
-        except TypeError as exc:
-            log.error(f"failed to resolve {option.cls} with {option.kwargs}")
-            raise exc
 
     def save(self, path: Union[str, pathlib.Path]):
         fname = "config.yml"
@@ -253,6 +175,7 @@ class Config:
             # e.g. key=model
             key: _wrap(key, val)
             for key, val in dataclasses.asdict(self).items()
+            if val
         }
 
         with (path / fname).open(mode="w") as fd:
@@ -262,29 +185,24 @@ class Config:
     def load(
         K,
         path: Union[str, pathlib.Path],
-        fname: str = None,
+        fname: str = "config.yml",
     ) -> "Config":
 
         path = helper.path(path)
         path = helper.path(
-            path / (fname or "config.yml"),
+            path / fname,
             exists=True,
             message="loading kgc config from {path_abbrv}",
         )
 
         raw = ryaml.load(configs=[path])
-
-        # there are two levels to consider
-        # 1: Config attributes (resolved by type hints)
-        # 2: Possible Suggestion instances
-
         constructors = typing.get_type_hints(K)
 
         def _unwrap(key, section):
             kwargs = section
             if "cls" in section:
                 kwargs = dict(
-                    cls=section["cls"],
+                    cls=section.get("cls", None),
                     kwargs={
                         # e.g. attr=embedding_dim
                         attr: (Suggestion.create(**val) if type(val) is dict else val)

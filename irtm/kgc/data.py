@@ -16,7 +16,6 @@ from datetime import datetime
 from datetime import timedelta
 from dataclasses import dataclass
 
-from typing import Any
 from typing import List
 from typing import Dict
 from typing import Union
@@ -67,20 +66,18 @@ class TrainingResult:
 
     # metrics
     training_time: Time
-    losses: List[float]
-
     model: torch.nn.Module
 
-    # set by train()
-    stopper: Any = None
-    result_tracker: Any = None
+    # from pykeen
+    results: Dict
+    losses: List[float]
+    best_metric: float
 
-    # set by Result.load
-    wandb: Dict = None
+    # TODO make optional
+    wandb: Dict
 
     @property
-    def str_stats(self):
-        # TODO add metric_results
+    def description(self):
 
         s = f"training result for {self.config.model.cls}\n"
         s += textwrap.indent(
@@ -89,6 +86,7 @@ class TrainingResult:
             f"training took: {self.training_time.took}\n"
             f"dataset: {self.config.general.dataset}\n"
             f"seed: {self.config.general.seed}\n"
+            f"best metric: {self.best_metric:.2f}\n"
             "",
             " " * 2,
         )
@@ -97,35 +95,16 @@ class TrainingResult:
 
     @property
     def result_dict(self):
-        dic = dict(
+        return dict(
             created=self.created,
             git_hash=self.git_hash,
             # metrics
             training_time=dataclasses.asdict(self.training_time),
+            results=self.results,
             losses=self.losses,
-            stopper=self.stopper.get_summary_dict(),
+            best_metric=self.best_metric,
+            wandb=self.wandb,
         )
-
-        # tracking
-        wandb_run = self.result_tracker.run
-
-        dic["wandb"] = dict(
-            id=wandb_run.id,
-            dir=wandb_run.dir,
-            path=wandb_run.path,
-            name=wandb_run.name,
-            offline=True,
-        )
-
-        if not hasattr(wandb_run, "offline"):
-            dic["wandb"].update(
-                dict(
-                    url=wandb_run.url,
-                    offline=False,
-                )
-            )
-
-        return dic
 
     def _save_results(self, path):
         fname = "training.yml"
@@ -144,7 +123,7 @@ class TrainingResult:
         _save_model(path=path, model=self.model)
 
         with (path / "summary.txt").open(mode="w") as fd:
-            fd.write(self.str_stats)
+            fd.write(self.description)
 
     @classmethod
     def load(K, path: Union[str, pathlib.Path], load_model: bool = True):
