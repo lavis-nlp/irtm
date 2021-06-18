@@ -1,4 +1,5 @@
 import irt
+import irtm
 
 from irtm.kgc import data
 from irtm.kgc.config import Config
@@ -12,7 +13,6 @@ from pykeen import evaluation as pk_evaluation
 import csv
 import logging
 import pathlib
-import dataclasses
 from functools import partial
 from datetime import datetime
 
@@ -87,7 +87,7 @@ def evaluate_glob(
 
             assert training_result.config.general.dataset == kcw.dataset.name
 
-        except (FileNotFoundError, NotADirectoryError) as exc:
+        except (FileNotFoundError, NotADirectoryError, irtm.IRTMError) as exc:
             log.info(f"skipping {path.name}: {exc}")
             continue
 

@@ -21,7 +21,6 @@ from functools import partial
 from datetime import datetime
 
 from typing import Union
-from typing import Optional
 
 
 log = logging.getLogger(__name__)
