@@ -1,8 +1,9 @@
 # -*- coding: utf-8 -*-
 # fmt: off
 
+import irt
+
 from irtm.cli import main
-from irtm.text import data
 from irtm.text import trainer
 from irtm.text import evaluator
 
@@ -28,14 +29,12 @@ def text():
 @text.command()
 @click.option(
     '--dataset', type=str, required=True,
-    help='path to irtm.text.data.Dataset')
+    help='path to irt dataset')
 @click.option(
-    '--ratio', type=float, required=True,
-    help='train/valid ratio for mapper (usually 0.7)')
-@click.option(
-    '--seed', type=int, required=True,
-    help='seed for a deterministic split')
-def cli(dataset: str = None, ratio: float = None, seed: int = None):
+    '--model', type=str, required=True,
+    help='one of the huggingface models'
+)
+def cli(dataset: str, model: str):
     """
 
     Open an interactive python shell
@@ -43,8 +42,29 @@ def cli(dataset: str = None, ratio: float = None, seed: int = None):
     dataset: path to text.data.Dataset directory
 
     """
-    ds = data.Dataset.create(path=dataset, ratio=ratio, seed=seed)
-    print(f'\n{ds}')
+
+    dataloader_kwargs = dict(
+        shuffle=False,
+        num_workers=0,
+        batch_size=2,
+        subbatch_size=3,
+    )
+
+    ids = irt.Dataset(path=dataset)
+    kow = irt.KeenOpenWorld(dataset=ids)
+
+    tdm = irt.TorchModule(
+        kow=kow,
+        model_name=model,
+        dataloader_train_kwargs=dataloader_kwargs,
+        dataloader_valid_kwargs=dataloader_kwargs,
+        dataloader_test_kwargs=dataloader_kwargs,
+    )
+
+    tdm.setup()
+
+    print(f'\n{ids}')
+    print(f'\n{kow}')
 
     banner = '\n'.join((
         '',
@@ -53,7 +73,14 @@ def cli(dataset: str = None, ratio: float = None, seed: int = None):
         '-' * 20,
         '',
         'variables in scope:',
-        '    ds: Dataset',
+        '    ids: irt.Dataset',
+        '    kow: irt.KeenOpenworld',
+        '    tdm: irt.TorchModule',
+        '',
+        'you can now play around, e.g.:',
+        '  dl = tdm.train_dataloader()',
+        '  gen = iter(dl)',
+        '  next(gen)',
         '',
     ))
 
