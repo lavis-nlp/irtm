@@ -3,14 +3,15 @@ tqdm
 wandb
 numpy
 pandas
-pykeen
 networkx
 tabulate
 configobj
 gitpython
-transformers
 pretty-errors
-pytorch-lightning
+
+pykeen==1.5.0
+transformers==4.5.1
+pytorch-lightning==1.2.10
 
 # notes
 jupyter
