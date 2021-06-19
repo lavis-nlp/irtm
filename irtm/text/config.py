@@ -24,66 +24,39 @@ class MisconfigurationError(irtm.IRTMError):
 
 @dataclass
 class Config:
+    """
 
-    # must match Config.text_dataset.model
-    text_encoder: str
+    See conf/text/defaults.yml for a detailed explanation
 
-    # whether to fine-tune the text_encoder
-    freeze_text_encoder: bool
+    """
 
-    # WANDB
-    # ----------------------------------------
-    # the following arguments are set by default but can be overwritten:
-    #   - name: str
-    #   - save_dir: str
-    #   - offline: bool
+    # TRAINING
+
     wandb_args: Optional[Dict[str, Any]]
-
-    # LIGHTNING
-    # ----------------------------------------
-
-    # https://pytorch-lightning.readthedocs.io/en/stable/trainer.html#trainer-class-api
-    # https://github.com/PyTorchLightning/pytorch-lightning/blob/9acee67c31c84dac74cc6169561a483d3b9c9f9d/pytorch_lightning/trainer/trainer.py#L81
-    trainer_args: Dict[str, Any]
-
-    # https://pytorch-lightning.readthedocs.io/en/stable/generated/pytorch_lightning.callbacks.ModelCheckpoint.html?highlight=ModelCheckpoint
     checkpoint_args: Optional[Dict[str, Any]]
 
-    # PYTORCH
-    # ----------------------------------------
+    trainer_args: Dict[str, Any]
+    clip_val: float
 
-    # https://pytorch.org/docs/stable/data.html#torch.utils.data.WeightedRandomSampler
-    sampler: Optional[str]
-    sampler_args: Optional[Dict[str, Any]]
+    optimizer: str
+    optimizer_args: Dict[str, Any]
 
-    # https://pytorch.org/docs/stable/data.html#torch.utils.data.DataLoader
+    # UPSTREAM
+
+    kgc_model: Union[str, pathlib.Path]
+
+    # DATA
+
+    dataset: str
+
     dataloader_train_args: Dict[str, Any]
     dataloader_valid_args: Dict[str, Any]
     dataloader_test_args: Dict[str, Any]
 
-    # pytorch optimizer
-    optimizer: str
-    optimizer_args: Dict[str, Any]
+    # MAPPER
 
-    # IRTM
-    # ----------------------------------------
-
-    # the trained knowledge graph completion model
-    # for more information see irtm.kgc.keen.Model
-    kgc_model: Union[str, pathlib.Path]
-
-    # this is the pre-processed text data
-    # and it also determines the upstream text encoder
-    # (irtm.text.data.Dataset)
-    text_dataset: Union[str, pathlib.Path]
-
-    # the triple split (irtm.graphs.split.Dataset)
-    split_dataset: Union[str, pathlib.Path]
-
-    # see the respective <Class>.impl dictionary
-    # for available implementations
-    # and possibly <Class>.Config for the
-    # necessary configuration
+    text_encoder: str
+    freeze_text_encoder: bool
 
     aggregator: str
     reductor: str
@@ -96,7 +69,9 @@ class Config:
     comparator_args: Dict[str, Any] = field(default_factory=dict)
 
     # OPTIONAL
-    # ----------------------------------------
+
+    sampler: Optional[str] = None
+    sampler_args: Optional[Dict[str, Any]] = None
 
     scheduler: Optional[str] = None
     scheduler_args: Optional[Dict[str, Any]] = None
@@ -104,20 +79,7 @@ class Config:
     early_stopping: bool = False
     early_stopping_args: Optional[Dict[str, Any]] = None
 
-    # ow_valid is split for the training
-    # into validation and testing data
-    valid_split: Optional[int] = None
-
-    # DEFAULTING
-    # ----------------------------------------
-
-    # whether to split the text dataset to have geometric
-    # inductive/transductive validation steps. Requires
-    # each entitiy to have at least two sentences.
-    split_text_dataset: bool = True
-
     # SET AUTOMATICALLY
-    # ----------------------------------------
 
     # directory to save everything to
     out: Union[str, pathlib.Path] = None
@@ -138,18 +100,25 @@ class Config:
             yaml.dump(dataclasses.asdict(self), fd)
 
     @classmethod
-    def load(
-        K,
-        path: Union[str, pathlib.Path],
-    ) -> "Config":
+    def load(K, path: Union[str, pathlib.Path]) -> "Config":
         return K.create(configs=[path])
 
     @classmethod
-    def create(
-        K,
-        configs: Sequence[Union[str, pathlib.Path]],
-        **kwargs,
-    ) -> "Config":
-        configs = [irtm.ENV.CONF_DIR / "text" / "defaults.yml"] + list(configs)
+    def create(K, configs: Sequence[Union[str, pathlib.Path]], **kwargs) -> "Config":
         params = ryaml.load(configs=configs, **kwargs)
+
+        def rcheck(obj, fn, trail="config"):
+            for k, v in obj.items():
+                new_trail = f"{trail}.{k}"
+
+                if type(v) is dict:
+                    rcheck(obj=v, fn=fn, trail=new_trail)
+                else:
+                    fn(new_trail, k, v)
+
+        def checker(trail, k, v):
+            if v is None:
+                raise irtm.IRTMError(f"{trail} must not be None")
+
+        rcheck(obj=params, fn=checker)
         return K(**params)

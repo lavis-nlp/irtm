@@ -2,5 +2,4 @@ optimizer: adam
 optimizer_args:
   lr: 5.0e-05
 
-trainer_args:
-  gradient_clip_val: 0.5
+clip_val: 0.5

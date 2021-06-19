@@ -23,9 +23,10 @@ trainer_args:
   fast_dev_run: False
   distributed_backend: horovod
   accumulate_grad_batches: 10
-  gradient_clip_val: 1
   replace_sampler_ddp: False
   log_every_n_steps: 5
+
+clip_val: 1
 
 checkpoint_args:
   mode: max

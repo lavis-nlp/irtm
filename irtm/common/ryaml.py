@@ -22,7 +22,7 @@ def join(d1, d2):
             d1[k] = v
 
         else:
-            join(d1[k], d2[k])
+            join(d1[k] or {}, d2[k])
 
 
 def dic_from_kwargs(**kwargs):
@@ -57,7 +57,8 @@ def load(configs: Sequence[str], **kwargs):
     result = {}
     for path in map(as_path, configs):
         with path.open(mode="r") as fd:
-            join(result, yaml.load(fd, Loader=yaml.FullLoader))
+            new = yaml.load(fd, Loader=yaml.FullLoader)
+            join(result, new)
 
     # then join all kwargs;
     # this is practically the reverse of what
@@ -84,4 +85,4 @@ def print_click_arguments(dic: Dict[str, Any]) -> str:
             opts.append((name, argtype))
 
     for name, argtype in opts:
-        print(f"@click.option('--{name}', type={argtype})")
+        print(f"click.option('--{name}', type={argtype}),")
