@@ -35,7 +35,10 @@ def evaluate(
 ):
 
     tqdm_kwargs = tqdm_kwargs or {}
-    evaluator = pk_evaluation.evaluator_resolver.make(config.evaluator.cls)
+    evaluator = pk_evaluation.evaluator_resolver.make(
+        config.evaluator.cls,
+        automatic_memory_optimization=True,
+    )
 
     ts = datetime.now()
     model = model.to("cuda")  # TODO (inter-machine problem)
@@ -55,7 +58,7 @@ def evaluate(
         created=datetime.now(),
         evaluation_time=evaluation_time,
         git_hash=helper.git_hash(),
-        metrics=metrics.to_dict(),
+        metrics=metrics,
     )
 
     log.info(f"evaluation took: {evaluation_time.took}")
@@ -164,6 +167,8 @@ def print_results(
 
     for eval_result, path in results:
         training_result = data.TrainingResult.load(path, load_model=False)
+
+        assert False, "TODO fix eval_result"
 
         rows.append(
             [

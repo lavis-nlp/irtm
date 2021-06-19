@@ -164,14 +164,16 @@ class EvaluationResult:
     def _fname(prefix):
         return f"evaluation.{prefix}.yml"
 
-    def save(self, path: Union[str, pathlib.Path], prefix: str = None):
+    def save(self, path: Union[str, pathlib.Path], prefix: str):
         fname = EvaluationResult._fname(prefix)
         path = helper.path(path, message=f"writing {fname} to {{path_abbrv}}")
         with (path / fname).open(mode="w") as fd:
-            yaml.dump(dataclasses.asdict(self), fd)
+            dic = dataclasses.asdict(self)
+            dic["metrics"] = dic["metrics"].to_flat_dict()
+            yaml.dump(dic, fd)
 
     @classmethod
-    def load(K, path: Union[str, pathlib.Path], prefix: str = None):
+    def load(K, path: Union[str, pathlib.Path], prefix: str):
         path = helper.path(
             path,
             exists=True,
