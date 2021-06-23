@@ -97,7 +97,7 @@ two arguments:
 ```bash
 irtm kgc train \
   --config conf/kgc/irt.cde.distmult-sweep.yml \
-  --split-dataset data/irt/irt.cde \
+  --dataset ../data/irt/irt.cde \
   --out data/kgc/irt-cde/distmult.sweep
 ```
 
@@ -109,7 +109,7 @@ simply invoke the same command adding `--participate`:
 ``` bash
 irtm kgc train \
   --config conf/kgc/irt.cde.distmult-sweep.yml \
-  --split-dataset data/irt/irt.cde \
+  --dataset ../irt/data/irt/irt.cde \
   --out data/kgc/irt-cde/distmult.sweep \
   --participate
 ```
