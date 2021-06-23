@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*-
 
+import irt
 import irtm
-from irtm.text import data
+
 from irtm.text import mapper
 from irtm.text.config import Config
 from irtm.common import helper
@@ -21,17 +22,35 @@ log = logging.getLogger(__name__)
 
 
 def load_from_config(config: Config):
-    upstream_models = data.Models.load(config=config)
+    ids = irt.Dataset(path=config.dataset)
+    kow = irt.KeenOpenWorld(dataset=ids)
 
-    datamodule = data.DataModule(
-        config=config,
-        keen_dataset=upstream_models.kgc_model.keen_dataset,
-        split_dataset=upstream_models.kgc_model.split_dataset,
+    datamodule = irt.TorchModule(
+        kow=kow,
+        model_name=config.text_encoder,
+        dataloader_train_args=config.dataloader_train_args,
+        dataloader_valid_args=config.dataloader_valid_args,
+        dataloader_test_args=config.dataloader_test_args,
     )
 
-    irtmc = mapper.Components.create(config=config, models=upstream_models)
+    upstream = mapper.UpstreamModels.load(config=config, dataset=ids)
+    irtmc = mapper.Components.create(config=config, upstream=upstream)
 
     return datamodule, irtmc
+
+
+def _add_loghandler(config: Config, name: str):
+    # add an additional text logger
+    log.info(f"adding an additional log handler: {name}.log")
+
+    loghandler = logging.FileHandler(
+        str(pathlib.Path(config.out) / f"{name}.log"),
+        mode="w",
+    )
+
+    loghandler.setLevel(log.getEffectiveLevel())
+    loghandler.setFormatter(log.root.handlers[0].formatter)
+    logging.getLogger("irtm").addHandler(loghandler)
 
 
 def _init_logger(
@@ -41,7 +60,6 @@ def _init_logger(
     kgc_model_name: str,
     text_encoder_name: str,
     text_dataset_name: str,
-    text_dataset_identifier: str,
     resume: bool,
 ):
 
@@ -144,20 +162,21 @@ def _init_trainer(
 def _fit(
     trainer: pl.Trainer,
     model: pl.LightningModule,
-    datamodule: data.DataModule,
+    datamodule: irt.TorchModule,
     out: pathlib.Path,
     debug: bool,
 ):
-    log.info("pape satan, pape satan aleppe")
 
     try:
+        log.info("✝ rise, if you would")
         trainer.fit(model, datamodule=datamodule)
 
     except Exception as exc:
         log.error(f"{exc}")
-        with (out / "exception.txt").open(mode="w") as fd:
-            fd.write(f"Exception: {datetime.now()}\n\n")
-            fd.write(str(exc))
+        if not debug:
+            with (out / "exception.txt").open(mode="w") as fd:
+                fd.write(f"Exception: {datetime.now()}\n\n")
+                fd.write(str(exc))
 
         raise exc
 
@@ -167,43 +186,37 @@ def _fit(
 
 
 def train(*, config: Config, debug: bool = False):
-    log.info("lasciate ogni speranza o voi che entrate")
-
-    datamodule, irtmc = load_from_config(config=config)
-
-    map_model = mapper.Mapper(
-        irtmc=irtmc,
-        data=datamodule,
-        freeze_text_encoder=config.freeze_text_encoder,
-    )
-
-    pl.seed_everything(datamodule.split.cfg.seed)
-
-    # --
+    irtmod, irtmc = load_from_config(config=config)
+    pl.seed_everything(irtmod.kow.dataset.config.seed)
 
     out_fmt = config.out or (
-        f"{irtm.ENV.TEXT_DIR}/mapper/"
-        "{text_dataset}/{text_database}/"
-        "{text_model}/{kgc_model}"
+        f"{irtm.ENV.TEXT_DIR}/mapper/{{text_dataset}}/{{text_model}}/{{kgc_model}}"
     )
 
     out = helper.path(
         out_fmt.format(
             **dict(
-                text_dataset=datamodule.text.dataset,
-                text_database=datamodule.text.database,
-                text_model=datamodule.text.model,
+                text_dataset=irtmod.kow.dataset.name,
+                text_model=irtmod.model_name,
                 kgc_model=irtmc.kgc_model_name,
             )
         )
     )
 
     timestamp = datetime.now().strftime("%Y.%m.%d-%H.%M.%S")
-    out = helper.path(
-        out / timestamp, create=True, message="writing model to {path_abbrv}"
-    )
-
+    out = helper.path(out / timestamp, create=(not debug))
     config = dataclasses.replace(config, out=out)
+
+    if not debug:
+        log.info(f"writing data to {out}")
+        out.mkdir(parents=True, exist_ok=True)
+        _add_loghandler(config=config, name="training")
+
+    map_model = mapper.Mapper(
+        irtmc=irtmc,
+        irtmod=irtmod,
+        freeze_text_encoder=config.freeze_text_encoder,
+    )
 
     # --
 
@@ -212,9 +225,8 @@ def train(*, config: Config, debug: bool = False):
         config=config,
         timestamp=timestamp,
         kgc_model_name=irtmc.kgc_model_name,
-        text_encoder_name=config.text_encoder,
-        text_dataset_name=datamodule.text.name,
-        text_dataset_identifier=datamodule.text.identifier,
+        text_encoder_name=irtmod.model_name,
+        text_dataset_name=irtmod.kow.dataset.name,
         resume=False,
     )
 
@@ -230,7 +242,7 @@ def train(*, config: Config, debug: bool = False):
     _fit(
         trainer=trainer,
         model=map_model,
-        datamodule=datamodule,
+        datamodule=irtmod,
         out=out,
         debug=debug,
     )
@@ -264,7 +276,7 @@ def resume_from_kwargs(
     config = Config.create(configs=[config_file] + list(config), **kwargs)
 
     config.out = out
-    datamodule, irtmc = load_from_config(config=config)
+    irtmod, irtmc = load_from_config(config=config)
 
     checkpoint = helper.path(
         checkpoint,
@@ -274,13 +286,13 @@ def resume_from_kwargs(
 
     map_model = mapper.Mapper.load_from_checkpoint(
         str(checkpoint),
-        data=datamodule,
         irtmc=irtmc,
+        irtmod=irtmod,
         freeze_text_encoder=config.freeze_text_encoder,
     )
 
     timestamp = out.name
-    pl.seed_everything(datamodule.split.cfg.seed)
+    pl.seed_everything(irtmod.split.cfg.seed)
 
     # it is not possible to set resume=... for wandb.init
     # with pytorch lightning - so we need to fumble around
@@ -296,10 +308,11 @@ def resume_from_kwargs(
         config=config,
         kgc_model_name=irtmc.kgc_model_name,
         text_encoder_name=config.text_encoder,
-        text_dataset_name=datamodule.text.name,
-        text_dataset_identifier=datamodule.text.identifier,
+        text_dataset_name=irtmod.text.name,
         resume=True,
     )
+
+    _add_loghandler(config=config, name="resume")
 
     trainer = _init_trainer(
         config=config,
@@ -315,7 +328,7 @@ def resume_from_kwargs(
     _fit(
         trainer=trainer,
         model=map_model,
-        datamodule=datamodule,
+        datamodule=irtmod,
         out=out,
         debug=debug,
     )

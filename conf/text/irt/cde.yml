@@ -1,4 +1,4 @@
-kgc_model: data/kgc/irt-cde/distmult.sweep/trial-0002
+kgc_model: data/kgc/irt-cde/distmult.sweep/trial-0005
 dataset: ../irt/data/irt/irt.cde
 
 optimizer: adam
@@ -7,4 +7,4 @@ optimizer_args:
 
 projector_args:
   input_dims: 768
-  output_dims: 350
+  output_dims: 400

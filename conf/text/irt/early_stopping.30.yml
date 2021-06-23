@@ -1,6 +1,12 @@
 trainer_args:
   max_epochs: 1000
 
+# trainer_args:
+#   max_epochs: 2
+#   limit_train_batches: 1
+#   limit_val_batches: 1
+
+
 early_stopping: true
 early_stopping_args:
   min_delta: 0.00001

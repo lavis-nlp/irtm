@@ -521,44 +521,6 @@ class TorchDataset(torch_data.Dataset):
         return (ents, ctxs)
 
 
-@dataclass
-class Models:
-
-    # tokenizer: prep.Tokenizer
-    kgc_model: keen.Model
-    text_encoder: tf.BertModel
-
-    @classmethod
-    def load(
-        K,
-        config: Config,
-    ):
-
-        text_encoder = None
-        tokenizer = None
-        text_encoder = tf.BertModel.from_pretrained(
-            config.text_encoder,
-            cache_dir=irtm.ENV.CACHE_DIR / "lib.transformers",
-        )
-
-        tokenizer = prep.Tokenizer.load(config.text_dataset)
-
-        log.info(f"resizing token embeddings to {len(tokenizer.base)}")
-        text_encoder.resize_token_embeddings(len(tokenizer.base))
-
-        # --
-
-        kgc_model = keen.Model.load(
-            config.kgc_model, split_dataset=config.split_dataset
-        )
-
-        return K(
-            tokenizer=tokenizer,
-            text_encoder=text_encoder,
-            kgc_model=kgc_model,
-        )
-
-
 class DataLoader(torch_data.DataLoader):
     @property
     def subbatch_size(self):

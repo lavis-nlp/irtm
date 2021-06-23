@@ -33,7 +33,6 @@ trainer_args:
   max_epochs: null
   fast_dev_run: null
   log_every_n_steps: null
-  replace_sampler_ddp: null
   # only change this if you know why you do it
   accumulate_grad_batches: 1
 

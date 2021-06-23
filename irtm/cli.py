@@ -67,6 +67,5 @@ def run(name: str = None):
 # registered modules (see their respective __init__.py)
 # not a super nice solution, but it works well
 
-import irtm.common  # noqa: E402
 import irtm.kgc  # noqa: E402
 import irtm.text  # noqa: E402

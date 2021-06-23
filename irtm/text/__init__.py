@@ -101,7 +101,6 @@ _shared_options_mapper = [
     click.option('--wandb-args--project', type=str),
     click.option('--wandb-args--log-model', type=bool),
     click.option('--trainer-args--gpus', type=int),
-    click.option('--trainer-args--replace-sampler-ddp', type=bool),
     click.option('--trainer-args--fast-dev-run', type=bool),
     click.option('--trainer-args--accumulate-grad-batches', type=int),
     click.option('--trainer-args--check-val-every-n-epoch', type=int),
