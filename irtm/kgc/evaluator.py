@@ -35,6 +35,7 @@ def evaluate(
 ):
 
     tqdm_kwargs = tqdm_kwargs or {}
+
     evaluator = pk_evaluation.evaluator_resolver.make(
         config.evaluator.cls,
         automatic_memory_optimization=True,
@@ -43,11 +44,10 @@ def evaluate(
     ts = datetime.now()
     model = model.to("cuda")  # TODO (inter-machine problem)
 
-    metrics = pk_evaluation.evaluator.evaluate(
+    metrics = evaluator.evaluate(
         model=model,
         mapped_triples=triples,
-        evaluators=evaluator,
-        additional_filtered_triples=filtered_triples,
+        additional_filter_triples=filtered_triples,
         tqdm_kwargs=tqdm_kwargs,
     )
 
@@ -58,7 +58,7 @@ def evaluate(
         created=datetime.now(),
         evaluation_time=evaluation_time,
         git_hash=helper.git_hash(),
-        metrics=metrics,
+        metrics=metrics.to_flat_dict(),
     )
 
     log.info(f"evaluation took: {evaluation_time.took}")
@@ -168,17 +168,14 @@ def print_results(
     for eval_result, path in results:
         training_result = data.TrainingResult.load(path, load_model=False)
 
-        assert False, "TODO fix eval_result"
-
         rows.append(
             [
                 path.name,
                 eval_result.model,
                 training_result.best_metric,
-                eval_result.metrics["hits_at_k"]["both"]["realistic"][1] * 100,
-                eval_result.metrics["hits_at_k"]["both"]["realistic"][5] * 100,
-                eval_result.metrics["hits_at_k"]["both"]["realistic"][10] * 100,
-                eval_result.metrics["inverse_harmonic_mean_rank"]["both"]["realistic"],
+                eval_result.metrics["both.realistic.hits_at_1"] * 100,
+                eval_result.metrics["both.realistic.hits_at_10"] * 100,
+                eval_result.metrics["both.realistic.inverse_harmonic_mean_rank"],
             ]
         )
 

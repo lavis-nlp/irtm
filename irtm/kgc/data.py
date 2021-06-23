@@ -169,7 +169,6 @@ class EvaluationResult:
         path = helper.path(path, message=f"writing {fname} to {{path_abbrv}}")
         with (path / fname).open(mode="w") as fd:
             dic = dataclasses.asdict(self)
-            dic["metrics"] = dic["metrics"].to_flat_dict()
             yaml.dump(dic, fd)
 
     @classmethod
