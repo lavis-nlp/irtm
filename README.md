@@ -14,6 +14,8 @@ Inductive Reasoning with Text - Models
         - [Training](#training)
         - [Evaluation](#evaluation)
     - [Open-World Knowledge Graph Completion](#open-world-knowledge-graph-completion)
+        - [Command Line Interface](#command-line-interface)
+        - [Training](#training-1)
 
 <!-- markdown-toc end -->
 
