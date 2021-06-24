@@ -3,8 +3,8 @@ trainer_args:
 
 # trainer_args:
 #   max_epochs: 2
-#   limit_train_batches: 1
-#   limit_val_batches: 1
+#   limit_train_batches: 2
+#   limit_val_batches: 2
 
 
 early_stopping: true

@@ -1,9 +1,9 @@
-kgc_model: data/kgc/irt-cde/distmult.sweep/trial-0005
 dataset: ../irt/data/irt/irt.cde
+kgc_model: data/kgc/irt-cde/distmult.sweep/trial-0005
 
 optimizer: adam
 optimizer_args:
-  lr: 1.0e-04
+  lr: 5.0e-05
 
 projector_args:
   input_dims: 768
