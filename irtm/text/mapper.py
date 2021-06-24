@@ -37,7 +37,7 @@ TQDM_KWARGS = dict(
     position=2,
     ncols=80,
     leave=False,
-    disable=True,
+    disable=False,
 )
 
 
@@ -465,17 +465,19 @@ class Mapper(pl.LightningModule):
     unknown entities. The following "hacks" are used to make it work:
 
     Pykeen TriplesFactories contain an E-sized entity-id, and R-sized
-    relation-id mapping.  Entities and relations are combined a N x 3
-    matrix (N = #triples). Each pykeen model uses the enitites and
+    relation-id mapping.  Entities and relations are combined in a N x
+    3 matrix (N = #triples). Each pykeen model uses the enitites and
     relations to construct torch.nn.Embdding (pykeen.nn.emb.Embdding)
     instances for relations and entities (E x D) and (R x D) (for
     pykeen.models.base.EntityRelationEmbeddingModel).
 
-    After each validation epoch (see Mapper.on_validation_epoch_end)
+    After each validation epoch (see Mapper.validation_epoch_end)
     the internal entity embeddings are overwritten for (1) all
     entities (transductive) and (2) all owe entities (inductive) and
     the pykeen evaluator is used to quantify the kgc performance of
     the mapped entity representations.
+
+    The magic happens in self._run_kgc_evaluation()
 
     """
 
@@ -613,7 +615,9 @@ class Mapper(pl.LightningModule):
         # TODO assert this reflect context counts of datasets
         self._gathered_projections = True
 
-    def _update_projections(self, entities, projected):
+    def _update_projections(self, entities: Tuple[int], projected: torch.Tensor):
+        # projected: B x D
+
         for e, v in zip(entities, projected.detach()):
             idx = self.irtmod.kow.irt2keen[e]
             self.projections[idx] += v
@@ -703,12 +707,7 @@ class Mapper(pl.LightningModule):
             # timing(f"[{j}:{k}] enter loop")
 
             entities, projected = self.forward_subbatch(ents=ents[j:k], ctxs=ctxs[j:k])
-
             # timing(f"[{j}:{k}] forward")
-            # entities = ents[j:k]
-            # projected = torch.rand((len(entities), 500))
-            # projected = projected.to(device=self.device)
-            # projected.requires_grad = calculate_loss
 
             if calculate_loss:
                 targets = self.kge(entities)
@@ -788,27 +787,45 @@ class Mapper(pl.LightningModule):
             subbatch_size=self.val_subbatch_size,
         )
 
+    def validation_epoch_start(self, *_):
+        log.info("starting evaluation")
+
     def validation_epoch_end(self, *_):
-        self._run_kgc_evaluations()
+        # if self.global_step == 0 and not self.debug:
+        #     log.info("skipping kgc evaluation; logging phony kgc result")
+        #     for kind in ("inductive", "transductive"):
 
-    def run_kgc_evaluation(self, kind: str, factory):  # pykeen CoreTriplesFactory
+        #         self._log_kgc_results(
+        #             kind=kind,
+        #             results=keen.mock_metric_results().to_flat_dict(),
+        #         )
+        #     return
+
+        # --
+
+        self.gather_projections()
+        for kind in ("transductive", "inductive"):
+            results = self.run_kgc_evaluation(kind=kind)
+            self._log_kgc_results(kind=kind, results=results)
+
+    def run_kgc_evaluation(self, kind: str):  # pykeen CoreTriplesFactory
         assert self._gathered_projections, "run gather_projections()"
-
-        mapped_triples = factory.mapped_triples
-        if self.debug:
-            mapped_triples = mapped_triples[:100]  # choice arbitrary
+        log.info(f"running kgc evaluation: {kind=}")
 
         kow: irt.KeenOpenWorld = self.irtmod.kow
 
         if kind == "transductive":
+            triples = kow.closed_world.mapped_triples
             entities = kow.dataset.split.closed_world.owe
-            filtered_triples = []
+            filtered_triples = None
 
         elif kind == "inductive":
+            triples = kow.open_world_valid.mapped_triples
             entities = kow.dataset.split.open_world_valid.owe
             filtered_triples = [kow.closed_world.mapped_triples]
 
         elif kind == "test":
+            triples = kow.open_world_testing.mapped_triples
             entities = kow.dataset.split.open_world_test.owe
             filtered_triples = [
                 kow.closed_world.mapped_triples,
@@ -820,10 +837,12 @@ class Mapper(pl.LightningModule):
 
         # map to pykeen indexes
         entities = torch.tensor([self.irtmod.kow.irt2keen[e] for e in entities])
+        if self.debug:
+            triples = triples[:100]  # choice arbitrary
 
         log.info(
             f"running {kind} evaluation"
-            f" with {mapped_triples.shape[0]} triples"
+            f" with {triples.shape[0]} triples"
             f" replacing {len(entities)} embeddings"
         )
 
@@ -837,8 +856,8 @@ class Mapper(pl.LightningModule):
             device=self.device,
         )
 
-        # copy trained closed world embeddings and overwrite with projections
         new._embeddings.weight.zero_()
+        # copy trained closed world embeddings and overwrite (some) with projections
         new._embeddings.weight[: original.num_embeddings] = original._embeddings.weight
         new._embeddings.weight[entities] = self.projections[entities]
 
@@ -848,7 +867,7 @@ class Mapper(pl.LightningModule):
         evaluation_result = kgc_evaluator.evaluate(
             model=self.keen,
             config=self.irtmc.kgc_model.config,
-            triples=mapped_triples,
+            triples=triples,
             filtered_triples=filtered_triples,
             tqdm_kwargs=TQDM_KWARGS,
         )
@@ -875,54 +894,6 @@ class Mapper(pl.LightningModule):
         )
 
         return metrics
-
-    def _run_kgc_evaluations(self):
-        if self.global_step == 0 and not self.debug:
-            log.info("skipping kgc evaluation; logging phony kgc result")
-            for kind in ("inductive", "transductive"):
-
-                self._log_kgc_results(
-                    kind=kind,
-                    results=keen.mock_metric_results().to_flat_dict(),
-                )
-
-            return
-
-        # --
-
-        def _save_run(kind, factory, attempt: int = 0):
-            if attempt > 5:
-                raise irtm.IRTMError("ran out of patience")
-
-            log.info(f"running kgc evaluation attempt {attempt}")
-
-            try:
-                torch.cuda.empty_cache()
-                results = self.run_kgc_evaluation(kind=kind, factory=factory)
-                self._log_kgc_results(kind=kind, results=results)
-
-                log.info(f"! finished {kind} kgc evaluation on attempt {attempt}")
-            except RuntimeError as exc:
-                log.error(f"registered error: {exc}")
-                torch.cuda.empty_cache()
-                _save_run(kind=kind, factory=factory, attempt=attempt + 1)
-
-        # --
-
-        self.gather_projections()
-        for kind, factory in (
-            ("transductive", self.irtmod.kow.closed_world),
-            ("inductive", self.irtmod.kow.open_world_valid),
-        ):
-            results = self.run_kgc_evaluation(kind=kind, factory=factory)
-            self._log_kgc_results(kind=kind, results=results)
-            # try:
-            #     _save_run(kind=kind, factory=factory)
-
-            # except irtm.IRTMError:
-            #     log.error("skipping kgc evaluation in this epoch :(")
-            #     self._log_kgc_results(kind=kind, results=keen.mock_metric_results())
-            #     break
 
     def _log_kgc_results(
         self,
@@ -1005,14 +976,12 @@ class Mapper(pl.LightningModule):
         if not test and not trained:
             self.eval()
 
-    #
-    # HOOKS
-    #
-
-    def on_fit_start(self):
+    def setup(self, *_a, **_kw):
+        log.info("! setup - setting subbatch sizes")
         self.train_subbatch_size = self.irtmod.train_dataloader().subbatch_size
         self.val_subbatch_size = self.irtmod.val_dataloader().subbatch_size
 
+    def on_fit_start(self):
         log.info("running custom pre-training sanity check")
         self.run_memcheck()
 

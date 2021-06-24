@@ -169,6 +169,7 @@ def _fit(
 
     try:
         log.info("✝ rise, if you would")
+        trainer.validate(model, datamodule=datamodule)
         trainer.fit(model, datamodule=datamodule)
 
     except Exception as exc:

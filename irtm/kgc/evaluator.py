@@ -18,6 +18,7 @@ from datetime import datetime
 
 from typing import List
 from typing import Union
+from typing import Optional
 from typing import Iterable
 
 
@@ -29,26 +30,29 @@ def evaluate(
     model: torch.nn.Module,
     config: Config,
     triples,
-    filtered_triples: List,
     tqdm_kwargs,
+    filtered_triples: Optional[List] = None,
     **kwargs,
 ):
-
     tqdm_kwargs = tqdm_kwargs or {}
+    filtered = filtered_triples is not None
 
+    log.info(f"creating new evaluator: {filtered=}")
     evaluator = pk_evaluation.evaluator_resolver.make(
         config.evaluator.cls,
         automatic_memory_optimization=True,
+        filtered=filtered,
     )
 
     ts = datetime.now()
     model = model.to("cuda")  # TODO (inter-machine problem)
 
+    log.info("hand-off to pykeen for evaluation")
     metrics = evaluator.evaluate(
         model=model,
         mapped_triples=triples,
-        additional_filter_triples=filtered_triples,
         tqdm_kwargs=tqdm_kwargs,
+        additional_filter_triples=filtered_triples,
     )
 
     evaluation_time = data.Time(start=ts, end=datetime.now())
