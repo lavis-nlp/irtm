@@ -7,7 +7,11 @@
 # - this is nice if you want to change gpus: simply mixin your batch sizes
 
 
+# one of 'marked', 'masked' or 'clean'
+mode: null
+# IRT dataset
 dataset: null
+# trained kgc model (see `irtm kgc train`)
 kgc_model: null
 
 

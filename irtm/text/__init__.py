@@ -13,6 +13,7 @@ import click
 import logging
 
 from typing import List
+from typing import Optional
 
 
 log = logging.getLogger(__name__)
@@ -35,9 +36,11 @@ def text():
     help='path to irt dataset')
 @click.option(
     '--model', type=str, required=True,
-    help='one of the huggingface models'
-)
-def cli(dataset: str, model: str):
+    help='one of the huggingface models')
+@click.option(
+    '-m', '--mode',
+    type=click.Choice([mode.value for mode in irt.text.Mode]))
+def cli(dataset: str, model: str, mode: Optional[str]):
     """
 
     Open an interactive python shell
@@ -53,7 +56,9 @@ def cli(dataset: str, model: str):
         subbatch_size=3,
     )
 
-    ids = irt.Dataset(path=dataset)
+    mode = irt.text.Mode(mode) if mode else irt.text.Mode('clean')
+
+    ids = irt.Dataset(path=dataset, mode=mode)
     kow = irt.KeenOpenWorld(dataset=ids)
 
     tdm = irt.TorchModule(
@@ -153,6 +158,9 @@ def _add_options(options):
 @click.option(
     '-c', '--config', type=str, multiple=True,
     help='one or more configuration files')
+@click.option(
+    '-m', '--mode', required=True,
+    type=click.Choice([mode.value for mode in irt.text.Mode]))
 @_add_options(_shared_options_mapper)
 def train(*, config=None, **kwargs):
     """

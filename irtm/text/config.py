@@ -47,6 +47,7 @@ class Config:
 
     # DATA
 
+    mode: str
     dataset: str
 
     dataloader_train_args: Dict[str, Any]

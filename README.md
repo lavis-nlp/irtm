@@ -165,8 +165,8 @@ If you just want to play around a little bit and understand the
 datamodule, you can spawn an interactive ipython shell with the `cli`
 command:
 
-``` bash
-irtm text cli --dataset ../irt/data/irt/irt.cde --model bert-base-cased
+```
+irtm text cli --dataset ../irt/data/irt/irt.cde --model bert-base-cased [--mode masked]
 
 IRT dataset:
 IRT graph: [irt-cde] (17050 entities)
@@ -185,9 +185,10 @@ variables in scope:
     tdm: irt.TorchModule
 
 you can now play around, e.g.:
-  dl = tdm.train_dataloader()
-  gen = iter(dl)
-  next(gen)
+
+[1] dl = tdm.train_dataloader()
+[2] gen = iter(dl)
+[3] next(gen)
 ```
 
 
@@ -202,7 +203,7 @@ the `-c` parameter and the final configuration is created based on
 this sequence. Later configurations overwrite former ones. Single options
 can also be set directly via command line flag:
 
-``` bash
+```
 irtm text train --help
 Usage: irtm text train [OPTIONS]
 
@@ -228,13 +229,14 @@ example, to train a 30-sentence multi-context mapper that uses an
 early stopper on a 24GB RAM GPU on IRT-CDE while overwriting the
 learning rate, you can combine the configuration like this:
 
-``` bash
+```
 irtm text train \
     -c conf/text/irt/defaults.yml \
     -c conf/text/irt/early_stopping.30.yml \
     -c conf/text/irt/cde.gpu.24g.train.30.yml \
     -c conf/text/irt/cde.yml \
     -c conf/text/irt/exp.m02.yml \
-    --optimizer-args--lr 0.00005
+    --optimizer-args--lr 0.00005 \
+    --mode masked
 ```
 

@@ -22,7 +22,7 @@ log = logging.getLogger(__name__)
 
 
 def load_from_config(config: Config):
-    ids = irt.Dataset(path=config.dataset)
+    ids = irt.Dataset(path=config.dataset, mode=irt.text.Mode(config.mode))
     kow = irt.KeenOpenWorld(dataset=ids)
 
     datamodule = irt.TorchModule(
