@@ -1,0 +1,38 @@
+evaluator:
+  cls: RankBasedEvaluator
+general:
+  seed: 3497348
+  split: 0.9
+loss:
+  cls: MarginRankingLoss
+  margin: 1.0
+  reduction: mean
+model:
+  cls: DistMult
+  embedding_dim: 500
+optimizer:
+  cls: Adagrad
+  lr: 0.09746442817044008
+regularizer:
+  cls: LpRegularizer
+  normalize: true
+  p: 2.0
+  weight: 0.0100165407247293
+sampler:
+  cls: BasicNegativeSampler
+  num_negs_per_pos: 50
+stopper:
+  cls: EarlyStopper
+  frequency: 1
+  patience: 10
+  relative_delta: 0.0001
+tracker:
+  cls: wandb
+  experiment: irt-fb paper
+  offline: false
+  project: irtm-keen
+  reinit: true
+training:
+  num_epochs: 2000
+training_loop:
+  cls: SLCWATrainingLoop
