@@ -9,13 +9,14 @@ Inductive Reasoning with Text - Models
 
 - [IRTM](#irtm)
     - [Installation](#installation)
-    - [Current Performance](#current-performance)
+    - [Downloads and more](#downloads-and-more)
     - [Closed-World Knowledge Graph Completion](#closed-world-knowledge-graph-completion)
         - [Training](#training)
         - [Evaluation](#evaluation)
     - [Open-World Knowledge Graph Completion](#open-world-knowledge-graph-completion)
         - [Command Line Interface](#command-line-interface)
         - [Training](#training-1)
+    - [Legacy Download](#legacy-download)
 
 <!-- markdown-toc end -->
 
@@ -66,9 +67,21 @@ A log file is written to `data/irtm.log` when using the CLI. You can
 configure the logger using `conf/logging.conf`.
 
 
-## Current Performance
+## Downloads and more
 
-TODO
+You can see the different validation/test results [in the
+spreadsheet](https://bit.ly/3rsR20x-IRT-spreadsheet). For more
+training insights see the Weights&Biases result trackers for
+[closed-world KGC](https://bit.ly/3ruaiuQ-IRT-KGC) and [Mapper
+training](https://bit.ly/3roPmFq-IRT-Text). You can find a selection
+of these models in the [legacy download section](#legacy-download)
+below (they use the pre-refactoring code). These models have been
+trained with the new code (see, for example, `irtm.text.`):
+
+| Version | Text   | Mapper | Contexts | Download                                                                        |
+|---------|--------|--------|----------|---------------------------------------------------------------------------------|
+| IRT-CDE | masked | multi  | 30       | [Link](http://lavis.cs.hs-rm.de/storage/irt/mapper.cde.30.multi-cls.masked.tgz) |
+| IRT-FB  | masked | multi  | 30       | [Link](http://lavis.cs.hs-rm.de/storage/irt/mapper.fb.30.multi-cls.masked.tgz)  |
 
 
 ## Closed-World Knowledge Graph Completion
@@ -240,3 +253,54 @@ irtm text train \
     --mode masked
 ```
 
+
+### Evaluation
+
+To evaluate the trained model, run any of the `irtm text evaluate*`
+commands. For example, to evaluate a single checkpoint, `irtm
+evaluate` requires the following parameters:
+
+```
+irtm text evaluate --help
+Usage: irtm text evaluate [OPTIONS]
+
+  Evaluate a mapper on the test split
+
+Options:
+  --path TEXT        path to model directory  [required]
+  --checkpoint TEXT  path to model checkpoint  [required]
+  -c, --config TEXT  one or more configuration files
+  --debug            run everything fast, do not write anything
+  --help             Show this message and exit.
+```
+
+So, for a trained model that is inside folder `$dir`:
+
+```
+irtm text evaluate \
+  --path $dir \
+  --checkpoint $dir/weights/.../epoch=...ckpt \
+  -c $dir/config.yml \
+  --debug
+```
+
+
+## Legacy Download
+
+Selection of original models. You need the legacy datasets that can be
+found in [the IRT repository](https://github.com/lavis-nlp/irt). The
+code version required to load this data and these models is
+[here](https://github.com/lavis-nlp/irtm/tree/157df680f9ee604b43a13581ab7de45d40ac81d6). Contact
+me, if you need other models (see the
+[spreadsheet](https://bit.ly/3rsR20x-IRT-spreadsheet)) just drop me a
+message and I will extend this table:
+
+
+| Version | Text   | Mapper | Contexts | Download                                                                                |
+|---------|--------|--------|----------|-----------------------------------------------------------------------------------------|
+| IRT-CDE | masked | single | 1        | [Link](http://lavis.cs.hs-rm.de/storage/irt/mapper.legacy.cde.1.single-cls.masked.tgz)  |
+| IRT-CDE | masked | multi  | 30       | [Link](http://lavis.cs.hs-rm.de/storage/irt/mapper.legacy.cde.30.multi-cls.masked.tgz)  |
+| IRT-CDE | masked | single | 30       | [Link](http://lavis.cs.hs-rm.de/storage/irt/mapper.legacy.cde.30.single-cls.masked.tgz) |
+| IRT-FB  | masked | single | 1        | [Link](http://lavis.cs.hs-rm.de/storage/irt/mapper.legacy.fb.1.single-cls.masked.tgz)   |
+| IRT-FB  | masked | multi  | 30       | [Link](http://lavis.cs.hs-rm.de/storage/irt/mapper.legacy.fb.30.multi-cls.masked.tgz)   |
+| IRT-FB  | masked | single | 30       | [Link](http://lavis.cs.hs-rm.de/storage/irt/mapper.legacy.fb.30.single-cls.masked.tgz)  |
