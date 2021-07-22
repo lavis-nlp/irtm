@@ -1,5 +1,5 @@
-kgc_model: data/kgc/oke.fb15k237_26041992_100/distmult/trial-0017
-split_dataset: data/split/oke.fb15k237_26041992_100
+dataset: ../irt/data/irt/irt.fb
+kgc_model: data/kgc/irt-fb/distmult.best
 
 optimizer: adam
 optimizer_args:
