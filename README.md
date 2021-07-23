@@ -9,14 +9,18 @@ Inductive Reasoning with Text - Models
 
 - [IRTM](#irtm)
     - [Installation](#installation)
-    - [Downloads and more](#downloads-and-more)
+    - [Downloads and information](#downloads-and-information)
+    - [Load a trained model](#load-a-trained-model)
+- [Train your own model](#train-your-own-model)
     - [Closed-World Knowledge Graph Completion](#closed-world-knowledge-graph-completion)
         - [Training](#training)
         - [Evaluation](#evaluation)
     - [Open-World Knowledge Graph Completion](#open-world-knowledge-graph-completion)
         - [Command Line Interface](#command-line-interface)
         - [Training](#training-1)
+        - [Evaluation](#evaluation-1)
     - [Legacy Download](#legacy-download)
+    - [Citation](#citation)
 
 <!-- markdown-toc end -->
 
@@ -30,8 +34,8 @@ the `requirements.txt`.
 
 
 ```bash
-conda create --name irtm python=3.8
-conda install pytorch
+conda create --name irtm python=3.9
+conda activate irtm
 pip install -r requirements.txt
 ```
 
@@ -67,7 +71,7 @@ A log file is written to `data/irtm.log` when using the CLI. You can
 configure the logger using `conf/logging.conf`.
 
 
-## Downloads and more
+## Downloads and information
 
 You can see the different validation/test results [in the
 spreadsheet](https://bit.ly/3rsR20x-IRT-spreadsheet). For more
@@ -75,13 +79,72 @@ training insights see the Weights&Biases result trackers for
 [closed-world KGC](https://bit.ly/3ruaiuQ-IRT-KGC) and [Mapper
 training](https://bit.ly/3roPmFq-IRT-Text). You can find a selection
 of these models in the [legacy download section](#legacy-download)
-below (they use the pre-refactoring code). These models have been
-trained with the new code (see, for example, `irtm.text.`):
+below (they use the pre-refactoring code).
 
-| Version | Text   | Mapper | Contexts | Download                                                                        |
-|---------|--------|--------|----------|---------------------------------------------------------------------------------|
-| IRT-CDE | masked | multi  | 30       | [Link](http://lavis.cs.hs-rm.de/storage/irt/mapper.cde.30.multi-cls.masked.tgz) |
-| IRT-FB  | masked | multi  | 30       | [Link](http://lavis.cs.hs-rm.de/storage/irt/mapper.fb.30.multi-cls.masked.tgz)  |
+The following models have been trained with the new code and are ready
+for use:
+
+| Version | Text   | Mapper | Contexts | Download                                                                        | hits@10 |
+|---------|--------|--------|----------|---------------------------------------------------------------------------------|---------|
+| IRT-CDE | masked | multi  | 30       | [Link](http://lavis.cs.hs-rm.de/storage/irt/mapper.cde.30.multi-cls.masked.tgz) | 42.41   |
+| IRT-FB  | masked | multi  | 30       | coming soon                                                                     |         |
+
+
+## Load a trained model
+
+To load a model, a few steps are required. First, download the
+required dataset [here](https://github.com/lavis-nlp/irt#download) and
+extract it somewhere. Then download one of the above models and put it
+somewhere else:
+
+```bash
+mkdir data
+pushd data
+
+# download files
+wget http://lavis.cs.hs-rm.de/storage/irt/cde.tgz
+wget http://lavis.cs.hs-rm.de/storage/irt/mapper.cde.30.multi-cls.masked.tgz
+
+# extract files
+tar xzf cde.tgz
+tar xzf mapper.cde.30.multi-cls.masked.tgz
+
+popd
+```
+
+You need to provide a small configuration file which points to the
+directories of the data you downloaded - and put it somewhere
+(e.g. `data/config.yml`):
+
+``` yaml
+dataset: data/irt.cde
+out: data/2021.06.28-18.31.20
+kgc_model: data/2021.06.28-18.31.20/distmult
+```
+
+Now you can load the model:
+
+``` python
+import pathlib
+from irtm.text import mapper
+from irtm.text.config import Config
+
+# this overwrites the original file paths
+config = Config.create(['data/2021.06.28-18.31.20/config.yml', 'data/config.yml'])
+checkpoint = pathlib.Path(config.out) / 'weights/irtm-text/2xwchpsl/checkpoints/epoch=53-step=61559.ckpt'
+
+# irtmod is the pytorch datamodule
+# irtmc are the model components (upstream etc.)
+irtmod, irtmc = mapper.load_from_config(config)
+model = mapper.Mapper.load_from_checkpoint(str(checkpoint), irtmod=irtmod, irtmc=irtmc)
+```
+
+Et voilà!
+
+
+# Train your own model
+
+The two-step approach is outlined in the following.
 
 
 ## Closed-World Knowledge Graph Completion
@@ -171,6 +234,7 @@ Commands:
   resume             Resume training of a mapper
   train              Train a mapper to align embeddings
 ```
+
 
 ### Command Line Interface
 
@@ -317,3 +381,14 @@ message and I will extend this table:
 | IRT-FB  | masked | single | 1        | [Link](http://lavis.cs.hs-rm.de/storage/irt/mapper.legacy.fb.1.single-cls.masked.tgz)   |
 | IRT-FB  | masked | multi  | 30       | [Link](http://lavis.cs.hs-rm.de/storage/irt/mapper.legacy.fb.30.multi-cls.masked.tgz)   |
 | IRT-FB  | masked | single | 30       | [Link](http://lavis.cs.hs-rm.de/storage/irt/mapper.legacy.fb.30.single-cls.masked.tgz)  |
+
+
+## Citation
+
+If this is useful to you, please consider a citation:
+
+
+```
+coming soon
+```
+
