@@ -118,8 +118,11 @@ class Config:
                     fn(new_trail, k, v)
 
         def checker(trail, k, v):
-            if v is None:
-                raise irtm.IRTMError(f"{trail} must not be None")
+            # disabled for now until I figure out how I can
+            # denote Optional values
+            return True
+            # if v is None:
+            #     raise irtm.IRTMError(f"{trail} must not be None")
 
         rcheck(obj=params, fn=checker)
         return K(**params)
