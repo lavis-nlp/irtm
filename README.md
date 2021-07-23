@@ -284,6 +284,19 @@ irtm text evaluate \
   --debug
 ```
 
+This writes the evaluation results to a yaml file with a name
+according to the provided checkpoint. For example:
+
+``` bash
+cat $dir/report/evaluation.epoch=53-step=61559.ckpt.yml | grep -E 'transductive|inductive|test|both.realistic.hits_at_10'
+  inductive:
+    both.realistic.hits_at_10: 0.4268671193016489
+  test:
+    both.realistic.hits_at_10: 0.42410341951626357
+  transductive:
+    both.realistic.hits_at_10: 0.37879945846798846
+```
+
 
 ## Legacy Download
 

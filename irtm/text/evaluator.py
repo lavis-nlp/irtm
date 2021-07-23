@@ -1,23 +1,24 @@
 # -*- coding: utf-8 -*-
 
+import irt
+
 import irtm
 from irtm.common import ryaml
 
 from irtm.text import util
-from irtm.text import data
 from irtm.text import mapper
 from irtm.text import trainer
 from irtm.text.config import Config
 from irtm.common import helper
 
 import csv
+import yaml
 import torch
 import logging
 from tqdm import tqdm as _tqdm
 
 import pathlib
 from functools import partial
-from dataclasses import replace
 
 from typing import List
 from typing import Dict
@@ -38,16 +39,16 @@ def _init(
 
 def _create_projections(
     model: mapper.Mapper,
-    datamodule: data.DataModule,
+    irtmod: irt.TorchModule,
     debug: bool,
 ):
 
     model.init_projections()
 
     loaders = (
-        [datamodule.train_dataloader()]
-        + datamodule.val_dataloader()
-        + [datamodule.test_dataloader()]
+        irtmod.train_dataloader(),
+        irtmod.val_dataloader(),
+        irtmod.test_dataloader(),
     )
 
     tqdm = partial(_tqdm, ncols=80, unit="batches")
@@ -71,29 +72,21 @@ def _create_projections(
 
 def _run_kgc_evaluations(
     model: mapper.Mapper,
-    datamodule: data.DataModule,
+    irtmod: irt.TorchModule,
 ):
-    triplesens = {
-        "transductive": datamodule.kgc.transductive,
-        "inductive": datamodule.kgc.inductive,
-        "test": datamodule.kgc.test,
-    }
-
     ret = {}
-    for kind, triples in triplesens.items():
-        results = model.run_kgc_evaluation(
-            kind=kind,
-            triples=triples,
-        )
 
-        ret[kind] = results.metrics
+    with torch.no_grad():
+        for kind in ("transductive", "inductive", "test"):
+            metrics = model.run_kgc_evaluation(kind=kind)
+            ret[kind] = metrics
 
     return ret
 
 
 def evaluate(
     model: mapper.Mapper,
-    datamodule: data.DataModule,
+    irtmod: irt.TorchModule,
     debug: bool,
 ):
     _init(model=model, debug=debug)
@@ -101,14 +94,14 @@ def evaluate(
     print("\ncreating projections\n")
     _create_projections(
         model=model,
-        datamodule=datamodule,
+        irtmod=irtmod,
         debug=debug,
     )
 
     print("\nrunning kgc evaluation\n")
     results = _run_kgc_evaluations(
         model=model,
-        datamodule=datamodule,
+        irtmod=irtmod,
     )
 
     def _map(dic):
@@ -138,23 +131,21 @@ def _evaluation_uncached(
 ):
 
     config = Config.create(configs=[out / "config.yml"] + list(config))
-    config = replace(config, split_text_dataset=False)
+    irtmod, irtmc = trainer.load_from_config(config=config)
 
-    datamodule, irtmc = trainer.load_from_config(config=config)
-
-    datamodule.prepare_data()
-    datamodule.setup("test")
+    irtmod.prepare_data()
+    irtmod.setup("test")
 
     model = mapper.Mapper.load_from_checkpoint(
         str(checkpoint),
-        data=datamodule,
+        irtmod=irtmod,
         irtmc=irtmc,
         freeze_text_encoder=True,
     )
 
     results = evaluate(
         model=model,
-        datamodule=datamodule,
+        irtmod=irtmod,
         debug=debug,
     )
 
@@ -176,13 +167,16 @@ def _handle_results(
     target_file: Union[str, pathlib.Path],
     debug: bool,
 ):
+    target_file = helper.path(name=target_file)
+
     if not debug:
         runs = {}
 
         try:
             runs = ryaml.load([target_file]) or {}
-        except FileNotFoundError:
+        except irtm.IRTMError:
             log.info(f"creating {target_file.name}")
+            target_file.parent.mkdir(parents=True, exist_ok=True)
 
         runs[checkpoint] = results
         with target_file.open(mode="w") as fd:
@@ -199,6 +193,9 @@ def evaluate_from_kwargs(
     config: List[str],
     debug: bool,
 ):
+    """
+    This writes the results to <path>/report/*
+    """
 
     path = helper.path(path, exists=True, message="loading data from {path_abbrv}")
 
@@ -207,7 +204,7 @@ def evaluate_from_kwargs(
     )
 
     print(f"evaluating {checkpoint.name}")
-    irtm_dir = path / "irtm"
+    irtm_dir = path / "report"
 
     if not debug:
         helper.path(irtm_dir, create=True)
@@ -248,11 +245,11 @@ def evaluate_baseline(
     **kwargs,
 ):
     config = Config.create(configs=config, **kwargs)
-    datamodule, irtmc = trainer.load_from_config(config=config)
+    irtmod, irtmc = trainer.load_from_config(config=config)
 
     model = mapper.Mapper(
         irtmc=irtmc,
-        data=datamodule,
+        irtmod=irtmod,
         freeze_text_encoder=True,
     )
 
@@ -265,7 +262,7 @@ def evaluate_baseline(
 
     results = _run_kgc_evaluations(
         model=model,
-        datamodule=datamodule,
+        irtmod=irtmod,
     )
 
     out = helper.path(out, create=True, message="writing results to {path_abbrv}")

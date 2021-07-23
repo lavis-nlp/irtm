@@ -825,7 +825,7 @@ class Mapper(pl.LightningModule):
             filtered_triples = [kow.closed_world.mapped_triples]
 
         elif kind == "test":
-            triples = kow.open_world_testing.mapped_triples
+            triples = kow.open_world_test.mapped_triples
             entities = kow.dataset.split.open_world_test.owe
             filtered_triples = [
                 kow.closed_world.mapped_triples,
