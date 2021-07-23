@@ -7,7 +7,6 @@ from irtm.common import ryaml
 
 from irtm.text import util
 from irtm.text import mapper
-from irtm.text import trainer
 from irtm.text.config import Config
 from irtm.common import helper
 
@@ -131,7 +130,7 @@ def _evaluation_uncached(
 ):
 
     config = Config.create(configs=[out / "config.yml"] + list(config))
-    irtmod, irtmc = trainer.load_from_config(config=config)
+    irtmod, irtmc = mapper.load_from_config(config=config)
 
     irtmod.prepare_data()
     irtmod.setup("test")
@@ -245,7 +244,7 @@ def evaluate_baseline(
     **kwargs,
 ):
     config = Config.create(configs=config, **kwargs)
-    irtmod, irtmc = trainer.load_from_config(config=config)
+    irtmod, irtmc = mapper.load_from_config(config=config)
 
     model = mapper.Mapper(
         irtmc=irtmc,

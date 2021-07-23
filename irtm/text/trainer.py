@@ -21,24 +21,6 @@ from typing import Optional
 log = logging.getLogger(__name__)
 
 
-def load_from_config(config: Config):
-    ids = irt.Dataset(path=config.dataset, mode=irt.text.Mode(config.mode))
-    kow = irt.KeenOpenWorld(dataset=ids)
-
-    datamodule = irt.TorchModule(
-        kow=kow,
-        model_name=config.text_encoder,
-        dataloader_train_args=config.dataloader_train_args,
-        dataloader_valid_args=config.dataloader_valid_args,
-        dataloader_test_args=config.dataloader_test_args,
-    )
-
-    upstream = mapper.UpstreamModels.load(config=config, dataset=ids)
-    irtmc = mapper.Components.create(config=config, upstream=upstream)
-
-    return datamodule, irtmc
-
-
 def _add_loghandler(config: Config, name: str):
     # add an additional text logger
     log.info(f"adding an additional log handler: {name}.log")
@@ -187,7 +169,7 @@ def _fit(
 
 
 def train(*, config: Config, debug: bool = False):
-    irtmod, irtmc = load_from_config(config=config)
+    irtmod, irtmc = mapper.load_from_config(config=config)
     pl.seed_everything(irtmod.kow.dataset.config.seed)
 
     out_fmt = config.out or (
@@ -277,7 +259,7 @@ def resume_from_kwargs(
     config = Config.create(configs=[config_file] + list(config), **kwargs)
 
     config.out = out
-    irtmod, irtmc = load_from_config(config=config)
+    irtmod, irtmc = mapper.load_from_config(config=config)
 
     checkpoint = helper.path(
         checkpoint,

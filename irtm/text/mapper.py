@@ -999,3 +999,24 @@ class Mapper(pl.LightningModule):
 
         _embs = self.keen.relation_embeddings._embeddings
         assert not _embs.weight.requires_grad
+
+
+# ---
+
+
+def load_from_config(config: Config):
+    ids = irt.Dataset(path=config.dataset, mode=irt.text.Mode(config.mode))
+    kow = irt.KeenOpenWorld(dataset=ids)
+
+    datamodule = irt.TorchModule(
+        kow=kow,
+        model_name=config.text_encoder,
+        dataloader_train_args=config.dataloader_train_args,
+        dataloader_valid_args=config.dataloader_valid_args,
+        dataloader_test_args=config.dataloader_test_args,
+    )
+
+    upstream = UpstreamModels.load(config=config, dataset=ids)
+    irtmc = Components.create(config=config, upstream=upstream)
+
+    return datamodule, irtmc
