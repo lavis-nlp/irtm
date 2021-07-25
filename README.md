@@ -87,7 +87,7 @@ for use ([W&B board](https://wandb.ai/kantholtz/irtm-text)):
 | Version | Text   | Mapper | Contexts | Download                                                                        | hits@10 |
 |---------|--------|--------|----------|---------------------------------------------------------------------------------|---------|
 | IRT-CDE | masked | multi  | 30       | [Link](http://lavis.cs.hs-rm.de/storage/irt/mapper.cde.30.multi-cls.masked.tgz) | 42.41   |
-| IRT-FB  | masked | multi  | 30       | coming soon                                                                     |         |
+| IRT-FB  | masked | multi  | 30       | [Link](http://lavis.cs.hs-rm.de/storage/irt/mapper.fb.30.multi-cls.masked.tgz)  | 36.00   |
 
 
 ## Load a trained model
@@ -352,7 +352,7 @@ This writes the evaluation results to a yaml file with a name
 according to the provided checkpoint. For example:
 
 ``` bash
-cat $dir/report/evaluation.epoch=53-step=61559.ckpt.yml | grep -E 'transductive|inductive|test|both.realistic.hits_at_10'
+grep -E 'transductive|inductive|test|both.realistic.hits_at_10' $dir/report/evaluation.epoch=53-step=61559.ckpt.yml
   inductive:
     both.realistic.hits_at_10: 0.4268671193016489
   test:
