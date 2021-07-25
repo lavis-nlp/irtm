@@ -372,12 +372,22 @@ me, if you need other models (see the
 [spreadsheet](https://bit.ly/3rsR20x-IRT-spreadsheet)) just drop me a
 message and I will extend this table:
 
+**IRT-CDE**
+
+Trained KGC-Model: [Link](http://lavis.cs.hs-rm.de/storage/irt/kgc.legacy.cde.tgz)
 
 | Version | Text   | Mapper | Contexts | Download                                                                                |
 |---------|--------|--------|----------|-----------------------------------------------------------------------------------------|
 | IRT-CDE | masked | single | 1        | [Link](http://lavis.cs.hs-rm.de/storage/irt/mapper.legacy.cde.1.single-cls.masked.tgz)  |
 | IRT-CDE | masked | multi  | 30       | [Link](http://lavis.cs.hs-rm.de/storage/irt/mapper.legacy.cde.30.multi-cls.masked.tgz)  |
 | IRT-CDE | masked | single | 30       | [Link](http://lavis.cs.hs-rm.de/storage/irt/mapper.legacy.cde.30.single-cls.masked.tgz) |
+
+**IRT-FB**
+
+Trained KGC-Model: [Link](http://lavis.cs.hs-rm.de/storage/irt/kgc.legacy.fb.tgz)
+
+| Version | Text   | Mapper | Contexts | Download                                                                                |
+|---------|--------|--------|----------|-----------------------------------------------------------------------------------------|
 | IRT-FB  | masked | single | 1        | [Link](http://lavis.cs.hs-rm.de/storage/irt/mapper.legacy.fb.1.single-cls.masked.tgz)   |
 | IRT-FB  | masked | multi  | 30       | [Link](http://lavis.cs.hs-rm.de/storage/irt/mapper.legacy.fb.30.multi-cls.masked.tgz)   |
 | IRT-FB  | masked | single | 30       | [Link](http://lavis.cs.hs-rm.de/storage/irt/mapper.legacy.fb.30.single-cls.masked.tgz)  |
