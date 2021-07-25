@@ -82,7 +82,7 @@ of these models in the [legacy download section](#legacy-download)
 below (they use the pre-refactoring code).
 
 The following models have been trained with the new code and are ready
-for use:
+for use ([W&B board](https://wandb.ai/kantholtz/irtm-text)):
 
 | Version | Text   | Mapper | Contexts | Download                                                                        | hits@10 |
 |---------|--------|--------|----------|---------------------------------------------------------------------------------|---------|
