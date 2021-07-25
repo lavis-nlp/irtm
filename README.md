@@ -84,10 +84,10 @@ below (they use the pre-refactoring code).
 The following models have been trained with the new code and are ready
 for use ([W&B board](https://wandb.ai/kantholtz/irtm-text)):
 
-| Version | Text   | Mapper | Contexts | Download                                                                        | hits@10 |
-|---------|--------|--------|----------|---------------------------------------------------------------------------------|---------|
-| IRT-CDE | masked | multi  | 30       | [Link](http://lavis.cs.hs-rm.de/storage/irt/mapper.cde.30.multi-cls.masked.tgz) | 42.41   |
-| IRT-FB  | masked | multi  | 30       | [Link](http://lavis.cs.hs-rm.de/storage/irt/mapper.fb.30.multi-cls.masked.tgz)  | 36.00   |
+| Version | Text   | Mapper | Contexts | Download                       | hits@10 |
+|---------|--------|--------|----------|--------------------------------|---------|
+| IRT-CDE | masked | multi  | 30       | [Link](https://bit.ly/2TxiU7a) | 42.41   |
+| IRT-FB  | masked | multi  | 30       | [Link](https://bit.ly/3x47Bkw) | 36.00   |
 
 
 ## Load a trained model
