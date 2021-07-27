@@ -397,8 +397,13 @@ Trained KGC-Model: [Link](http://lavis.cs.hs-rm.de/storage/irt/kgc.legacy.fb.tgz
 
 If this is useful to you, please consider a citation:
 
-
 ```
-coming soon
+@inproceedings{hamann2021open,
+  title={Open-World Knowledge Graph Completion Benchmarks for Knowledge Discovery},
+  author={Hamann, Felix and Ulges, Adrian and Krechel, Dirk and Bergmann, Ralph},
+  booktitle={International Conference on Industrial, Engineering and Other Applications of Applied Intelligent Systems},
+  pages={252--264},
+  year={2021},
+  organization={Springer}
+}
 ```
-
